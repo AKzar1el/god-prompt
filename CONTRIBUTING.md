@@ -4,7 +4,7 @@ GodPrompt is a production-grade engineering discipline framework. Contributions 
 
 ## Before You Start
 
-1. Read `core/00-THE-SKILL.md` — understand the protocol you're contributing to.
+1. Read `SKILL.md` — understand the protocol you're contributing to.
 2. Check [existing issues](https://github.com/AKzar1el/god-prompt/issues) to avoid duplicate work.
 3. For significant changes, open an issue first to discuss the approach.
 

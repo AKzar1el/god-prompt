@@ -34,10 +34,10 @@ git clone https://github.com/AKzar1el/GodPrompt.git .claude/skills/god-prompt
 
 **Option C — Claude.ai Projects**
 1. Create a new Claude Project
-2. Add `core/00-THE-SKILL.md` as Project Instructions
-3. Upload the three reference files (`core/01-PROTOCOLS.md`, `core/02-GATES.md`, `core/03-ANTI-PATTERNS.md`) as Project Knowledge
+2. Add `SKILL.md` as Project Instructions
+3. Upload the three reference files (`references/01-PROTOCOLS.md`, `references/02-GATES.md`, `references/03-ANTI-PATTERNS.md`) as Project Knowledge
 
-If you want a single paste target, use `GodPrompt.md`. If you want progressive disclosure and a smaller always-on context footprint, use the `core/` folder layout.
+If you want a single paste target, use `GodPrompt.md`. If you want progressive disclosure and a smaller always-on context footprint, use the folder layout (`SKILL.md` and the `references/` folder).
 
 **Then just use Claude normally.** No special commands, no mode switching, no skill invocations. GodPrompt activates automatically on every task.
 
@@ -86,8 +86,8 @@ GodPrompt detects 9 primary task types and routes to the right protocol. Simple 
 ```
 GodPrompt/
 ├── GodPrompt.md              # All-in-one file for quick deployment
-├── core/
-│   ├── 00-THE-SKILL.md       # Core protocol loaded every message
+├── SKILL.md                  # Core protocol loaded every message
+├── references/
 │   ├── 01-PROTOCOLS.md       # Deep execution guides per task type
 │   ├── 02-GATES.md           # Verification checklists and report templates
 │   └── 03-ANTI-PATTERNS.md   # Red flags, rationalizations, and recovery
@@ -105,8 +105,8 @@ GodPrompt/
 
 This is the key design advantage over multi-skill systems:
 
-- **00-THE-SKILL.md** stays in the hot path → low token cost, covers the universal protocol and task routing
-- **01-PROTOCOLS.md**, **02-GATES.md**, **03-ANTI-PATTERNS.md** load only when deeper execution detail is needed → saves tokens on simpler tasks
+- **SKILL.md** stays in the hot path → low token cost, covers the universal protocol and task routing
+- **references/01-PROTOCOLS.md**, **references/02-GATES.md**, **references/03-ANTI-PATTERNS.md** load only when deeper execution detail is needed → saves tokens on simpler tasks
 - **GodPrompt.md** exists as a combined single file for environments that don't support folder structures
 
 A 34-skill system loads the wrong skill (or none) half the time. GodPrompt loads the right rules every time, and only goes deep when the task requires it.
@@ -143,7 +143,7 @@ Plus patterns from real-world production usage:
 |--|-----------|-----------------------------------|
 | **Skills to manage** | 1 | 34+ |
 | **User needs to pick the right skill** | No — auto-detects | Yes — manual selection |
-| **Context window cost** | Lean base context via `core/00-THE-SKILL.md` | Varies per skill loaded |
+| **Context window cost** | Lean base context via `SKILL.md` | Varies per skill loaded |
 | **Covers mixed tasks** | Yes — handles BUILD+DEBUG+SHIP in one session | Requires switching between skills |
 | **Learning curve** | Zero — just use Claude | Must learn when to invoke each skill |
 | **Risk of using wrong workflow** | None — routing is automatic | High — wrong skill = wrong process |
