@@ -33,9 +33,24 @@ git clone https://github.com/AKzar1el/god-prompt.git .claude/skills/god-prompt
 ```
 
 **Option C — Claude.ai Projects**
-1. Create a new Claude Project
-2. Add `SKILL.md` as Project Instructions
-3. Upload the three reference files (`references/01-PROTOCOLS.md`, `references/02-GATES.md`, `references/03-ANTI-PATTERNS.md`) as Project Knowledge
+1. Create a new Claude Project.
+2. Add `SKILL.md` as Project Instructions.
+3. Upload the three reference files (`references/01-PROTOCOLS.md`, `references/02-GATES.md`, `references/03-ANTI-PATTERNS.md`) as Project Knowledge.
+
+**Option D — ChatGPT Projects & Custom Instructions**
+* **In a Project**:
+  1. Create a new Project on chatgpt.com.
+  2. Paste the contents of `SKILL.md` into the Project's Custom Instructions.
+  3. Upload the reference files in the `references/` folder to the Project files.
+* **Globally (Custom Instructions)**:
+  1. Go to **Customize ChatGPT** in your account settings.
+  2. Paste the contents of `GodPrompt.md` in the "How would you like ChatGPT to respond?" field.
+
+**Option E — Gemini Gems & System Instructions**
+* **As a Custom Gem**:
+  1. Go to gemini.google.com and click **Gems** (or "Gem manager") > **New Gem**.
+  2. Name it "GodPrompt" and paste the contents of `SKILL.md` into the Gem instructions.
+  3. Upload the reference files in the `references/` folder to the Gem's Knowledge files.
 
 If you want a single paste target, use `GodPrompt.md`. If you want progressive disclosure and a smaller always-on context footprint, use the folder layout (`SKILL.md` and the `references/` folder).
 
