@@ -106,8 +106,7 @@ GodPrompt/
 │   ├── 01-PROTOCOLS.md       # Deep execution guides per task type
 │   ├── 02-GATES.md           # Verification checklists and report templates
 │   └── 03-ANTI-PATTERNS.md   # Red flags, rationalizations, and recovery
-├── index.html                # Static landing page
-├── .github/workflows/deploy.yml
+├── .github/workflows/verify.yml
 ├── README.md
 ├── CHANGELOG.md
 ├── LICENSE
@@ -187,3 +186,5 @@ Three design insights:
 ## License
 
 [MIT](LICENSE) — do whatever you want with it. Credit appreciated but not required.
+
+Project page: [GodPrompt](https://tomiseregi.si/projects/god-prompt)
