@@ -32,7 +32,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e './bench[test,openai]'
 
-      - name: Diagnose clean pre-run tree
+      - name: Verify clean pre-run tree
         shell: bash
         run: |
           status="$(git status --porcelain)"
