@@ -79,3 +79,44 @@ def test_execute_benchmark_reads_actual_model_from_eval_spec(monkeypatch, tmp_pa
 
     assert captured['actual_models'] == ['mockllm/model', 'mockllm/model']
     assert result == tmp_path / 'test-run'
+
+
+def test_execute_benchmark_captures_git_state_before_eval(monkeypatch, tmp_path):
+    import inspect_ai
+    import godprompt_bench.run as run_module
+
+    profile = load_profile(ROOT / 'configs' / 'smoke.json')
+    logs = [
+        SimpleNamespace(metadata={'condition': 'baseline'}, eval=SimpleNamespace(model='mockllm/model'), samples=[]),
+        SimpleNamespace(metadata={'condition': 'godprompt'}, eval=SimpleNamespace(model='mockllm/model'), samples=[]),
+    ]
+    events = []
+
+    monkeypatch.setattr(run_module, 'build_task', lambda *args, **kwargs: object())
+
+    def fake_git(repo_root, *args):
+        events.append(('git', args))
+        if args[0] == 'status':
+            return ''
+        return 'abc123'
+
+    def fake_eval(*args, **kwargs):
+        events.append(('eval', ()))
+        return logs
+
+    monkeypatch.setattr(run_module, '_git', fake_git)
+    monkeypatch.setattr(inspect_ai, 'eval', fake_eval)
+    monkeypatch.setattr(run_module, 'export_run', lambda *args, **kwargs: None)
+
+    execute_benchmark(
+        ROOT.parent,
+        ROOT,
+        profile,
+        model='mockllm/model',
+        output_dir=tmp_path,
+    )
+
+    assert events[0][0] == 'git'
+    assert next(i for i, event in enumerate(events) if event[0] == 'git') < next(
+        i for i, event in enumerate(events) if event[0] == 'eval'
+    )
