@@ -14,15 +14,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: pip
           cache-dependency-path: bench/pyproject.toml
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '22.18.0'
 
@@ -39,3 +39,11 @@ jobs:
 
       - name: Build isolated task sandbox
         run: docker compose -f bench/sandbox/compose.yaml build
+
+      - name: Verify sandbox runtime
+        run: |
+          docker compose -f bench/sandbox/compose.yaml run --rm default sh -lc '
+            test "$(id -u)" -ne 0 &&
+            python3 --version &&
+            node --version
+          '
