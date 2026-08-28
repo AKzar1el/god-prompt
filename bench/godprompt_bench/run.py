@@ -291,7 +291,7 @@ def execute_benchmark(
     actual_models: list[str] = []
     for log in logs:
         condition = _condition_for_log(log)
-        actual_models.append(str(log.model))
+        actual_models.append(str(log.eval.model))
         for sample in log.samples or []:
             records.append(sample_record(sample, condition))
             trajectories.append(public_trajectory(sample, condition))
