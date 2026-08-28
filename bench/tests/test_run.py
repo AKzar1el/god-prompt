@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from godprompt_bench.run import load_profile, public_trajectory, sample_record
+from godprompt_bench.run import execute_benchmark, load_profile, public_trajectory, sample_record
 
 ROOT = Path(__file__).parents[1]
 
@@ -46,3 +46,36 @@ def test_public_trajectory_excludes_system_and_reasoning_content():
     assert [m['role'] for m in trajectory['messages']] == ['user', 'assistant']
     assert trajectory['messages'][1]['content'] == [{'type': 'text', 'text': 'public'}]
     assert trajectory['events'][0]['event'] == 'tool'
+
+
+def test_execute_benchmark_reads_actual_model_from_eval_spec(monkeypatch, tmp_path):
+    import inspect_ai
+    import godprompt_bench.run as run_module
+
+    profile = load_profile(ROOT / 'configs' / 'smoke.json')
+    logs = [
+        SimpleNamespace(metadata={'condition': 'baseline'}, eval=SimpleNamespace(model='mockllm/model'), samples=[]),
+        SimpleNamespace(metadata={'condition': 'godprompt'}, eval=SimpleNamespace(model='mockllm/model'), samples=[]),
+    ]
+    captured = {}
+
+    monkeypatch.setattr(run_module, 'build_task', lambda *args, **kwargs: object())
+    monkeypatch.setattr(inspect_ai, 'eval', lambda *args, **kwargs: logs)
+
+    def fake_manifest(*args, actual_models, **kwargs):
+        captured['actual_models'] = actual_models
+        return {'run_id': 'test-run'}
+
+    monkeypatch.setattr(run_module, 'build_manifest', fake_manifest)
+    monkeypatch.setattr(run_module, 'export_run', lambda *args, **kwargs: None)
+
+    result = execute_benchmark(
+        ROOT.parent,
+        ROOT,
+        profile,
+        model='mockllm/model',
+        output_dir=tmp_path,
+    )
+
+    assert captured['actual_models'] == ['mockllm/model', 'mockllm/model']
+    assert result == tmp_path / 'test-run'
