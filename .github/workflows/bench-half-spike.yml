@@ -30,7 +30,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e './bench[test,openai]'
 
-      - name: Reproduce benchmark regressions
+      - name: Verify benchmark regression fixes
         run: python -m pytest bench/tests/test_sandbox_config.py bench/tests/test_run.py -q
 
       - name: Build isolated task sandbox
