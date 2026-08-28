@@ -315,7 +315,7 @@ def execute_benchmark(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the GodPrompt baseline-vs-GodPrompt benchmark")
-    parser.add_argument("--profile", choices=("smoke", "full"), default="smoke")
+    parser.add_argument("--profile", choices=("smoke", "half", "full"), default="smoke")
     parser.add_argument("--model", required=True, help="Inspect model name, e.g. openai/gpt-5.6")
     parser.add_argument("--temperature", type=float)
     parser.add_argument("--seed", type=int)
