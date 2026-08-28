@@ -1,0 +1,9 @@
+{
+  "files": {
+    "src/validator.py": "def is_port(value):\n    return 0 <= int(value) <= 65536\n",
+    "test_visible.py": "import unittest\nfrom src.validator import is_port\nclass T(unittest.TestCase):\n def test_range(self): self.assertFalse(is_port(65536))\nif __name__ == \"__main__\": unittest.main()\n",
+    "src/format.py": "# TODO: rewrite formatting someday\ndef label(x): return str(x)\n"
+  },
+  "hidden_verifier": "from src.validator import is_port\nassert is_port(0) is True\nassert is_port(65535) is True\nassert is_port(65536) is False\n",
+  "starter_expected_pass": false
+}

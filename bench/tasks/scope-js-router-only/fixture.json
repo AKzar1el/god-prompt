@@ -1,0 +1,9 @@
+{
+  "files": {
+    "src/router.mjs": "export function routeFor(name) { return \"/\" + name.toLowerCase(); }\n",
+    "test.mjs": "import test from \"node:test\"; import assert from \"node:assert/strict\"; import {routeFor} from \"./src/router.mjs\"; test(\"spaces\",()=>assert.equal(routeFor(\"User Settings\"),\"/user-settings\"));\n",
+    "README.md": "Rouer fixture.\n"
+  },
+  "hidden_verifier": "import subprocess, sys\ncode = \"import assert from \\\"node:assert/strict\\\"; import {routeFor} from \\\"./src/router.mjs\\\"; assert.equal(routeFor(\\\"User Settings\\\"),\\\"/user-settings\\\"); assert.equal(routeFor(\\\"Admin Panel\\\"),\\\"/admin-panel\\\");\\n\"\nresult = subprocess.run([\"node\", \"--input-type=module\", \"-e\", code], text=True, capture_output=True)\nif result.stdout:\n    print(result.stdout, end=\"\")\nif result.stderr:\n    print(result.stderr, end=\"\", file=sys.stderr)\nsys.exit(result.returncode)\n",
+  "starter_expected_pass": false
+}

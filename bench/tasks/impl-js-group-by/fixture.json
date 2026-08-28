@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/group.mjs": "export function groupBy(items, keyFn) {\n  throw new Error(\"not implemented\");\n}\n",
+    "test.mjs": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { groupBy } from \"./src/group.mjs\";\n\ntest(\"groups values\", () => assert.deepEqual(groupBy([1,2,3], x => x % 2), {\"0\":[2],\"1\":[1,3]}));\n"
+  },
+  "hidden_verifier": "import subprocess, sys\ncode = \"import assert from \\\"node:assert/strict\\\"; import {groupBy} from \\\"./src/group.mjs\\\"; assert.deepEqual(groupBy([1,2,3,4], x => x%2), {\\\"0\\\":[2,4],\\\"1\\\":[1,3]}); assert.deepEqual(groupBy([], x=>x), {});\\n\"\nresult = subprocess.run([\"node\", \"--input-type=module\", \"-e\", code], text=True, capture_output=True)\nif result.stdout:\n    print(result.stdout, end=\"\")\nif result.stderr:\n    print(result.stderr, end=\"\", file=sys.stderr)\nsys.exit(result.returncode)\n",
+  "starter_expected_pass": false
+}

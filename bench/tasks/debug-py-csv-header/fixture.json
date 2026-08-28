@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/csvrows.py": "import csv\nfrom io import StringIO\n\ndef data_row_count(text):\n    return sum(1 for _ in csv.reader(StringIO(text)))\n",
+    "test_visible.py": "import unittest\nfrom src.csvrows import data_row_count\nclass T(unittest.TestCase):\n    def test_header_not_counted(self): self.assertEqual(data_row_count(\"name,age\\nAda,36\\nLin,29\\n\"), 2)\nif __name__ == \"__main__\": unittest.main()\n"
+  },
+  "hidden_verifier": "from src.csvrows import data_row_count\nassert data_row_count(\"name,age\\n\") == 0\nassert data_row_count(\"name,age\\nAda,36\\nLin,29\\n\") == 2\n",
+  "starter_expected_pass": false
+}

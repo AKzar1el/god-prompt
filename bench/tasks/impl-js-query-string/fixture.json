@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/query.mjs": "export function toQuery(params) {\n  return \"\";\n}\n",
+    "test.mjs": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { toQuery } from \"./src/query.mjs\";\n\ntest(\"encodes simple parameters\", () => assert.equal(toQuery({ q: \"hello world\" }), \"q=hello%20world\"));\n"
+  },
+  "hidden_verifier": "import subprocess, sys\ncode = \"import assert from \\\"node:assert/strict\\\"; import {toQuery} from \\\"./src/query.mjs\\\"; assert.equal(toQuery({q:\\\"a b\\\",page:0,active:false,skip:undefined}), \\\"q=a%20b&page=0&active=false\\\");\\n\"\nresult = subprocess.run([\"node\", \"--input-type=module\", \"-e\", code], text=True, capture_output=True)\nif result.stdout:\n    print(result.stdout, end=\"\")\nif result.stderr:\n    print(result.stderr, end=\"\", file=sys.stderr)\nsys.exit(result.returncode)\n",
+  "starter_expected_pass": false
+}

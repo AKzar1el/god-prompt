@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/size.py": "def parse_bytes(value: str) -> int:\n    pass\n",
+    "test_visible.py": "import unittest\nfrom src.size import parse_bytes\n\nclass TestParseBytes(unittest.TestCase):\n    def test_kilobytes(self):\n        self.assertEqual(parse_bytes(\"2KB\"), 2048)\n\nif __name__ == \"__main__\":\n    unittest.main()\n"
+  },
+  "hidden_verifier": "from src.size import parse_bytes\nassert parse_bytes(\"512B\") == 512\nassert parse_bytes(\"1KB\") == 1024\nassert parse_bytes(\"1.5MB\") == 1572864\ntry:\n    parse_bytes(\"2GB\")\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"unsupported unit must raise ValueError\")\n",
+  "starter_expected_pass": false
+}

@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/lines.py": "def parse_lines(text):\n    return [line.strip() for line in text.splitlines()]\n",
+    "test_visible.py": "import unittest\nfrom src.lines import parse_lines\nclass T(unittest.TestCase):\n def test_lines(self): self.assertEqual(parse_lines(\"a\\nb\"),[\"a\",\"b\"])\nif __name__ == \"__main__\": unittest.main()\n"
+  },
+  "hidden_verifier": "from src.lines import parse_lines\nassert parse_lines(\"\")==[]\nassert parse_lines(\"   \\n  \")==[]\nassert parse_lines(\"a\\nb\")==[\"a\",\"b\"]\n",
+  "starter_expected_pass": false
+}

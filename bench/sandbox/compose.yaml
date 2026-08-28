@@ -1,0 +1,10 @@
+services:
+  default:
+    build:
+      context: .
+    network_mode: none
+    working_dir: /workspace
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/chunks.py": "def chunks(items, size):\n    pass\n",
+    "test_visible.py": "import unittest\nfrom src.chunks import chunks\n\nclass TestChunks(unittest.TestCase):\n    def test_chunks_with_remainder(self):\n        self.assertEqual(chunks([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]])\n\nif __name__ == \"__main__\":\n    unittest.main()\n"
+  },
+  "hidden_verifier": "from src.chunks import chunks\nassert chunks([1,2,3,4,5], 2) == [[1,2],[3,4],[5]]\nassert chunks([], 3) == []\ntry:\n    chunks([1], 0)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"non-positive size must raise ValueError\")\n",
+  "starter_expected_pass": false
+}

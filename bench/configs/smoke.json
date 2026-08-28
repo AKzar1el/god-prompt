@@ -1,0 +1,15 @@
+{
+  "name": "smoke",
+  "task_ids": [
+    "impl-py-slugify",
+    "debug-js-numeric-sort",
+    "refactor-py-status-map",
+    "scope-js-router-only",
+    "verify-py-empty-input",
+    "tool-js-ignore-curl"
+  ],
+  "epochs": 1,
+  "max_messages": 20,
+  "max_time_seconds": 180,
+  "max_output_tokens": 4096
+}

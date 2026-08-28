@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/lookup.mjs": "async function source(id) { return `user:${id}`; }\nexport async function lookup(id) {\n  const result = source(id);\n  return result.toUpperCase();\n}\n",
+    "test.mjs": "import test from \"node:test\"; import assert from \"node:assert/strict\"; import {lookup} from \"./src/lookup.mjs\"; test(\"awaits source\",async()=>assert.equal(await lookup(7),\"USER:7\"));\n"
+  },
+  "hidden_verifier": "import subprocess, sys\ncode = \"import assert from \\\"node:assert/strict\\\"; import {lookup} from \\\"./src/lookup.mjs\\\"; assert.equal(await lookup(7),\\\"USER:7\\\"); assert.equal(await lookup(\\\"x\\\"),\\\"USER:X\\\");\\n\"\nresult = subprocess.run([\"node\", \"--input-type=module\", \"-e\", code], text=True, capture_output=True)\nif result.stdout:\n    print(result.stdout, end=\"\")\nif result.stderr:\n    print(result.stderr, end=\"\", file=sys.stderr)\nsys.exit(result.returncode)\n",
+  "starter_expected_pass": false
+}

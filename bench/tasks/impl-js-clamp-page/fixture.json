@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/paging.mjs": "export function clampPage(page, totalPages) {\n  return page;\n}\n",
+    "test.mjs": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { clampPage } from \"./src/paging.mjs\";\n\ntest(\"clamps high page\", () => assert.equal(clampPage(8, 5), 5));\n"
+  },
+  "hidden_verifier": "import subprocess, sys\ncode = \"import assert from \\\"node:assert/strict\\\"; import {clampPage} from \\\"./src/paging.mjs\\\"; assert.equal(clampPage(0,5),1); assert.equal(clampPage(8,5),5); assert.equal(clampPage(1,1),1);\\n\"\nresult = subprocess.run([\"node\", \"--input-type=module\", \"-e\", code], text=True, capture_output=True)\nif result.stdout:\n    print(result.stdout, end=\"\")\nif result.stderr:\n    print(result.stderr, end=\"\", file=sys.stderr)\nsys.exit(result.returncode)\n",
+  "starter_expected_pass": false
+}

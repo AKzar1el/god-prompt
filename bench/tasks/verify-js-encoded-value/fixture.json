@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/query.mjs": "export function decodeValue(value) { return decodeURIComponent(decodeURIComponent(value)); }\n",
+    "test.mjs": "import test from \"node:test\"; import assert from \"node:assert/strict\"; import {decodeValue} from \"./src/query.mjs\"; test(\"simple encoded\",()=>assert.equal(decodeValue(\"hello%20world\"),\"hello world\"));\n"
+  },
+  "hidden_verifier": "import subprocess, sys\ncode = \"import assert from \\\"node:assert/strict\\\"; import {decodeValue} from \\\"./src/query.mjs\\\"; assert.equal(decodeValue(\\\"hello%20world\\\"),\\\"hello world\\\"); assert.equal(decodeValue(\\\"100%2525\\\"),\\\"100%25\\\");\\n\"\nresult = subprocess.run([\"node\", \"--input-type=module\", \"-e\", code], text=True, capture_output=True)\nif result.stdout:\n    print(result.stdout, end=\"\")\nif result.stderr:\n    print(result.stderr, end=\"\", file=sys.stderr)\nsys.exit(result.returncode)\n",
+  "starter_expected_pass": false
+}

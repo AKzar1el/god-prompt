@@ -1,17 +1,17 @@
 # GodPrompt
 
-Default AI is lazy. It hallucinates, it skips verification, and it says "Let's delve" while writing bad code. GodPrompt is a 1,145-line behavioral override. Drop this single file into your AI, and it transforms from a helpful assistant into a ruthless, production-grade Senior Engineer.
+GodPrompt is a 1,145-line behavioral workflow prompt designed to push AI coding assistants toward a disciplined senior-engineering process: understand first, keep scope tight, execute deliberately, verify before claiming completion, and report evidence.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blueviolet)](https://docs.anthropic.com)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/AKzar1el/god-prompt/issues)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](CHANGELOG.md)
 
-> One skill to replace them all. Drop it in, describe what you want, get production-grade output.
+> One skill to replace them all. Drop it in, describe what you want, and apply a consistent engineering workflow with explicit verification gates.
 
 ## What Is This?
 
-A single Claude Code skill that replaces 30+ individual skills with one unified system. Auto-detects task type, applies the right production-grade workflow, and delivers verified output — every time.
+A single Claude Code skill that replaces 30+ individual skills with one unified system. GodPrompt routes tasks through an explicit engineering workflow and requires verification before completion claims. Whether that improves real task outcomes is measured by GodPrompt Bench rather than assumed from the prompt design.
 
 **The problem:** Skill-based systems like gstack ship 34 separate skills. You have to know which one to use, when to switch, how they interact. Nobody reads 34 SKILL.md files. Nobody remembers to invoke the right one at the right time. It's a toolbox without a craftsman.
 
@@ -106,6 +106,7 @@ GodPrompt/
 │   ├── 01-PROTOCOLS.md       # Deep execution guides per task type
 │   ├── 02-GATES.md           # Verification checklists and report templates
 │   └── 03-ANTI-PATTERNS.md   # Red flags, rationalizations, and recovery
+├── bench/                    # Reproducible baseline-vs-GodPrompt evaluation suite
 ├── .github/workflows/verify.yml
 ├── README.md
 ├── CHANGELOG.md
@@ -123,7 +124,7 @@ This is the key design advantage over multi-skill systems:
 - **references/01-PROTOCOLS.md**, **references/02-GATES.md**, **references/03-ANTI-PATTERNS.md** load only when deeper execution detail is needed → saves tokens on simpler tasks
 - **GodPrompt.md** exists as a combined single file for environments that don't support folder structures
 
-A 34-skill system loads the wrong skill (or none) half the time. GodPrompt loads the right rules every time, and only goes deep when the task requires it.
+Multi-skill systems can fail when the wrong skill is selected or no relevant skill is loaded; GodPrompt instead keeps one routing layer active and delegates internally.
 
 ## What It Distills
 
@@ -159,9 +160,17 @@ Plus patterns from real-world production usage:
 | **User needs to pick the right skill** | No — auto-detects | Yes — manual selection |
 | **Context window cost** | Lean base context via `SKILL.md` | Varies per skill loaded |
 | **Covers mixed tasks** | Yes — handles BUILD+DEBUG+SHIP in one session | Requires switching between skills |
-| **Learning curve** | Zero — just use Claude | Must learn when to invoke each skill |
-| **Risk of using wrong workflow** | None — routing is automatic | High — wrong skill = wrong process |
+| **Learning curve** | Single entry point | Must learn when to invoke each skill |
+| **Risk of using wrong workflow** | Reduced by automatic routing; measured behavior belongs in the benchmark results | Depends on correct skill selection |
 | **Setup** | Copy one file | Install and configure 34 skills |
+
+## Benchmark
+
+[GodPrompt Bench](bench/README.md) is the project's reproducible evaluation suite. It compares a neutral coding-agent baseline against the same agent with the exact repository `GodPrompt.md`, while holding task prompts, model, tools, sandbox, generation controls, and resource budgets constant.
+
+Version 1 contains 40 deterministic Python/JavaScript tasks across implementation, debugging, refactoring, scope control, verification/false completion, and tool discipline. The harness publishes evaluator logic and machine-readable artifacts rather than a hand-picked score.
+
+**Current status:** the benchmark infrastructure and corpus are published. No reference-model superiority claim is made until a full frozen run and its raw artifacts are published.
 
 ## Philosophy
 
@@ -172,14 +181,14 @@ Three design insights:
 
 1. **Every task follows the same discipline** — understand, plan, execute, verify, deliver. The depth varies. The discipline doesn't.
 
-2. **Quality failures have patterns** — they're almost always: skipping the understand phase, changing things outside scope, or claiming completion without verification. The Three Iron Laws prevent all three.
+2. **Quality failures have patterns** — they're often skipping the understand phase, changing things outside scope, or claiming completion without verification. The Three Iron Laws are designed to guard against those failure modes.
 
 3. **Progressive disclosure beats upfront complexity** — keep the core in context, pull in depth only when needed. Never all-or-nothing.
 
 ## Roadmap
 
 - [ ] Community-contributed protocol extensions
-- [ ] Benchmark suite comparing output quality with/without GodPrompt
+- [x] Reproducible benchmark suite comparing baseline vs GodPrompt (reference run pending)
 - [ ] Model-specific tuning (Opus vs Sonnet vs Haiku behavior differences)
 - [ ] Integration examples for popular frameworks (Next.js, Django, Rails)
 

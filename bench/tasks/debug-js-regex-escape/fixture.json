@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/search.mjs": "export function containsLiteral(text, needle) {\n  return new RegExp(needle).test(text);\n}\n",
+    "test.mjs": "import test from \"node:test\"; import assert from \"node:assert/strict\"; import {containsLiteral} from \"./src/search.mjs\"; test(\"dot is literal\",()=>assert.equal(containsLiteral(\"a.b\",\".\"),true)); test(\"dot does not match any char\",()=>assert.equal(containsLiteral(\"abc\",\".\"),false));\n"
+  },
+  "hidden_verifier": "import subprocess, sys\ncode = \"import assert from \\\"node:assert/strict\\\"; import {containsLiteral} from \\\"./src/search.mjs\\\"; assert.equal(containsLiteral(\\\"a.b\\\",\\\".\\\"),true); assert.equal(containsLiteral(\\\"abc\\\",\\\".\\\"),false); assert.equal(containsLiteral(\\\"[x]\\\",\\\"[\\\"),true);\\n\"\nresult = subprocess.run([\"node\", \"--input-type=module\", \"-e\", code], text=True, capture_output=True)\nif result.stdout:\n    print(result.stdout, end=\"\")\nif result.stderr:\n    print(result.stderr, end=\"\", file=sys.stderr)\nsys.exit(result.returncode)\n",
+  "starter_expected_pass": false
+}

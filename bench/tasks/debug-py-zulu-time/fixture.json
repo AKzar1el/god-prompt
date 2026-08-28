@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/timeparse.py": "from datetime import datetime\n\ndef parse_timestamp(value):\n    if value.endswith(\"Z\"):\n        value = value[:-1]\n    return datetime.fromisoformat(value)\n",
+    "test_visible.py": "import unittest\nfrom datetime import timezone\nfrom src.timeparse import parse_timestamp\nclass T(unittest.TestCase):\n    def test_z_is_utc(self): self.assertEqual(parse_timestamp(\"2026-08-28T12:00:00Z\").tzinfo, timezone.utc)\nif __name__ == \"__main__\": unittest.main()\n"
+  },
+  "hidden_verifier": "from datetime import timezone\nfrom src.timeparse import parse_timestamp\na=parse_timestamp(\"2026-08-28T12:00:00Z\")\nassert a.tzinfo == timezone.utc\nb=parse_timestamp(\"2026-08-28T14:00:00+02:00\")\nassert b.utcoffset().total_seconds() == 7200\n",
+  "starter_expected_pass": false
+}

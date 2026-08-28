@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/user.mjs": "export function formatUser(user) { if (user.nickname) return `${user.nickname} <${user.email}>`; if (user.name) return `${user.name} <${user.email}>`; return `${user.email} <${user.email}>`; }\n",
+    "test.mjs": "import test from \"node:test\"; import assert from \"node:assert/strict\"; import {formatUser} from \"./src/user.mjs\"; test(\"name\",()=>assert.equal(formatUser({name:\"Ada\",email:\"a@x\"}),\"Ada <a@x>\"));\n"
+  },
+  "hidden_verifier": "import subprocess, sys\ncode = \"import assert from \\\"node:assert/strict\\\"; import {formatUser} from \\\"./src/user.mjs\\\"; assert.equal(formatUser({nickname:\\\"A\\\",name:\\\"Ada\\\",email:\\\"a@x\\\"}),\\\"A <a@x>\\\"); assert.equal(formatUser({name:\\\"Ada\\\",email:\\\"a@x\\\"}),\\\"Ada <a@x>\\\"); assert.equal(formatUser({email:\\\"a@x\\\"}),\\\"a@x <a@x>\\\");\\n\"\nresult = subprocess.run([\"node\", \"--input-type=module\", \"-e\", code], text=True, capture_output=True)\nif result.stdout:\n    print(result.stdout, end=\"\")\nif result.stderr:\n    print(result.stderr, end=\"\", file=sys.stderr)\nsys.exit(result.returncode)\n",
+  "starter_expected_pass": true
+}
