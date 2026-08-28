@@ -7,11 +7,11 @@ Default AI is lazy. It hallucinates, it skips verification, and it says "Let's d
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/AKzar1el/god-prompt/issues)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](CHANGELOG.md)
 
-> One skill to replace them all. Drop it in, describe what you want, get production-grade output.
+> One skill to replace them all. Drop it in, describe what you want, and apply a consistent engineering workflow with explicit verification gates.
 
 ## What Is This?
 
-A single Claude Code skill that replaces 30+ individual skills with one unified system. Auto-detects task type, applies the right production-grade workflow, and delivers verified output — every time.
+A single Claude Code skill that replaces 30+ individual skills with one unified system. GodPrompt routes tasks through an explicit engineering workflow and requires verification before completion claims. Whether that improves real task outcomes is measured by GodPrompt Bench rather than assumed from the prompt design.
 
 **The problem:** Skill-based systems like gstack ship 34 separate skills. You have to know which one to use, when to switch, how they interact. Nobody reads 34 SKILL.md files. Nobody remembers to invoke the right one at the right time. It's a toolbox without a craftsman.
 
@@ -123,7 +123,7 @@ This is the key design advantage over multi-skill systems:
 - **references/01-PROTOCOLS.md**, **references/02-GATES.md**, **references/03-ANTI-PATTERNS.md** load only when deeper execution detail is needed → saves tokens on simpler tasks
 - **GodPrompt.md** exists as a combined single file for environments that don't support folder structures
 
-A 34-skill system loads the wrong skill (or none) half the time. GodPrompt loads the right rules every time, and only goes deep when the task requires it.
+Multi-skill systems can fail when the wrong skill is selected or no relevant skill is loaded; GodPrompt instead keeps one routing layer active and delegates internally.
 
 ## What It Distills
 
@@ -160,8 +160,14 @@ Plus patterns from real-world production usage:
 | **Context window cost** | Lean base context via `SKILL.md` | Varies per skill loaded |
 | **Covers mixed tasks** | Yes — handles BUILD+DEBUG+SHIP in one session | Requires switching between skills |
 | **Learning curve** | Zero — just use Claude | Must learn when to invoke each skill |
-| **Risk of using wrong workflow** | None — routing is automatic | High — wrong skill = wrong process |
+| **Risk of using wrong workflow** | Reduced by automatic routing; measured behavior belongs in the benchmark results | Depends on correct skill selection |
 | **Setup** | Copy one file | Install and configure 34 skills |
+
+## Benchmark status
+
+GodPrompt Bench provides a reproducible baseline-vs-GodPrompt evaluation harness with deterministic software-engineering tasks, raw trajectories, evaluator logic, and frozen run manifests.
+
+**Current status:** benchmark infrastructure is being published; no reference-model superiority claim is made until a real frozen run and its raw artifacts are committed.
 
 ## Philosophy
 
