@@ -1,0 +1,41 @@
+name: Verify GodPrompt Bench
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: bench/pyproject.toml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18.0'
+
+      - name: Install benchmark
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e './bench[test]'
+
+      - name: Verify GodPrompt source sync
+        run: python build.py --check
+
+      - name: Run benchmark tests
+        run: python -m pytest bench/tests -q
+
+      - name: Build isolated task sandbox
+        run: docker compose -f bench/sandbox/compose.yaml build

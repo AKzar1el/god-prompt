@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/clamp.py": "def clamp_nonnegative(value):\n    return value if value > 0 else 1\n",
+    "test_visible.py": "import unittest\nfrom src.clamp import clamp_nonnegative\nclass T(unittest.TestCase):\n def test_positive(self): self.assertEqual(clamp_nonnegative(4),4)\nif __name__ == \"__main__\": unittest.main()\n"
+  },
+  "hidden_verifier": "from src.clamp import clamp_nonnegative\nassert clamp_nonnegative(4)==4\nassert clamp_nonnegative(0)==0\nassert clamp_nonnegative(-1)==0\n",
+  "starter_expected_pass": false
+}

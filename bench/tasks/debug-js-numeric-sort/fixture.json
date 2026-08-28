@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/sort.mjs": "export function sortNumbers(values) {\n  return [...values].sort();\n}\n",
+    "test.mjs": "import test from \"node:test\"; import assert from \"node:assert/strict\"; import {sortNumbers} from \"./src/sort.mjs\"; test(\"numeric order\",()=>assert.deepEqual(sortNumbers([10,2,1]),[1,2,10]));\n"
+  },
+  "hidden_verifier": "import subprocess, sys\ncode = \"import assert from \\\"node:assert/strict\\\"; import {sortNumbers} from \\\"./src/sort.mjs\\\"; assert.deepEqual(sortNumbers([10,2,1,-4]),[-4,1,2,10]);\\n\"\nresult = subprocess.run([\"node\", \"--input-type=module\", \"-e\", code], text=True, capture_output=True)\nif result.stdout:\n    print(result.stdout, end=\"\")\nif result.stderr:\n    print(result.stderr, end=\"\", file=sys.stderr)\nsys.exit(result.returncode)\n",
+  "starter_expected_pass": false
+}

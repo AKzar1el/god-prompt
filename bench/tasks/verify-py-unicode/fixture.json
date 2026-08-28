@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/normalize.py": "import re\ndef normalize_name(value):\n    return re.sub(r\"[^A-Za-z]+\", \"-\", value.strip()).strip(\"-\").lower()\n",
+    "test_visible.py": "import unittest\nfrom src.normalize import normalize_name\nclass T(unittest.TestCase):\n def test_ascii(self): self.assertEqual(normalize_name(\"Ada Lovelace\"),\"ada-lovelace\")\nif __name__ == \"__main__\": unittest.main()\n"
+  },
+  "hidden_verifier": "from src.normalize import normalize_name\nassert normalize_name(\"Ada Lovelace\")==\"ada-lovelace\"\nassert normalize_name(\"Žiga Šeregi\")==\"žiga-šeregi\"\n",
+  "starter_expected_pass": false
+}

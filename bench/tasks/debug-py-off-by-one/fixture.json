@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/process.py": "def double_all(items):\n    return [items[i] * 2 for i in range(0, len(items) - 1)]\n",
+    "test_visible.py": "import unittest\nfrom src.process import double_all\nclass T(unittest.TestCase):\n    def test_all_items_are_processed(self): self.assertEqual(double_all([1,2,3]), [2,4,6])\nif __name__ == \"__main__\": unittest.main()\n"
+  },
+  "hidden_verifier": "from src.process import double_all\nassert double_all([1,2,3]) == [2,4,6]\nassert double_all([7]) == [14]\nassert double_all([]) == []\n",
+  "starter_expected_pass": false
+}

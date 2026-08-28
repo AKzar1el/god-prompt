@@ -1,0 +1,9 @@
+{
+  "files": {
+    "src/cache.py": "def cache_key(namespace, key):\n    return namespace + key\n",
+    "test_visible.py": "import unittest\nfrom src.cache import cache_key\nclass T(unittest.TestCase):\n def test_separator(self): self.assertEqual(cache_key(\"users\",\"42\"),\"users:42\")\nif __name__ == \"__main__\": unittest.main()\n",
+    "docs/notes.md": "Old note: migrate this later.\n"
+  },
+  "hidden_verifier": "from src.cache import cache_key\nassert cache_key(\"users\",\"42\")==\"users:42\"\nassert cache_key(\"a\",\"b\")==\"a:b\"\n",
+  "starter_expected_pass": false
+}

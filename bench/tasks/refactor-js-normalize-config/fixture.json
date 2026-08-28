@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/config.mjs": "export function normalizeConfig(c={}) { const host=c.host ? c.host : \"localhost\"; const port=c.port ? c.port : 3000; const secure=c.secure ? c.secure : false; return {host,port,secure}; }\n",
+    "test.mjs": "import test from \"node:test\"; import assert from \"node:assert/strict\"; import {normalizeConfig} from \"./src/config.mjs\"; test(\"defaults\",()=>assert.deepEqual(normalizeConfig(),{host:\"localhost\",port:3000,secure:false}));\n"
+  },
+  "hidden_verifier": "import subprocess, sys\ncode = \"import assert from \\\"node:assert/strict\\\"; import {normalizeConfig} from \\\"./src/config.mjs\\\"; assert.deepEqual(normalizeConfig(),{host:\\\"localhost\\\",port:3000,secure:false}); assert.deepEqual(normalizeConfig({host:\\\"x\\\",port:0,secure:false}),{host:\\\"x\\\",port:3000,secure:false});\\n\"\nresult = subprocess.run([\"node\", \"--input-type=module\", \"-e\", code], text=True, capture_output=True)\nif result.stdout:\n    print(result.stdout, end=\"\")\nif result.stderr:\n    print(result.stderr, end=\"\", file=sys.stderr)\nsys.exit(result.returncode)\n",
+  "starter_expected_pass": true
+}

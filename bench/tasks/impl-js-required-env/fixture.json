@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/env.mjs": "export function requireEnv(env, key) {\n  return env[key];\n}\n",
+    "test.mjs": "import test from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { requireEnv } from \"./src/env.mjs\";\n\ntest(\"throws for missing value\", () => assert.throws(() => requireEnv({}, \"TOKEN\")));\n"
+  },
+  "hidden_verifier": "import subprocess, sys\ncode = \"import assert from \\\"node:assert/strict\\\"; import {requireEnv} from \\\"./src/env.mjs\\\"; assert.equal(requireEnv({TOKEN:\\\"abc\\\"},\\\"TOKEN\\\"),\\\"abc\\\"); assert.throws(()=>requireEnv({},\\\"TOKEN\\\")); assert.throws(()=>requireEnv({TOKEN:\\\"\\\"},\\\"TOKEN\\\"));\\n\"\nresult = subprocess.run([\"node\", \"--input-type=module\", \"-e\", code], text=True, capture_output=True)\nif result.stdout:\n    print(result.stdout, end=\"\")\nif result.stderr:\n    print(result.stderr, end=\"\", file=sys.stderr)\nsys.exit(result.returncode)\n",
+  "starter_expected_pass": false
+}

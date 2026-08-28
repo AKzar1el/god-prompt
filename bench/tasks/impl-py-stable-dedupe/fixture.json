@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/items.py": "def stable_dedupe(items):\n    pass\n",
+    "test_visible.py": "import unittest\nfrom src.items import stable_dedupe\n\nclass TestStableDedupe(unittest.TestCase):\n    def test_preserves_first_occurrence_order(self):\n        self.assertEqual(stable_dedupe([3, 1, 3, 2, 1]), [3, 1, 2])\n\nif __name__ == \"__main__\":\n    unittest.main()\n"
+  },
+  "hidden_verifier": "from src.items import stable_dedupe\nassert stable_dedupe([3,1,3,2,1]) == [3,1,2]\nassert stable_dedupe([]) == []\nassert stable_dedupe([\"a\",\"a\",\"b\"]) == [\"a\",\"b\"]\n",
+  "starter_expected_pass": false
+}

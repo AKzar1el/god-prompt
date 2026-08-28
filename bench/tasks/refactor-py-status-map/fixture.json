@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/status.py": "def status_label(code):\n    if code == \"new\": return \"New\"\n    if code == \"working\": return \"In progress\"\n    if code == \"done\": return \"Done\"\n    return \"Unknown\"\n",
+    "test_visible.py": "import unittest\nfrom src.status import status_label\nclass T(unittest.TestCase):\n def test_known(self): self.assertEqual(status_label(\"working\"),\"In progress\")\nif __name__ == \"__main__\": unittest.main()\n"
+  },
+  "hidden_verifier": "from src.status import status_label\nassert status_label(\"new\")==\"New\"\nassert status_label(\"working\")==\"In progress\"\nassert status_label(\"done\")==\"Done\"\nassert status_label(\"other\")==\"Unknown\"\n",
+  "starter_expected_pass": true
+}

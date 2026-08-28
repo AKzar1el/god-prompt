@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/value.mjs": "export function withFallback(value, fallback) {\n  return value || fallback;\n}\n",
+    "test.mjs": "import test from \"node:test\"; import assert from \"node:assert/strict\"; import {withFallback} from \"./src/value.mjs\"; test(\"preserves zero\",()=>assert.equal(withFallback(0,99),0));\n"
+  },
+  "hidden_verifier": "import subprocess, sys\ncode = \"import assert from \\\"node:assert/strict\\\"; import {withFallback} from \\\"./src/value.mjs\\\"; assert.equal(withFallback(0,99),0); assert.equal(withFallback(5,99),5);\\n\"\nresult = subprocess.run([\"node\", \"--input-type=module\", \"-e\", code], text=True, capture_output=True)\nif result.stdout:\n    print(result.stdout, end=\"\")\nif result.stderr:\n    print(result.stderr, end=\"\", file=sys.stderr)\nsys.exit(result.returncode)\n",
+  "starter_expected_pass": false
+}

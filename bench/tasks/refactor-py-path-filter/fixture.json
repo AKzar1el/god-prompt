@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/paths.py": "def filter_paths(paths):\n    result=[]\n    for p in paths:\n        if p:\n            if not p.startswith(\".\"):\n                if p not in result:\n                    result.append(p)\n    return result\n",
+    "test_visible.py": "import unittest\nfrom src.paths import filter_paths\nclass T(unittest.TestCase):\n def test_order(self): self.assertEqual(filter_paths([\"a\",\".x\",\"a\",\"b\"]),[\"a\",\"b\"])\nif __name__ == \"__main__\": unittest.main()\n"
+  },
+  "hidden_verifier": "from src.paths import filter_paths\nassert filter_paths([\"a\",\".x\",\"a\",\"b\",\"\"])==[\"a\",\"b\"]\nassert filter_paths([])==[]\n",
+  "starter_expected_pass": true
+}

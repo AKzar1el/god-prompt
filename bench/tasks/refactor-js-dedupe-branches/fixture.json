@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/action.mjs": "export function routeAction(kind) { if (kind === \"create\") return {method:\"POST\",retry:true}; if (kind === \"update\") return {method:\"POST\",retry:true}; if (kind === \"delete\") return {method:\"DELETE\",retry:false}; return {method:\"GET\",retry:false}; }\n",
+    "test.mjs": "import test from \"node:test\"; import assert from \"node:assert/strict\"; import {routeAction} from \"./src/action.mjs\"; test(\"create\",()=>assert.deepEqual(routeAction(\"create\"),{method:\"POST\",retry:true}));\n"
+  },
+  "hidden_verifier": "import subprocess, sys\ncode = \"import assert from \\\"node:assert/strict\\\"; import {routeAction} from \\\"./src/action.mjs\\\"; assert.deepEqual(routeAction(\\\"create\\\"),{method:\\\"POST\\\",retry:true}); assert.deepEqual(routeAction(\\\"update\\\"),{method:\\\"POST\\\",retry:true}); assert.deepEqual(routeAction(\\\"delete\\\"),{method:\\\"DELETE\\\",retry:false}); assert.deepEqual(routeAction(\\\"x\\\"),{method:\\\"GET\\\",retry:false});\\n\"\nresult = subprocess.run([\"node\", \"--input-type=module\", \"-e\", code], text=True, capture_output=True)\nif result.stdout:\n    print(result.stdout, end=\"\")\nif result.stderr:\n    print(result.stderr, end=\"\", file=sys.stderr)\nsys.exit(result.returncode)\n",
+  "starter_expected_pass": true
+}

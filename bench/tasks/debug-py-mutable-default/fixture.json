@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/cache.py": "def remember(value, cache=[]):\n    cache.append(value)\n    return list(cache)\n",
+    "test_visible.py": "import unittest\nfrom src.cache import remember\nclass T(unittest.TestCase):\n    def test_independent_calls(self):\n        self.assertEqual(remember(\"a\"), [\"a\"])\n        self.assertEqual(remember(\"b\"), [\"b\"])\nif __name__ == \"__main__\": unittest.main()\n"
+  },
+  "hidden_verifier": "from src.cache import remember\nassert remember(\"x\") == [\"x\"]\nassert remember(\"y\") == [\"y\"]\n",
+  "starter_expected_pass": false
+}

@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/text.py": "def slugify(value: str) -> str:\n    return value\n",
+    "test_visible.py": "import unittest\nfrom src.text import slugify\n\nclass TestSlugify(unittest.TestCase):\n    def test_basic_words(self):\n        self.assertEqual(slugify(\"Hello World\"), \"hello-world\")\n\nif __name__ == \"__main__\":\n    unittest.main()\n"
+  },
+  "hidden_verifier": "from src.text import slugify\nassert slugify(\" Hello, World! \") == \"hello-world\"\nassert slugify(\"a___b\") == \"a-b\"\nassert slugify(\"\") == \"\"\n",
+  "starter_expected_pass": false
+}

@@ -1,0 +1,9 @@
+{
+  "files": {
+    "src/parser.py": "def parse_pair(value):\n    left, right = value.split(\":\")\n    return left, right\n",
+    "test_visible.py": "import unittest\nfrom src.parser import parse_pair\nclass T(unittest.TestCase):\n def test_trim(self): self.assertEqual(parse_pair(\" a : b \"),(\"a\",\"b\"))\nif __name__ == \"__main__\": unittest.main()\n",
+    "README.md": "Utillity parser.\n"
+  },
+  "hidden_verifier": "from src.parser import parse_pair\nassert parse_pair(\" a : b \")==(\"a\",\"b\")\nassert parse_pair(\"x:y\")== (\"x\",\"y\")\n",
+  "starter_expected_pass": false
+}

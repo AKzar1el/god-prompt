@@ -1,0 +1,8 @@
+{
+  "files": {
+    "src/config.mjs": "export function pickConfig(value, fallback) { return value || fallback; }\n",
+    "test.mjs": "import test from \"node:test\"; import assert from \"node:assert/strict\"; import {pickConfig} from \"./src/config.mjs\"; test(\"truthy\",()=>assert.equal(pickConfig(\"x\",\"y\"),\"x\"));\n"
+  },
+  "hidden_verifier": "import subprocess, sys\ncode = \"import assert from \\\"node:assert/strict\\\"; import {pickConfig} from \\\"./src/config.mjs\\\"; assert.equal(pickConfig(false,true),false); assert.equal(pickConfig(0,9),0); assert.equal(pickConfig(undefined,\\\"x\\\"),\\\"x\\\");\\n\"\nresult = subprocess.run([\"node\", \"--input-type=module\", \"-e\", code], text=True, capture_output=True)\nif result.stdout:\n    print(result.stdout, end=\"\")\nif result.stderr:\n    print(result.stderr, end=\"\", file=sys.stderr)\nsys.exit(result.returncode)\n",
+  "starter_expected_pass": false
+}
