@@ -32,6 +32,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e './bench[test,openai]'
 
+      - name: Diagnose clean pre-run tree
+        shell: bash
+        run: |
+          status="$(git status --porcelain)"
+          printf '%s\n' "$status"
+          test -z "$status"
+
       - name: Verify frozen manifest preflight
         run: python -m pytest bench/tests/test_sandbox_config.py bench/tests/test_run.py -q
 
