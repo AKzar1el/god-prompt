@@ -1,0 +1,67 @@
+name: GodPrompt Bench Half Spike
+
+on:
+  push:
+    branches:
+      - experiment/godprompt-half-2026-08-29
+    paths:
+      - '.github/workflows/bench-half-spike.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  half-spike:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: bench/pyproject.toml
+
+      - name: Install benchmark
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e './bench[openai]'
+
+      - name: Build isolated task sandbox
+        run: docker compose -f bench/sandbox/compose.yaml build
+
+      - name: Simulate half scale with Inspect mock model
+        run: |
+          python -m godprompt_bench.run \
+            --profile half \
+            --model mockllm/model \
+            --output bench/results-simulated-half
+
+      - name: Run real frozen GPT-5.6 Sol smoke comparison when credential is configured
+        shell: bash
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo 'REAL_SMOKE_SKIPPED_NO_OPENAI_API_KEY=1'
+            exit 0
+          fi
+          python -m godprompt_bench.run \
+            --profile smoke \
+            --model openai/gpt-5.6-sol \
+            --seed 7 \
+            --reasoning-effort medium \
+            --reasoning-mode standard \
+            --output bench/results-real-smoke
+
+      - name: Upload spike artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: godprompt-bench-half-spike-${{ github.run_id }}
+          path: |
+            bench/results-simulated-half
+            bench/results-real-smoke
+          if-no-files-found: warn
+          retention-days: 7
