@@ -18,6 +18,8 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v6
         with:
@@ -30,7 +32,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e './bench[test,openai]'
 
-      - name: Verify benchmark regression fixes
+      - name: Reproduce frozen git-state regression
         run: python -m pytest bench/tests/test_sandbox_config.py bench/tests/test_run.py -q
 
       - name: Build isolated task sandbox
