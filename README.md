@@ -1,6 +1,6 @@
 # GodPrompt
 
-Default AI is lazy. It hallucinates, it skips verification, and it says "Let's delve" while writing bad code. GodPrompt is a 1,145-line behavioral override. Drop this single file into your AI, and it transforms from a helpful assistant into a ruthless, production-grade Senior Engineer.
+GodPrompt is a 1,145-line behavioral workflow prompt designed to push AI coding assistants toward a disciplined senior-engineering process: understand first, keep scope tight, execute deliberately, verify before claiming completion, and report evidence.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude-Code-blueviolet)](https://docs.anthropic.com)
@@ -106,6 +106,7 @@ GodPrompt/
 │   ├── 01-PROTOCOLS.md       # Deep execution guides per task type
 │   ├── 02-GATES.md           # Verification checklists and report templates
 │   └── 03-ANTI-PATTERNS.md   # Red flags, rationalizations, and recovery
+├── bench/                    # Reproducible baseline-vs-GodPrompt evaluation suite
 ├── .github/workflows/verify.yml
 ├── README.md
 ├── CHANGELOG.md
@@ -159,15 +160,17 @@ Plus patterns from real-world production usage:
 | **User needs to pick the right skill** | No — auto-detects | Yes — manual selection |
 | **Context window cost** | Lean base context via `SKILL.md` | Varies per skill loaded |
 | **Covers mixed tasks** | Yes — handles BUILD+DEBUG+SHIP in one session | Requires switching between skills |
-| **Learning curve** | Zero — just use Claude | Must learn when to invoke each skill |
+| **Learning curve** | Single entry point | Must learn when to invoke each skill |
 | **Risk of using wrong workflow** | Reduced by automatic routing; measured behavior belongs in the benchmark results | Depends on correct skill selection |
 | **Setup** | Copy one file | Install and configure 34 skills |
 
-## Benchmark status
+## Benchmark
 
-GodPrompt Bench provides a reproducible baseline-vs-GodPrompt evaluation harness with deterministic software-engineering tasks, raw trajectories, evaluator logic, and frozen run manifests.
+[GodPrompt Bench](bench/README.md) is the project's reproducible evaluation suite. It compares a neutral coding-agent baseline against the same agent with the exact repository `GodPrompt.md`, while holding task prompts, model, tools, sandbox, generation controls, and resource budgets constant.
 
-**Current status:** benchmark infrastructure is being published; no reference-model superiority claim is made until a real frozen run and its raw artifacts are committed.
+Version 1 contains 40 deterministic Python/JavaScript tasks across implementation, debugging, refactoring, scope control, verification/false completion, and tool discipline. The harness publishes evaluator logic and machine-readable artifacts rather than a hand-picked score.
+
+**Current status:** the benchmark infrastructure and corpus are published. No reference-model superiority claim is made until a full frozen run and its raw artifacts are published.
 
 ## Philosophy
 
@@ -178,14 +181,14 @@ Three design insights:
 
 1. **Every task follows the same discipline** — understand, plan, execute, verify, deliver. The depth varies. The discipline doesn't.
 
-2. **Quality failures have patterns** — they're almost always: skipping the understand phase, changing things outside scope, or claiming completion without verification. The Three Iron Laws prevent all three.
+2. **Quality failures have patterns** — they're often skipping the understand phase, changing things outside scope, or claiming completion without verification. The Three Iron Laws are designed to guard against those failure modes.
 
 3. **Progressive disclosure beats upfront complexity** — keep the core in context, pull in depth only when needed. Never all-or-nothing.
 
 ## Roadmap
 
 - [ ] Community-contributed protocol extensions
-- [ ] Benchmark suite comparing output quality with/without GodPrompt
+- [x] Reproducible benchmark suite comparing baseline vs GodPrompt (reference run pending)
 - [ ] Model-specific tuning (Opus vs Sonnet vs Haiku behavior differences)
 - [ ] Integration examples for popular frameworks (Next.js, Django, Rails)
 
