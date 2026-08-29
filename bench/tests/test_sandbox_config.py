@@ -18,3 +18,9 @@ def test_sandbox_runs_as_unprivileged_user_with_reduced_privileges():
     assert 'USER bench' in dockerfile
     assert 'cap_drop:' in compose and '- ALL' in compose
     assert 'no-new-privileges:true' in compose
+
+
+def test_sandbox_service_stays_alive_for_inspect_compose_up():
+    compose = (ROOT / 'sandbox' / 'compose.yaml').read_text(encoding='utf-8')
+    assert 'init: true' in compose
+    assert 'command: tail -f /dev/null' in compose

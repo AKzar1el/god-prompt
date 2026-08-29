@@ -167,21 +167,10 @@ def build_manifest(
     reasoning_effort: str | None,
     reasoning_mode: str | None,
     records: list[SampleRecord],
+    benchmark_commit_sha: str,
+    godprompt_commit_sha: str,
+    working_tree_dirty: bool,
 ) -> dict[str, Any]:
-    head = _git(repo_root, "rev-parse", "HEAD")
-    godprompt_commit = _git(
-        repo_root,
-        "log",
-        "-1",
-        "--format=%H",
-        "--",
-        "GodPrompt.md",
-        "SKILL.md",
-        "references/01-PROTOCOLS.md",
-        "references/02-GATES.md",
-        "references/03-ANTI-PATTERNS.md",
-    )
-    dirty = bool(_git(repo_root, "status", "--porcelain"))
     manifest_path = bench_root / "tasks" / "manifest.json"
     baseline_hash = hashlib.sha256(condition_prompt("baseline", repo_root).encode()).hexdigest()
     godprompt_hash = hashlib.sha256(condition_prompt("godprompt", repo_root).encode()).hexdigest()
@@ -203,9 +192,9 @@ def build_manifest(
         "tools": ["bash", "text_editor"],
         "inspect_ai_version": version("inspect-ai"),
         "python_version": platform.python_version(),
-        "godprompt_commit_sha": godprompt_commit,
-        "benchmark_commit_sha": head,
-        "working_tree_dirty": dirty,
+        "godprompt_commit_sha": godprompt_commit_sha,
+        "benchmark_commit_sha": benchmark_commit_sha,
+        "working_tree_dirty": working_tree_dirty,
         "task_manifest_sha256": _sha256(manifest_path),
         "sandbox_dockerfile_sha256": _sha256(bench_root / "sandbox" / "Dockerfile"),
         "baseline_system_prompt_sha256": baseline_hash,
@@ -243,6 +232,21 @@ def execute_benchmark(
     reasoning_mode: str | None = None,
 ) -> Path:
     from inspect_ai import eval as inspect_eval
+
+    benchmark_commit_sha = _git(repo_root, "rev-parse", "HEAD")
+    godprompt_commit_sha = _git(
+        repo_root,
+        "log",
+        "-1",
+        "--format=%H",
+        "--",
+        "GodPrompt.md",
+        "SKILL.md",
+        "references/01-PROTOCOLS.md",
+        "references/02-GATES.md",
+        "references/03-ANTI-PATTERNS.md",
+    )
+    working_tree_dirty = bool(_git(repo_root, "status", "--porcelain"))
 
     tasks = [
         build_task(
@@ -291,7 +295,7 @@ def execute_benchmark(
     actual_models: list[str] = []
     for log in logs:
         condition = _condition_for_log(log)
-        actual_models.append(str(log.model))
+        actual_models.append(str(log.eval.model))
         for sample in log.samples or []:
             records.append(sample_record(sample, condition))
             trajectories.append(public_trajectory(sample, condition))
@@ -307,6 +311,9 @@ def execute_benchmark(
         reasoning_effort=reasoning_effort,
         reasoning_mode=reasoning_mode,
         records=records,
+        benchmark_commit_sha=benchmark_commit_sha,
+        godprompt_commit_sha=godprompt_commit_sha,
+        working_tree_dirty=working_tree_dirty,
     )
     public_dir = output_dir / manifest["run_id"]
     export_run(public_dir, manifest, records, trajectories)
@@ -315,7 +322,7 @@ def execute_benchmark(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the GodPrompt baseline-vs-GodPrompt benchmark")
-    parser.add_argument("--profile", choices=("smoke", "full"), default="smoke")
+    parser.add_argument("--profile", choices=("smoke", "half", "full"), default="smoke")
     parser.add_argument("--model", required=True, help="Inspect model name, e.g. openai/gpt-5.6")
     parser.add_argument("--temperature", type=float)
     parser.add_argument("--seed", type=int)

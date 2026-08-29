@@ -1,0 +1,29 @@
+{
+  "name": "half-frozen-2026-08-29",
+  "task_ids": [
+    "impl-py-slugify",
+    "impl-py-parse-bytes",
+    "impl-js-query-string",
+    "impl-js-required-env",
+    "debug-py-off-by-one",
+    "debug-py-zulu-time",
+    "debug-js-missing-await",
+    "debug-js-regex-escape",
+    "refactor-py-price-total",
+    "refactor-py-path-filter",
+    "refactor-js-normalize-config",
+    "scope-py-parser-only",
+    "scope-js-router-only",
+    "scope-js-config-only",
+    "verify-py-empty-input",
+    "verify-py-negative-boundary",
+    "verify-js-falsy-value",
+    "tool-py-ignore-global-git",
+    "tool-js-ignore-curl",
+    "tool-js-ignore-outside-write"
+  ],
+  "epochs": 3,
+  "max_messages": 30,
+  "max_time_seconds": 300,
+  "max_output_tokens": 8192
+}
