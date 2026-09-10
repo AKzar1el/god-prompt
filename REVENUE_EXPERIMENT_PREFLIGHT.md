@@ -1,8 +1,8 @@
 # GodPrompt Revenue Shot — Preflight Contract
 
-Status: **PRELAUNCH — DO NOT START THE SEVEN-DAY CLOCK**
+Status: **PRELAUNCH — COMMERCIAL CONTRACT FROZEN; SCHEDULER PENDING**
 
-This document defines the bounded authority and launch gates for one future seven-day GodPrompt revenue experiment. It is preflight authority only; it does not freeze a monetization hypothesis and does not start the experiment.
+This document defines the bounded authority and launch gates for one seven-day GodPrompt revenue experiment. The commercial hypothesis is now frozen separately in `MONETIZATION_EXPERIMENT.md`; this preflight update still does not itself start the experiment or its scheduler.
 
 ## Hard scope
 
@@ -114,7 +114,7 @@ github: AKzar1el
 
 Both GodPrompt repositories should carry `.github/FUNDING.yml` with that value.
 
-At preflight, the logged-in GitHub Sponsors dashboard states that the profile is **pending staff approval and is not live yet**, and that it will go live automatically after approval. Therefore GitHub Sponsors is not yet a usable payment path and must not be counted as such.
+At preflight, the logged-in GitHub Sponsors dashboard stated that the profile was pending staff approval. The operator later explicitly froze GitHub Sponsors as the experiment payment rail and waived public-availability/approval state as a scheduler-start gate. Sponsor availability remains a market/conversion sensor only. This does not relax money truth: SUCCESS still requires independently verified attributable money greater than zero, and the experiment must not create or switch to another payment rail.
 
 The experiment must not create Stripe, another payment processor, a new financial account, or change banking/tax/payout settings.
 
@@ -155,10 +155,10 @@ The seven-day timer may start only after all hard gates are reconciled against e
 2. **MCP baseline:** canonical `god-prompt-mcp/main` clean; Windows/release defects fixed; required CI green.
 3. **Distribution:** MCPB/release/official MCP Registry/Glama paths verified; npm package bootstrap complete and clean-install stdio smoke passes.
 4. **Future npm publishing:** GitHub OIDC/trusted-publishing path configured and proven or, if npm account constraints make that impossible, recorded as an explicit non-critical limitation with no false claim that it works.
-5. **Payment:** GitHub Sponsors profile publicly live and capable of accepting a real sponsorship. Pending approval does not pass.
+5. **Payment rail:** GitHub Sponsors / `AKzar1el` is frozen as the only payment rail. The operator explicitly resolved pending/public-availability state as a nonblocking market sensor; no alternate payment processor/account may be created. SUCCESS still requires independently verified attributable money.
 6. **Attribution:** deterministic GodPrompt Revenue Shot sponsor marker/path defined and independently testable without making a fake payment.
 7. **Benchmark:** full frozen reference run completed and honestly published, **or** explicitly and durably waived before launch with the public no-superiority-claim constraint preserved. No silent assumption.
-8. **Dual-repo control:** the native GOAL/MAINTAINER/DOCS Google Doc exists and records exact preflight state/SHAs; the generation-0 Git control branch/state exists, has no active lease, and contains only the small concurrency/recovery fence plus the Doc identity.
+8. **Dual-repo control + commercial freeze:** the native GOAL/MAINTAINER/DOCS Google Doc exists and records exact preflight state/SHAs; the generation-0 Git control branch/state exists with no active lease and only the small concurrency/recovery fence plus Doc identity; and canonical `MONETIZATION_EXPERIMENT.md` freezes the single commercial hypothesis and exact T0/end before scheduler creation.
 9. **No experiment clock yet:** no Revenue Shot schedule exists before gates 1-8 are satisfied/explicitly resolved.
 
 ## Revenue Shot v4 orchestration contract
@@ -189,23 +189,43 @@ A fresh wake must not mutate until both the Git fence and revision-fenced MAINTA
 
 After crash/lease expiry, reconcile real Git/GitHub/npm/MCP Registry/Glama/Gmail/Sponsors state before taking over. External reality is authoritative; MAINTAINER/DOCS are durable continuation memory; Git state is only the concurrency fence. Side effects must be idempotent.
 
+### Control state machine and mutation firewall
+
+The Google Doc MAINTAINER state is explicit: `CONTROL_STATE` is `READY` or `OWNED`. `ACTIVE_RUN_ID != NONE` if and only if `CONTROL_STATE=OWNED`. Every owned state has `LAST_RELEASE_REASON=PENDING`; completed release reasons are valid only when all owner/lease fields are cleared.
+
+**Pre-claim write firewall:** until both the tiny Git fence and a fresh revision-fenced MAINTAINER claim succeed for the same run/generation, ALL external mutation is forbidden. Read-only reconciliation is allowed. This includes repository/filesystem writes, GitHub writes, Gmail sends, package/release/deploy mutations, web-form submissions, and third-party writes.
+
+If a prior owner is still recorded but its lease is expired, the next fresh wake first performs a revision-fenced recovery to `READY/NONE` with `LAST_RELEASE_REASON=RECOVERED_EXPIRED_LEASE`, then re-reads and verifies that recovery before constructing a new run ID. A crash or platform cutoff is never retroactively described as a normal handoff.
+
+On every normal owned exit, DOCS append happens first when needed. Then one fresh revision-fenced MAINTAINER transaction atomically writes the final verified snapshot, sets `CONTROL_STATE=READY`, clears owner/source/lease fields, and sets the final release reason. Only after that Doc release is independently re-read and verified may the tiny Git fence be released.
+
+### Research depth and work-session rule
+
+When no immediately executable mutation is justified, do not manufacture a PR and do not end after one shallow search. A normal research-only handoff requires at least three materially different source/angle sweeps, at least five distinct current external sources when available, classification of 3–7 candidate hypotheses/actions, and an explicit search for at least one concrete reversible `IN_SCOPE_TESTABLE` move. If none survives, perform one additional materially different sweep and record `NO_ACTIONABLE_HYPOTHESIS_YET`, the searched source classes, and the next unsearched angle. Record compact source/query fingerprints in DOCS so later wakes do not rediscover the same ground.
+
+Owned wakes target roughly 45–55 useful minutes when positive-EV work and platform runtime permit. Waiting for CI, indexing, Gmail, Sponsors, or marketplace review is a lane state, not a whole-wake stop reason; switch to another independent positive-EV lane. Platform pause/approval/policy/user-stop boundaries always win. Never act merely to consume time or keep the run alive.
+
+### Gmail circuit breaker and human control
+
+For any authorized proactive warm message, read the full relevant thread and deduplicate against SENT before writing. Send at most once, then perform exactly one independent SENT verification. No match means `SEND_UNCONFIRMED` and no retry that wake. Duplicate evidence means `GMAIL_DUPLICATION_INCIDENT`: freeze Gmail writes for that wake and continue only safe non-Gmail lanes. Never send automatic correction/apology messages to repair a duplicate.
+
+A Revenue Shot invocation must never modify, recreate, enable, disable, reschedule, or duplicate its own Scheduled Task; never resist or bypass a platform pause, approval request, policy stop, or user stop; and never auto-resume itself. Persistence is the Doc plus future operator/scheduled wakes, not self-preservation.
+
 ### Checkpoint transactions
 
 After a material external side effect, independently verify external reality first. Then update MAINTAINER in its own fresh revision-fenced transaction. If durable history is needed, re-fetch the Doc/revision and append DOCS immediately before the unique append marker in a second transaction. Never combine a DOCS index insertion with MAINTAINER replacement or another length-changing Docs edit in one batch.
 
 On normal exit: final-reconcile external reality; update MAINTAINER with exact current state and next actions; append durable DOCS history if needed in a second transaction; re-read the Doc to verify unique anchors and cleared ownership; then release the Git fence. A finished run must never intentionally leave a live lease.
 
-### First authorized experimental wake
+### Prelaunch commercial freeze
 
-If and only if there is no frozen hypothesis:
+The hypothesis is selected and frozen **before T0**, so all 169 scheduled wakes spend the fixed window executing and measuring one business model rather than deciding which business model to run.
 
-1. research current buyer pain, alternatives, pricing, community discussion, developer/team workflow demand, existing GodPrompt capabilities, benchmark/proof state, and current distribution signals;
-2. generate at least five materially different monetization hypotheses;
-3. score willingness-to-pay evidence, fit, probability of actual money inside seven days, implementation time/risk, dependence on new accounts, distribution leverage, trust/proof requirements, preservation of the MIT/free products, and legal/provider constraints;
-4. choose exactly one hypothesis;
-5. freeze payer, offer/value exchange, price/terms, Sponsor/payment route, attribution markers, success/failure criteria, fixed end time, and diagnostics in `MONETIZATION_EXPERIMENT.md` through the normal PR/CI path, then mirror the exact frozen commit/reference and current execution state into MAINTAINER and record the decision/evidence in DOCS.
+The prelaunch research considered at least five materially different models and selected `GP-RS1-AGENT-HARNESS-REVIEW`: a **US$49 one-time GodPrompt Agent Harness Review** for an independent developer, technical founder, or small engineering team already using coding agents. Exact payer, scope, deliverable, intake, GitHub Sponsors metadata, success/failure criteria, fixed window, diagnostics, evidence, rejected alternatives, and no-pivot rules are frozen in `MONETIZATION_EXPERIMENT.md`.
 
-Do not run multiple business models in parallel and do not pivot the frozen offer later to escape negative evidence. Implementation, wording, placement, reliability, examples, and lawful channel usage may change based on evidence while remaining inside the frozen hypothesis.
+The fixed window is **2026-09-11 02:00 Europe/Ljubljana through 2026-09-18 02:00 Europe/Ljubljana**. Before scheduler creation, the frozen artifact must pass the normal PR/CI path and its exact canonical commit/reference must be mirrored into MAINTAINER and DOCS.
+
+Do not run multiple business models in parallel and do not pivot the frozen payer, offer, price, payment rail, or commercial model later to escape negative evidence. Implementation, wording, placement, reliability, examples, and lawful channel usage may change based on evidence while remaining inside the exact frozen hypothesis.
 
 ### Revenue-relevant improvement rule
 
