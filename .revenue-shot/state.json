@@ -24,7 +24,9 @@
   "active_pr_number": null,
   "expected_head_sha": null,
   "npm_package": "god-prompt-mcp",
-  "npm_status": "BOOTSTRAP_BLOCKED_BY_ACCOUNT_2FA_PACKAGE_UNPUBLISHED",
+  "npm_status": "BOOTSTRAP_AWAITING_WEBAUTHN_PROOF_OF_PRESENCE_PACKAGE_UNPUBLISHED",
+  "npm_account_2fa": "ENABLED_FOR_AUTHORIZATION_AND_PUBLISHING_WITH_REGISTERED_SECURITY_KEY",
+  "npm_bootstrap_auth": "NPM_11_19_1_WEBAUTHN_CHALLENGE_OPENED_IN_USER_BROWSER",
   "npm_trusted_publishing": "REPOSITORY_WORKFLOW_OIDC_READY_NPM_TRUST_BINDING_PENDING_PACKAGE_BOOTSTRAP",
   "mcp_registry_status": "V1_0_2_LATEST_V1_0_3_RELEASE_READY_PENDING_NPM_BOOTSTRAP",
   "mcp_release_version": "1.0.3",
@@ -40,6 +42,7 @@
   "benchmark_status": "INFRA_35_OF_35_GREEN_FULL_REFERENCE_NOT_RUN",
   "benchmark_profile": "FULL_40_TASKS_2_CONDITIONS_3_EPOCHS_240_SAMPLES",
   "benchmark_credential_status": "OPENAI_API_KEY_ACTIONS_SECRET_NOT_CONFIGURED",
+  "benchmark_spend_authority": "NOT_EXPLICITLY_AUTHORIZED",
   "traffic_baseline": {
     "captured_at": "2026-09-10",
     "core": {
@@ -60,10 +63,10 @@
   "terminal_status": null,
   "launch_blockers": [
     "GitHub Sponsors profile is pending staff approval and is not publicly live/payable yet",
-    "Initial npm package publication requires npm account 2FA; after bootstrap, configure the npm trusted publisher for publish-npm.yml and prove the v1.0.3 npm/MCP Registry publication chain",
+    "Initial npm package publication is waiting only for user-presence WebAuthn approval; account 2FA is already enabled. After bootstrap, configure the npm trusted publisher for publish-npm.yml and reconcile the v1.0.3 npm/MCP Registry publication chain",
     "Full frozen GodPrompt Bench reference run is not completed; it requires explicit model/API spend authorization or an explicit durable prelaunch waiver preserving the no-superiority-claim rule"
   ],
-  "last_action_fingerprint": "prelaunch:engineering-green-account-gates-remain",
-  "updated_at": "2026-09-10T18:34:37.984Z",
+  "last_action_fingerprint": "prelaunch:npm-webauthn-user-presence-required",
+  "updated_at": "2026-09-10T18:54:00Z",
   "source_sync_status": "CORE_MAIN_SYNC_GREEN_COMPANION_DISTRIBUTION_AND_REMOTE_MCP_GREEN"
 }
