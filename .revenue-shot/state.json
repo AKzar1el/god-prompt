@@ -16,6 +16,7 @@
     "companion_main_sha":  "ff371af55749f8b6cfaa3282992d9f3ccb8b27fe",
     "companion_candidate_pr":  20,
     "companion_candidate_sha":  "c4bb0ea572aef63b29fc6649a940d58888cefb9c",
+    "companion_candidate_ci":  "ALL_GREEN_5_OF_5",
     "frozen_hypothesis_commit":  null,
     "active_repo":  null,
     "active_work_branch":  null,
@@ -40,6 +41,6 @@
                             "GodPrompt MCP PR #20 is green but intentionally unmerged until npm bootstrap/trusted publishing prevents a red release",
                             "Full frozen GodPrompt Bench reference run is not completed; must be run with explicit spend authorization or explicitly waived before launch"
                         ],
-    "last_action_fingerprint":  "prelaunch:control-init",
+    "last_action_fingerprint":  "prelaunch:mcp-pr-green",
     "updated_at":  "2026-09-10T19:20:50.7676738+02:00"
 }
