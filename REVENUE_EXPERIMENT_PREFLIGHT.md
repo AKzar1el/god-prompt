@@ -23,6 +23,18 @@ Public-web research may be broad. Gmail may be read for attributable inbound/pay
 
 A source change that materially affects bundled GodPrompt content is not fully shipped until the companion repository is synchronized, regenerated when required, qualified, and its relevant distribution surfaces are reconciled. The two repositories therefore share one experiment lease and one experiment generation; they must never run independent Revenue Shot controllers.
 
+## Durable orchestration control plane
+
+Primary orchestration authority is the native Google Doc `GodPrompt Revenue Shot — Goal, Maintainer & Docs` (document ID `1y-dqQIWmd7FpzSpSHZGj75eSWryB9Z1bi9qj9QcXID8`):
+
+`https://docs.google.com/document/d/1y-dqQIWmd7FpzSpSHZGj75eSWryB9Z1bi9qj9QcXID8/edit`
+
+Authority order is independently verified external reality > GOAL > MAINTAINER > DOCS > scheduler/task text. GOAL is frozen mission authority. MAINTAINER is compact mutable current state and handoff. DOCS is append-only durable history for research, attempted approaches, failures/root causes, successful side effects, independent verification, decisions/rejections, exact identifiers, lessons, do-not-repeat facts, and continuation state.
+
+The Git control branch `experiment/godprompt-revenue-control` is intentionally a small concurrency/recovery fence only. `.revenue-shot/state.json` must not become a second narrative control plane. Every scheduled wake, manual rerun, and same-thread continuation should boot from the Google Doc rather than conversational memory, and the scheduler/task prompt should not duplicate mutable commercial/orchestration state.
+
+Google Doc writes use fresh revision IDs and fail closed on conflict. MAINTAINER replacement and DOCS append are separate transactions. After every write, re-read the document and prove exactly one MAINTAINER start marker, one MAINTAINER end marker, and one DOCS append marker. Missing or duplicate anchors forbid external mutation until the control plane is repaired/reconciled.
+
 ## Preflight technical baseline
 
 Baseline captured on 2026-09-10 before Revenue Shot launch.
@@ -126,6 +138,7 @@ Current preflight facts:
 - after installing the repository-declared test dependency `inspect-ai==0.3.260`, `python -m pytest bench/tests -q` passes **35/35**;
 - the frozen `full` profile contains exactly 40 tasks and 3 epochs; with two benchmark conditions this is 240 model samples;
 - benchmark unit/corpus infrastructure is qualified;
+- the user explicitly waived the paid/full reference run for this launch and authorized no external API/model spend; synthetic/self-simulated exercises are internal debugging evidence only and are not reference evidence;
 - the workflow exists for `workflow_dispatch` on GitHub Actions;
 - it expects an `OPENAI_API_KEY` repository Actions secret for an OpenAI run;
 - no such repository Actions secret was present when checked during this preflight;
@@ -145,10 +158,10 @@ The seven-day timer may start only after all hard gates are reconciled against e
 5. **Payment:** GitHub Sponsors profile publicly live and capable of accepting a real sponsorship. Pending approval does not pass.
 6. **Attribution:** deterministic GodPrompt Revenue Shot sponsor marker/path defined and independently testable without making a fake payment.
 7. **Benchmark:** full frozen reference run completed and honestly published, **or** explicitly and durably waived before launch with the public no-superiority-claim constraint preserved. No silent assumption.
-8. **Dual-repo control:** generation-0 control branch/state exists on the primary repository, has no active lease, and records exact preflight SHAs for both canonical mains.
-9. **No experiment clock yet:** no Revenue Shot schedule exists before gates 1–8 are satisfied/explicitly resolved.
+8. **Dual-repo control:** the native GOAL/MAINTAINER/DOCS Google Doc exists and records exact preflight state/SHAs; the generation-0 Git control branch/state exists, has no active lease, and contains only the small concurrency/recovery fence plus the Doc identity.
+9. **No experiment clock yet:** no Revenue Shot schedule exists before gates 1-8 are satisfied/explicitly resolved.
 
-## Revenue Shot v3 orchestration contract
+## Revenue Shot v4 orchestration contract
 
 When later launched, the scheduled task is one durable experiment. Hourly invocations are wake sources, not independent attempts.
 
@@ -168,11 +181,19 @@ Control file:
 
 At most one run may hold mutation authority across either repository at a time.
 
-Use generation fencing plus a unique `active_run_id`. Maximum ordinary lease should be approximately **45–50 minutes**, shorter than the hourly wake interval. A run that intentionally checkpoints/exits must immediately clear its lease. Heartbeat only while genuinely doing long work.
+The Git fence is deliberately small: experiment ID, generation, active run ID, short lease/heartbeat fields, execution backend, wake source, orchestration Doc ID/URL, Doc revision at acquire, terminal state, and update timestamp.
 
-Immediately before merge, release/publication, outbound email, terminal verdict, remote-branch deletion, or other important side effects, re-read the control branch and prove the exact current generation/run fence.
+Use generation fencing plus a unique `active_run_id`. Git lease TTL is approximately **8 minutes**, with heartbeat every 3-4 minutes only while substantive work is active. The MAINTAINER Doc claim uses a lease roughly **10 minutes** ahead and is renewed under a fresh revision fence. A run that intentionally checkpoints/exits must clear Doc ownership and immediately release the Git lease.
 
-After crash/lease expiry, reconcile real Git/GitHub/npm/MCP Registry/Glama/Gmail/Sponsors state before taking over. External reality is authoritative; checkpoint JSON is recovery metadata. Side effects must be idempotent.
+A fresh wake must not mutate until both the Git fence and revision-fenced MAINTAINER claim succeed. Immediately before merge, release/publication, outbound email, terminal verdict, remote-branch deletion, or another critical sink, re-fetch and prove the exact current generation/run ownership.
+
+After crash/lease expiry, reconcile real Git/GitHub/npm/MCP Registry/Glama/Gmail/Sponsors state before taking over. External reality is authoritative; MAINTAINER/DOCS are durable continuation memory; Git state is only the concurrency fence. Side effects must be idempotent.
+
+### Checkpoint transactions
+
+After a material external side effect, independently verify external reality first. Then update MAINTAINER in its own fresh revision-fenced transaction. If durable history is needed, re-fetch the Doc/revision and append DOCS immediately before the unique append marker in a second transaction. Never combine a DOCS index insertion with MAINTAINER replacement or another length-changing Docs edit in one batch.
+
+On normal exit: final-reconcile external reality; update MAINTAINER with exact current state and next actions; append durable DOCS history if needed in a second transaction; re-read the Doc to verify unique anchors and cleared ownership; then release the Git fence. A finished run must never intentionally leave a live lease.
 
 ### First authorized experimental wake
 
@@ -182,7 +203,7 @@ If and only if there is no frozen hypothesis:
 2. generate at least five materially different monetization hypotheses;
 3. score willingness-to-pay evidence, fit, probability of actual money inside seven days, implementation time/risk, dependence on new accounts, distribution leverage, trust/proof requirements, preservation of the MIT/free products, and legal/provider constraints;
 4. choose exactly one hypothesis;
-5. freeze payer, offer/value exchange, price/terms, Sponsor/payment route, attribution markers, success/failure criteria, fixed end time, and diagnostics in `MONETIZATION_EXPERIMENT.md` through the normal PR/CI path.
+5. freeze payer, offer/value exchange, price/terms, Sponsor/payment route, attribution markers, success/failure criteria, fixed end time, and diagnostics in `MONETIZATION_EXPERIMENT.md` through the normal PR/CI path, then mirror the exact frozen commit/reference and current execution state into MAINTAINER and record the decision/evidence in DOCS.
 
 Do not run multiple business models in parallel and do not pivot the frozen offer later to escape negative evidence. Implementation, wording, placement, reliability, examples, and lawful channel usage may change based on evidence while remaining inside the frozen hypothesis.
 
