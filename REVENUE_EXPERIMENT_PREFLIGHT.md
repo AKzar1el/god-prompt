@@ -51,12 +51,16 @@ Windows preflight exposed release-path defects that were repaired before launch:
 3. runtime `SERVER_INFO.version` reported `1.0.1` while package/distribution metadata reported `1.0.2`;
 4. package/MCPB CI hard-coded release version/hash literals, increasing release drift risk.
 
-The repair used a proper patch release rather than mutating historical v1.0.2 provenance. Follow-up preflight also found and fixed two production/release orchestration defects:
+The repair used proper patch releases rather than mutating historical provenance. Follow-up preflight also found and fixed additional production/release defects:
 
 5. the MCP Registry workflow created a GitHub release using `GITHUB_TOKEN`, so the old `release: published` npm workflow could not be triggered by that release; the flow now explicitly dispatches the exact-SHA npm workflow and skips cleanly before first-package bootstrap;
 6. the Cloudflare Worker exposed the `GodPromptMCP` Durable Object binding, while `McpAgent.serve()` expected the default `MCP_OBJECT` binding, causing production `/mcp` requests to return HTTP 500.
+7. the public npm package included the Cloudflare-only `agents` runtime dependency even though the stdio package does not ship the Worker entrypoint; `agents` is now development-only and a clean consumer install of v1.0.4 resolves zero production audit vulnerabilities;
+8. MCPB SHA reproducibility was host-dependent because the packer preserved OS-specific ZIP attributes, checkout/generated line endings, and unsorted filesystem enumeration order; the release normalizer and build inputs now produce the same bundle bytes across Windows and Linux;
+9. npm Trusted Publishing initially failed because the publish workflow's setup-node/npmrc path interfered with OIDC authentication; the release workflow now leaves registry authentication to npm's OIDC exchange, and v1.0.4 was published by GitHub Actions with signed provenance and no long-lived npm publishing token;
+10. workflow-only changes to npm/Registry automation could start a Registry release from a main SHA different from the existing version tag; workflow-only push triggers were removed from release execution while PR validation remains active.
 
-All companion repairs were merged through qualified PRs. The final prelaunch companion main SHA is `d75672f34d1d032bd2ae0f673ed4f689c04c4f3f`. Its required GitHub checks are green, and the production Worker was independently smoke-tested after deployment: `initialize` returned 200, `notifications/initialized` returned 202, `tools/list` returned 200, and all seven expected GodPrompt MCP tools were present.
+All companion repairs were merged through qualified PRs. The final prelaunch companion main SHA is `5c84fd4b1314aa459a096eb2fad703c9127c40b7`. Its required GitHub verification is green. The production Worker was independently smoke-tested after deployment: `initialize` returned 200, `notifications/initialized` returned 202, `tools/list` returned 200, the server reported v1.0.4, and all seven expected GodPrompt MCP tools were present.
 
 ### Windows execution rule
 
@@ -84,9 +88,9 @@ GitHub 14-day traffic snapshot:
 - major referrers included GitHub, Claude, and Glama
 - repository overview was the dominant observed content path
 
-Current distribution includes Glama, MCPB/GitHub Releases, Cursor/Kiro-compatible install metadata, GHCR, the production Cloudflare Worker, and official MCP Registry publication automation. GitHub Release `v1.0.3` exists with MCPB SHA-256 `0890e9cece882b689599a3212a4ff69f43240493acbb980e906881356b2f874b`, matching `server.json`. The official MCP Registry still reports v1.0.2 as latest until npm bootstrap allows the v1.0.3 registry publication chain to complete.
+Current distribution includes Glama, npm, MCPB/GitHub Releases, Cursor/Kiro-compatible install metadata, GHCR, the production Cloudflare Worker, and the official MCP Registry. GitHub Release `v1.0.4` is pinned to release source SHA `59acbd400761a8f1a21592dc191af6cae7eec4a3` with MCPB SHA-256 `e8e9e0d4f7865b44022af1649064a2b9fccd293345fedba46f4037562ce996d6`, matching the published release asset digest and `server.json`. The official MCP Registry reports v1.0.4 active and `isLatest: true`, with both the verified MCPB artifact and `npm: god-prompt-mcp@1.0.4`.
 
-The npm package name `god-prompt-mcp` remains unclaimed/unpublished at final prelaunch reconciliation. The local npm account is authenticated as `akzar1el`, but initial publication was rejected because npm requires account 2FA or a bypass-enabled granular token for package creation/publishing. This experiment deliberately does not use a bypass token. Bootstrap publication is therefore an interactive prelaunch gate. The repository-side future release flow is already OIDC-ready and exact-SHA fenced; after the package exists, configure npm Trusted Publishing for `.github/workflows/publish-npm.yml` and prove one OIDC publication before launch.
+The npm package `god-prompt-mcp` is public at v1.0.4 and `latest` resolves to v1.0.4. A clean install using a fresh npm cache resolves 95 runtime packages, zero production audit vulnerabilities, does not install the Worker-only `agents` dependency, and passes an outside-in stdio `initialize`/`tools/list` smoke with all seven expected tools. npm Trusted Publishing is configured for GitHub Actions workflow `publish-npm.yml` and was proven by the successful v1.0.4 publication; npm emitted signed GitHub provenance for that publish. The temporary bootstrap token is not part of the release path and must remain revoked/unused.
 
 ## GitHub Sponsors payment path
 
