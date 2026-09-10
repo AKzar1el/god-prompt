@@ -6,7 +6,7 @@
     "lease_acquired_at":  null,
     "lease_until":  null,
     "phase":  "PRELAUNCH",
-    "last_completed_phase":  "CORE_PREFLIGHT_MERGED",
+    "last_completed_phase":  "MCP_PREFLIGHT_PR_GREEN",
     "scheduler_created":  false,
     "experiment_started_at":  null,
     "fixed_end_at":  null,
@@ -41,5 +41,5 @@
                             "Full frozen GodPrompt Bench reference run is not completed; must be run with explicit spend authorization or explicitly waived before launch"
                         ],
     "last_action_fingerprint":  "prelaunch:control-init",
-    "updated_at":  "2026-09-10T19:19:15.8273992+02:00"
+    "updated_at":  "2026-09-10T19:20:50.7676738+02:00"
 }
