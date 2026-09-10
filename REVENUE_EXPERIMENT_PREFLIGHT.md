@@ -44,14 +44,19 @@ A paid/reference benchmark run has **not** been executed as part of this preflig
 
 Initial preflight main SHA: `ff371af55749f8b6cfaa3282992d9f3ccb8b27fe`.
 
-Windows preflight exposed release-path defects that are being repaired through a normal PR before launch:
+Windows preflight exposed release-path defects that were repaired before launch:
 
 1. the distribution test assumed LF-only shebang line endings and failed on a CRLF checkout;
 2. the stdio integration test used a 5-second request timeout despite reproduced healthy Windows handshakes exceeding 5 seconds;
 3. runtime `SERVER_INFO.version` reported `1.0.1` while package/distribution metadata reported `1.0.2`;
 4. package/MCPB CI hard-coded release version/hash literals, increasing release drift risk.
 
-The repair uses a proper patch-release candidate rather than mutating historical v1.0.2 provenance. Before launch, the companion main branch must contain the qualified repair and the exact final main SHA must be recorded in the generation-0 control state.
+The repair used a proper patch release rather than mutating historical v1.0.2 provenance. Follow-up preflight also found and fixed two production/release orchestration defects:
+
+5. the MCP Registry workflow created a GitHub release using `GITHUB_TOKEN`, so the old `release: published` npm workflow could not be triggered by that release; the flow now explicitly dispatches the exact-SHA npm workflow and skips cleanly before first-package bootstrap;
+6. the Cloudflare Worker exposed the `GodPromptMCP` Durable Object binding, while `McpAgent.serve()` expected the default `MCP_OBJECT` binding, causing production `/mcp` requests to return HTTP 500.
+
+All companion repairs were merged through qualified PRs. The final prelaunch companion main SHA is `d75672f34d1d032bd2ae0f673ed4f689c04c4f3f`. Its required GitHub checks are green, and the production Worker was independently smoke-tested after deployment: `initialize` returned 200, `notifications/initialized` returned 202, `tools/list` returned 200, and all seven expected GodPrompt MCP tools were present.
 
 ### Windows execution rule
 
@@ -79,9 +84,9 @@ GitHub 14-day traffic snapshot:
 - major referrers included GitHub, Claude, and Glama
 - repository overview was the dominant observed content path
 
-Current distribution includes Glama, MCPB/GitHub Releases, Cursor/Kiro-compatible install metadata, and official MCP Registry publication automation. The v1.0.2 GitHub release MCPB asset had 15 downloads when inspected during preflight.
+Current distribution includes Glama, MCPB/GitHub Releases, Cursor/Kiro-compatible install metadata, GHCR, the production Cloudflare Worker, and official MCP Registry publication automation. GitHub Release `v1.0.3` exists with MCPB SHA-256 `0890e9cece882b689599a3212a4ff69f43240493acbb980e906881356b2f874b`, matching `server.json`. The official MCP Registry still reports v1.0.2 as latest until npm bootstrap allows the v1.0.3 registry publication chain to complete.
 
-The npm package name `god-prompt-mcp` was unclaimed/unpublished when checked. The local npm account is authenticated as `akzar1el`, but initial publication was rejected by npm because the account currently requires a 2FA-capable publishing setup. Bootstrap publication is a prelaunch gate; after the first package exists, future release publication should use npm Trusted Publishing / GitHub OIDC rather than a long-lived bypass token.
+The npm package name `god-prompt-mcp` remains unclaimed/unpublished at final prelaunch reconciliation. The local npm account is authenticated as `akzar1el`, but initial publication was rejected because npm requires account 2FA or a bypass-enabled granular token for package creation/publishing. This experiment deliberately does not use a bypass token. Bootstrap publication is therefore an interactive prelaunch gate. The repository-side future release flow is already OIDC-ready and exact-SHA fenced; after the package exists, configure npm Trusted Publishing for `.github/workflows/publish-npm.yml` and prove one OIDC publication before launch.
 
 ## GitHub Sponsors payment path
 
@@ -113,6 +118,9 @@ GodPrompt Bench is part of the product's trust surface. Its full reference profi
 
 Current preflight facts:
 
+- `python build.py --check` passes on the final core baseline;
+- after installing the repository-declared test dependency `inspect-ai==0.3.260`, `python -m pytest bench/tests -q` passes **35/35**;
+- the frozen `full` profile contains exactly 40 tasks and 3 epochs; with two benchmark conditions this is 240 model samples;
 - benchmark unit/corpus infrastructure is qualified;
 - the workflow exists for `workflow_dispatch` on GitHub Actions;
 - it expects an `OPENAI_API_KEY` repository Actions secret for an OpenAI run;
