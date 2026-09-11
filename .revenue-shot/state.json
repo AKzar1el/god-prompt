@@ -4,13 +4,13 @@
     "generation":  2,
     "active_run_id":  "godprompt-hardening-20260911T0224",
     "lease_acquired_at":  "2026-09-11T02:24:52.0000000+02:00",
-    "last_heartbeat_at":  "2026-09-11T02:26:28.0000000+02:00",
-    "lease_until":  "2026-09-11T02:34:28.0000000+02:00",
+    "last_heartbeat_at":  "2026-09-11T02:29:52.0000000+02:00",
+    "lease_until":  "2026-09-11T02:37:52.0000000+02:00",
     "execution_backend":  "CODEXIFY_GOD_ONLY_NO_PRIVATIZMO",
     "wake_source":  "MANUAL_OPERATOR_APPROVED_HARDENING",
     "orchestration_doc_id":  "1y-dqQIWmd7FpzSpSHZGj75eSWryB9Z1bi9qj9QcXID8",
     "orchestration_doc_url":  "https://docs.google.com/document/d/1y-dqQIWmd7FpzSpSHZGj75eSWryB9Z1bi9qj9QcXID8/edit",
     "doc_revision_at_acquire":  "ANLCKQmyabNtPn1CYUpZptjYG4TpovzPLPRXRESp73hayZC0RfnFZGocXBkIMa2wV_OS2WAlBmLSk3C52F1wd2_VS_0vQnbhdJvSVjQ0KQE",
     "terminal_status":  null,
-    "updated_at":  "2026-09-11T00:26:28Z"
+    "updated_at":  "2026-09-11T00:29:52Z"
 }
