@@ -4,13 +4,13 @@
   "generation": 1,
   "active_run_id": "godprompt-rs1-20260911T0200-001",
   "lease_acquired_at": "2026-09-11T00:00:01Z",
-  "last_heartbeat_at": "2026-09-11T00:00:01Z",
-  "lease_until": "2026-09-11T00:08:01Z",
+  "last_heartbeat_at": "2026-09-11T00:03:37Z",
+  "lease_until": "2026-09-11T00:11:37Z",
   "execution_backend": "CODEXIFY_GOD_ONLY_NO_PRIVATIZMO",
   "wake_source": "SCHEDULED",
   "orchestration_doc_id": "1y-dqQIWmd7FpzSpSHZGj75eSWryB9Z1bi9qj9QcXID8",
   "orchestration_doc_url": "https://docs.google.com/document/d/1y-dqQIWmd7FpzSpSHZGj75eSWryB9Z1bi9qj9QcXID8/edit",
-  "doc_revision_at_acquire": "ANLCKQlhM_wgAa8XjTuUW29YS_D8i7honPy1QQKbI1BQgh5b3mxrwjqmat6Rzg9ruonqT14DUlIrYhKcooKpkWap1xCwTl2nbQWmV32pEPw",
+  "doc_revision_at_acquire": "ANLCKQmo9kxxlaZndkC4j4ZT2ul1YvhTFdIddvqxgAB3GyLADBM6eLfrEDYHlrpmQsCkw7xlonXFSp9FQJHlVfuot6pD_htpluCXZgjWcsQ",
   "terminal_status": null,
-  "updated_at": "2026-09-11T00:00:01Z"
+  "updated_at": "2026-09-11T00:03:37Z"
 }
