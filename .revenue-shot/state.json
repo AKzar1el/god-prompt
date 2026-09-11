@@ -2,15 +2,15 @@
   "schema_version": 4,
   "experiment_id": "godprompt-revenue-shot-2026-09",
   "generation": 9,
-  "active_run_id": "godprompt-rs1-20260911T0600-009",
-  "lease_acquired_at": "2026-09-11T04:06:31Z",
-  "last_heartbeat_at": "2026-09-11T04:10:06Z",
-  "lease_until": "2026-09-11T04:18:06Z",
+  "active_run_id": null,
+  "lease_acquired_at": null,
+  "last_heartbeat_at": null,
+  "lease_until": null,
   "execution_backend": "CODEXIFY_GOD_ONLY_NO_PRIVATIZMO",
   "wake_source": "SCHEDULED",
   "orchestration_doc_id": "1y-dqQIWmd7FpzSpSHZGj75eSWryB9Z1bi9qj9QcXID8",
   "orchestration_doc_url": "https://docs.google.com/document/d/1y-dqQIWmd7FpzSpSHZGj75eSWryB9Z1bi9qj9QcXID8/edit",
   "doc_revision_at_acquire": "ANLCKQnf6bywEqaBhtGMP6CMS1nl8PuEw8DCierkEJjhI_eDpmAVQ72_XghQKtDGL5lmAKIxsNuAMgeaMCbNO-kr0vum58qzf-T91osJpac",
   "terminal_status": null,
-  "updated_at": "2026-09-11T04:10:06Z"
+  "updated_at": "2026-09-11T04:12:05Z"
 }
