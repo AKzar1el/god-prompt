@@ -9,6 +9,14 @@ GodPrompt is a 1,145-line behavioral workflow prompt designed to push AI coding 
 
 > One skill to replace them all. Drop it in, describe what you want, and apply a consistent engineering workflow with explicit verification gates.
 
+## Agent Harness Review — US$49
+
+For the seven-day `GP-RS1` experiment, GodPrompt offers one bounded paid service for developers and small teams whose coding agents lose context, overstep scope, skip verification, or repeat mistakes.
+
+**GodPrompt Agent Harness Review — US$49 one-time.** For one repository, send up to three agent-control artifacts (`AGENTS.md`, `CLAUDE.md`, project rules, or equivalent) plus one short failure example. The review returns five priority risks, one proposed revised instruction block or patch, and a next-task verification checklist, with a target of 24 hours after payment and usable inputs.
+
+[Sponsor US$49 via GitHub Sponsors](https://github.com/sponsors/AKzar1el?metadata_campaign=godprompt_rs1&metadata_offer=agent_harness_review&metadata_source=god_prompt_readme), then email `info@tomiseregi.si` with subject `[GP-RS1] Agent Harness Review`. The free MIT GodPrompt remains unchanged and free. [Full frozen experiment terms](MONETIZATION_EXPERIMENT.md).
+
 ## What Is This?
 
 A single Claude Code skill that replaces 30+ individual skills with one unified system. GodPrompt routes tasks through an explicit engineering workflow and requires verification before completion claims. Whether that improves real task outcomes is measured by GodPrompt Bench rather than assumed from the prompt design.
