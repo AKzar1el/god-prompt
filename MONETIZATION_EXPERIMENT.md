@@ -1,10 +1,10 @@
 # GodPrompt Revenue Shot — Frozen Monetization Experiment
 
-Status: **FROZEN BEFORE T0**
+Status: **FROZEN COMMERCIAL TERMS — ACTIVE OPERATOR-AUTHORIZED WINDOW**
 
 Experiment ID: `godprompt-revenue-shot-2026-09`
 Frozen hypothesis ID: `GP-RS1-AGENT-HARNESS-REVIEW`
-Fixed window: **2026-09-11 02:00 Europe/Ljubljana through 2026-09-18 02:00 Europe/Ljubljana**
+Fixed window: **2026-09-11 02:00 Europe/Ljubljana through 2026-09-21 15:15 Europe/Ljubljana**
 Payment rail: **GitHub Sponsors only**
 Attribution campaign: `godprompt_rs1`
 
@@ -12,7 +12,7 @@ Attribution campaign: `godprompt_rs1`
 
 Developers and small engineering teams already using coding agents will pay a small one-time amount for a concrete review of the repository-level instructions and control harness that govern those agents, because failures around context, scope, autonomy, verification, and handoff create real engineering cost even when the underlying model is capable.
 
-The seven-day experiment sells exactly one bounded service: **GodPrompt Agent Harness Review**.
+The same fixed commercial experiment sells exactly one bounded service: **GodPrompt Agent Harness Review**.
 
 ## Target payer
 
@@ -137,4 +137,4 @@ Current evidence was gathered immediately before the freeze rather than inferred
 
 ## Fixed terminal time
 
-The experiment starts at **2026-09-11 02:00 Europe/Ljubljana** and ends at **2026-09-18 02:00 Europe/Ljubljana**. The scheduler must contain exactly 169 hourly occurrences including both endpoints. The window must not be extended, silently restarted, or moved because of negative results or Sponsor availability.
+The experiment started at **2026-09-11 02:00 Europe/Ljubljana** and, under explicit operator continuation authority granted on 2026-09-14, now ends at **2026-09-21 15:15 Europe/Ljubljana**. This continuation changes only the operative end time; payer, offer, price, payment rail, attribution, success definition, repository scope, safety boundaries, prior evidence, and warm-touch usage remain frozen. The window must not be extended again, silently restarted, or moved because of negative results or Sponsor availability.
