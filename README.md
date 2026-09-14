@@ -11,11 +11,11 @@ GodPrompt is a 1,145-line behavioral workflow prompt designed to push AI coding 
 
 ## Agent Harness Review — US$49
 
-For the seven-day `GP-RS1` experiment, GodPrompt offers one bounded paid service for developers and small teams whose coding agents lose context, overstep scope, skip verification, or repeat mistakes.
+For the operator-authorized `GP-RS1` window through **2026-09-21 15:15 Europe/Ljubljana**, GodPrompt offers one bounded paid service for developers and small teams whose coding agents lose context, overstep scope, skip verification, or repeat mistakes.
 
 **GodPrompt Agent Harness Review — US$49 one-time.** For one repository, send up to three agent-control artifacts (`AGENTS.md`, `CLAUDE.md`, project rules, or equivalent) plus one short failure example. The review returns five priority risks, one proposed revised instruction block or patch, and a next-task verification checklist, with a target of 24 hours after payment and usable inputs.
 
-GitHub Sponsors is the frozen payment rail. If checkout is live, [sponsor US$49](https://github.com/sponsors/AKzar1el?metadata_campaign=godprompt_rs1&metadata_offer=agent_harness_review&metadata_source=god_prompt_readme), then email `info@tomiseregi.si` with subject `[GP-RS1] Agent Harness Review`. If GitHub still shows checkout as unavailable or pending, email only `[GP-RS1] Agent Harness Review Interest`; do not send repository artifacts yet. I will confirm when the same checkout is publicly payable. Delivery begins only after an independently verified US$49 sponsorship. The free MIT GodPrompt remains unchanged and free. [See a transparent sample deliverable](AGENT_HARNESS_REVIEW_SAMPLE.md) before deciding; it is illustrative, not a client result or benchmark. [Full frozen experiment terms](MONETIZATION_EXPERIMENT.md).
+GitHub Sponsors is the frozen payment rail. Current public checkout payability is **not independently verified**, so do not sponsor for this experiment yet. If interested, email `info@tomiseregi.si` with subject `[GP-RS1] Agent Harness Review Interest`; do not send repository artifacts yet. I will confirm when the same US$49 checkout is publicly payable. Delivery begins only after an independently verified US$49 sponsorship. The free MIT GodPrompt remains unchanged and free. [See a transparent sample deliverable](AGENT_HARNESS_REVIEW_SAMPLE.md) before deciding; it is illustrative, not a client result or benchmark. [Full frozen experiment terms](MONETIZATION_EXPERIMENT.md).
 
 ## What Is This?
 
