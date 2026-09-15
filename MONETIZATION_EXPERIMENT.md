@@ -1,10 +1,10 @@
 # GodPrompt Revenue Shot — Frozen Monetization Experiment
 
-Status: **FROZEN COMMERCIAL TERMS — ACTIVE OPERATOR-AUTHORIZED WINDOW**
+Status: **FROZEN COMMERCIAL TERMS — ACTIVE STANDING MISSION**
 
 Experiment ID: `godprompt-revenue-shot-2026-09`
 Frozen hypothesis ID: `GP-RS1-AGENT-HARNESS-REVIEW`
-Fixed window: **2026-09-11 02:00 Europe/Ljubljana through 2026-09-21 15:15 Europe/Ljubljana**
+Mission duration: **started 2026-09-11 02:00 Europe/Ljubljana; no automatic terminal date**
 Payment rail: **GitHub Sponsors only**
 Attribution campaign: `godprompt_rs1`
 
@@ -66,11 +66,11 @@ Do not request or retain passwords, API keys, recovery codes, private credential
 
 ## Success, failure, and attribution
 
-**SUCCESS** = before the fixed end, independently verify a real GitHub Sponsors monetary event greater than US$0 that is attributable to this experiment. Strong attribution is the `campaign=godprompt_rs1` transaction metadata and/or an independently linkable buyer intake using `[GP-RS1]` plus the matching sponsorship.
+**SUCCESS** = independently verify a real GitHub Sponsors monetary event greater than US$0 that is attributable to this experiment. Strong attribution is the `campaign=godprompt_rs1` transaction metadata and/or an independently linkable buyer intake using `[GP-RS1]` plus the matching sponsorship. A verified payment is a positive revenue event to reproduce, improve, or scale; it does not end the mission.
 
-**UNVERIFIED** = material sponsorship/payment evidence exists during the window but receipt or experiment attribution cannot be independently established.
+**UNVERIFIED** = material sponsorship/payment evidence exists but receipt or experiment attribution cannot be independently established.
 
-**FAIL** = at the fixed end, after final reconciliation, no attributable monetary event greater than US$0 was received.
+**FAIL** is never assigned automatically by date. It may be assigned only if Tomi explicitly ends or replaces the standing mission and final reconciliation finds no attributable monetary event greater than US$0.
 
 Stars, views, clones, downloads, installs, Sponsor-page visits, emails, replies, promises, and intent are diagnostics only.
 
@@ -91,7 +91,7 @@ The experiment may observe, without redefining success:
 
 ## Hypotheses considered before freeze
 
-Scores are 1–5; higher is better. `7d` means probability of obtaining real money inside this fixed seven-day experiment. `Ease` rewards low delivery/implementation risk.
+Scores are 1–5; higher is better. The `7d` column records the original pre-freeze selection horizon and remains historical evidence; it does not define the current standing mission duration. `Ease` rewards low delivery/implementation risk.
 
 | Candidate | WTP evidence | GodPrompt fit | 7d | Ease | Distribution leverage | Free-product preservation | Total / 30 | Decision |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
@@ -124,17 +124,17 @@ Current evidence was gathered immediately before the freeze rather than inferred
 - Anthropic — prompting best practices / long-horizon state tracking: https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/prompt-templates-and-variables
 - GitHub Sponsors — sponsorship tiers: https://docs.github.com/en/sponsors/receiving-sponsorships-through-github-sponsors/managing-your-sponsorship-tiers
 - GitHub Sponsors — attribution metadata: https://docs.github.com/en/sponsors/receiving-sponsorships-through-github-sponsors/viewing-your-sponsors-and-sponsorships
-## Commercial invariants for all 169 wakes
+## Commercial invariants for the standing mission
 
 - Do not pivot to another payer, offer, price, payment rail, or business model to escape negative evidence.
 - Commercial wording, placement, examples, reliability, and fulfillment mechanics may improve only while remaining inside this exact hypothesis and terms.
-- Maximum three proactive warm first-touch Gmail messages during the whole experiment, only inside genuinely existing relevant human relationships, with full-thread/SENT deduplication and the control-plane Gmail circuit breaker.
+- Maximum three proactive warm first-touch Gmail messages during the standing mission, only inside genuinely existing relevant human relationships, with full-thread/SENT deduplication and the control-plane Gmail circuit breaker.
 - No cold-email campaign, mass DM/posting, bought traffic, paid ads, fake evidence, fake users, fake testimonials, review manipulation, or unrelated third-party mutation.
 - No external API/model spend without separate explicit authorization.
 - No public benchmark superiority claim unless a real frozen full benchmark run with raw evidence supports it.
 - Local repository/filesystem/shell/Git/package/test/Cloudflare work uses Codexify/God only. Never use Privatizmo.
 - The Scheduled Task must never modify, recreate, enable, disable, reschedule, or duplicate itself.
 
-## Fixed terminal time
+## Mission duration
 
-The experiment started at **2026-09-11 02:00 Europe/Ljubljana** and, under explicit operator continuation authority granted on 2026-09-14, now ends at **2026-09-21 15:15 Europe/Ljubljana**. This continuation changes only the operative end time; payer, offer, price, payment rail, attribution, success definition, repository scope, safety boundaries, prior evidence, and warm-touch usage remain frozen. The window must not be extended again, silently restarted, or moved because of negative results or Sponsor availability.
+The experiment started at **2026-09-11 02:00 Europe/Ljubljana** and now runs as a standing revenue mission with **no automatic terminal date**. It continues until Tomi explicitly pauses or stops it, or replaces it with a project-specific goal or kill criterion. Payer, offer, price, payment rail, attribution rules, repository scope, safety boundaries, prior evidence, and warm-touch usage remain frozen. A first verified attributable payment is a positive signal to reproduce, improve, or scale rather than an instruction to stop.
