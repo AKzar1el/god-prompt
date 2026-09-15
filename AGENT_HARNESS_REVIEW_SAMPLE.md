@@ -47,4 +47,4 @@ For interrupted or blocked work, leave a concise handoff containing the current 
 
 The real review applies this structure to **your supplied repository controls and one concrete failure example**. It returns five repository-specific priority risks, one proposed instruction block or patch, and a next-task verification checklist. Up to three control artifacts are reviewed; one clarification exchange is included when needed.
 
-During the current experiment, do not send repository artifacts until the GitHub Sponsors checkout is publicly available and a US$49 sponsorship has been independently verified. The full frozen terms are in [MONETIZATION_EXPERIMENT.md](MONETIZATION_EXPERIMENT.md).
+During the current experiment, send repository artifacts only after making the US$49 one-time GitHub Sponsors payment and include the sponsoring GitHub username so the payment can be independently verified and attributed before delivery begins. The full frozen terms are in [MONETIZATION_EXPERIMENT.md](MONETIZATION_EXPERIMENT.md).
