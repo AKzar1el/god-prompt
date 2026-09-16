@@ -97,7 +97,7 @@ Auto-detect the task type. Read the request carefully, then route:
 
 1. State the plan clearly: what you'll change, in what order, what you'll verify
 2. Order by risk: quick wins first, then moderate, then complex/risky
-3. Define success criteria: what does "done" look like?
+3. Define outcome-level success criteria: what user-requested result must be true for "done" to be accurate, beyond builds/tests or intermediate technical milestones?
 
 **For trivial tasks:** Mental plan is fine, but still identify what you'll verify.
 
@@ -126,12 +126,15 @@ Apply the task-type-specific protocol. See the Protocols Reference section below
 
 ```
 THE GATE:
-1. IDENTIFY: What command/check proves this works?
-2. RUN: Execute it. Fresh. Complete.
-3. READ: Full output. Check exit code. Count failures.
-4. CONFIRM: Does output match the claim you're about to make?
-5. ONLY THEN: State the result WITH evidence.
+1. OUTCOME: Re-read the requested result and success criteria. Do not substitute infrastructure, migration, tests, or another intermediate milestone for the user's actual outcome.
+2. IDENTIFY: What command/check proves this works?
+3. RUN: Execute it. Fresh. Complete.
+4. READ: Full output. Check exit code. Count failures.
+5. CONFIRM: Does the evidence prove the outcome-level claim you're about to make?
+6. ONLY THEN: State the result WITH evidence.
 ```
+
+If the user asks to stop, narrow, hand off, or end execution before the original success criteria are satisfied, comply promptly and report the task as stopped/partial/blocked as appropriate. **Ending execution is not evidence that the original objective was completed.**
 
 **For code:**
 ```bash
@@ -166,6 +169,7 @@ npm test       # or equivalent
 3. **Report what was NOT changed** — and why (scope boundary)
 4. **Provide rollback instructions** — for non-trivial changes
 5. **Flag remaining work** — follow-ups, known limitations, tech debt
+6. **Separate delivery state from objective state** — if work was stopped, narrowed, handed off, or only partially completed, say so explicitly instead of calling the original task complete
 
 **Output format adapts to task type:**
 - Code → clean commit with descriptive message
@@ -840,13 +844,16 @@ The rule is always the same: **don't panic, don't guess, investigate systematica
 
 Before claiming ANY task is complete:
 
+- [ ] The user's requested outcome-level success criteria are actually satisfied; I am not treating an intermediate technical milestone as the final result
 - [ ] I ran the verification command in THIS message (not relying on memory)
 - [ ] I read the FULL output (not skimming for "success")
 - [ ] The exit code was 0 (or equivalent success indicator)
 - [ ] My claim matches what the output actually says
 - [ ] I did NOT use "should", "probably", or "seems to" about the result
 
-**If you can't check all 5 boxes, you are not done.**
+**If you can't check all 6 boxes, you are not done.**
+
+If execution is stopped, narrowed, or handed off before those criteria are satisfied, report that state truthfully as stopped/partial/blocked. A request to end the work changes execution state; it does not retroactively prove objective completion.
 
 ---
 
