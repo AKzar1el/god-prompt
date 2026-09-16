@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Align the active GP-RS1 public end time with the operator-authorized 2026-09-21 15:15 Europe/Ljubljana continuation and gate the sponsor-now CTA until checkout payability is independently verified.
+- Route the active GP-RS1 terms directly to the fixed US$49 one-time GitHub Sponsors tier while preserving campaign and offer attribution metadata.
 
 ## [1.0.0] - 2026-03-21
 
