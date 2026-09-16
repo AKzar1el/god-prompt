@@ -32,7 +32,7 @@ The buyer pays exactly US$49 as a one-time GitHub Sponsors sponsorship to `AKzar
 
 Experiment-controlled Sponsor links use:
 
-`https://github.com/sponsors/AKzar1el?metadata_campaign=godprompt_rs1&metadata_offer=agent_harness_review`
+`https://github.com/sponsors/AKzar1el/sponsorships?tier_id=657478&metadata_campaign=godprompt_rs1&metadata_offer=agent_harness_review`
 
 Where a source-specific controlled link is used, it may additionally add `metadata_source=<approved_source>` without changing the campaign or offer marker.
 
