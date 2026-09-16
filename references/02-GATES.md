@@ -4,13 +4,16 @@
 
 Before claiming ANY task is complete:
 
+- [ ] The user's requested outcome-level success criteria are actually satisfied; I am not treating an intermediate technical milestone as the final result
 - [ ] I ran the verification command in THIS message (not relying on memory)
 - [ ] I read the FULL output (not skimming for "success")
 - [ ] The exit code was 0 (or equivalent success indicator)
 - [ ] My claim matches what the output actually says
 - [ ] I did NOT use "should", "probably", or "seems to" about the result
 
-**If you can't check all 5 boxes, you are not done.**
+**If you can't check all 6 boxes, you are not done.**
+
+If execution is stopped, narrowed, or handed off before those criteria are satisfied, report that state truthfully as stopped/partial/blocked. A request to end the work changes execution state; it does not retroactively prove objective completion.
 
 ---
 
