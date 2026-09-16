@@ -128,11 +128,11 @@ Current evidence was gathered immediately before the freeze rather than inferred
 
 - Do not pivot to another payer, offer, price, payment rail, or business model to escape negative evidence.
 - Commercial wording, placement, examples, reliability, and fulfillment mechanics may improve only while remaining inside this exact hypothesis and terms.
-- Maximum three proactive warm first-touch Gmail messages during the standing mission, only inside genuinely existing relevant human relationships, with full-thread/SENT deduplication and the control-plane Gmail circuit breaker.
-- No cold-email campaign, mass DM/posting, bought traffic, paid ads, fake evidence, fake users, fake testimonials, review manipulation, or unrelated third-party mutation.
+- Maximum three proactive warm first-touch messages total during the standing mission. Before any send, require current Sponsors-rail usability, a purpose-appropriate public business contact, applicable jurisdiction/entity/channel permissibility, published contact restrictions, full Gmail cross-campaign company/domain suppression, permanent opt-out/bounce suppression, remaining cap, truthful sender identity, and the required opt-out mechanism. No automatic follow-up.
+- No mass-email campaign, mass DM/posting, bought traffic, paid ads, fake evidence, fake users, fake testimonials, review manipulation, or unrelated third-party mutation.
 - No external API/model spend without separate explicit authorization.
 - No public benchmark superiority claim unless a real frozen full benchmark run with raw evidence supports it.
-- Local repository/filesystem/shell/Git/package/test/Cloudflare work uses Codexify/God only. Never use Privatizmo.
+- Local repository/filesystem/shell/Git/package/test work for this experiment uses the dedicated Codexify god-prompt workspace. Never use old God variants, Privatizmo, child workers, or another local backend.
 - The Scheduled Task must never modify, recreate, enable, disable, reschedule, or duplicate itself.
 
 ## Mission duration
