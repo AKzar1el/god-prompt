@@ -1,5 +1,7 @@
 # GodPrompt Revenue Shot — Preflight Contract
 
+> **Historical / non-authoritative preflight.** This file preserves the original launch design, including its seven-day assumptions and retired control-plane details, for audit/history only. It must not govern current Revenue Shot runs. Current standing commercial terms live in `MONETIZATION_EXPERIMENT.md`; current runtime procedure/authority is the active Scheduled Task prompt plus the operator-local `.revenue-shot/MASTER_PLAN.md`. When text below conflicts with those current authorities, treat the text below as historical evidence only.
+
 Status: **PRELAUNCH — COMMERCIAL CONTRACT FROZEN; SCHEDULER PENDING**
 
 This document defines the bounded authority and launch gates for one seven-day GodPrompt revenue experiment. The commercial hypothesis is now frozen separately in `MONETIZATION_EXPERIMENT.md`; this preflight update still does not itself start the experiment or its scheduler.
