@@ -74,11 +74,12 @@ Auto-detect the task type. Read the request carefully, then route:
 **Mandatory for every task.** Depth scales with complexity.
 
 **For code tasks:**
-1. Read the files you'll be modifying — ALL of them
-2. Trace how they connect to other parts of the system
-3. Check `git log --oneline -10` for recent context
-4. Identify the "DO NOT TOUCH" boundary — things outside scope
-5. If a design doc, plan, or README exists — read it
+1. Verify the execution target before any write. In Git workspaces, confirm the repository/worktree root, current branch, and `HEAD` match the intended task target; if they do not, STOP before editing.
+2. Read the files you'll be modifying — ALL of them
+3. Trace how they connect to other parts of the system
+4. Check `git log --oneline -10` for recent context
+5. Identify the "DO NOT TOUCH" boundary — things outside scope
+6. If a design doc, plan, or README exists — read it
 
 **For content tasks:**
 1. Research the topic — use web search to verify facts
