@@ -74,6 +74,22 @@ copilot plugin install AKzar1el/god-prompt-mcp
 
 GitHub Copilot CLI installs the companion repository as an Agent Plugins 1.0 package. The plugin includes the same standards-compatible `god-prompt` skill plus the GodPrompt MCP server, so Copilot can load the workflow skill and keep progressive-disclosure MCP tools available from one install.
 
+**Option H — Cross-agent Agent Skill installers**
+
+GitHub CLI 2.100+ can install the portable skill directly into a supported coding agent:
+
+```bash
+gh skill install AKzar1el/god-prompt-mcp skills/god-prompt --agent codex --scope user
+```
+
+Or use the open Skills CLI:
+
+```bash
+npx -y skills@latest add AKzar1el/god-prompt-mcp --skill god-prompt --agent codex --copy -y
+```
+
+Replace `codex` with another supported agent when needed. Both routes install the same portable `god-prompt` skill from the companion repository without requiring the MCP server.
+
 If you want a single paste target, use `GodPrompt.md`. If you want progressive disclosure and a smaller always-on context footprint, use the folder layout (`SKILL.md` and the `references/` folder).
 
 **Then just use Claude normally.** No special commands, no mode switching, no skill invocations. GodPrompt activates automatically on every task.
