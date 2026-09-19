@@ -67,6 +67,13 @@ $skill-installer install https://github.com/AKzar1el/god-prompt-mcp/tree/main/sk
 
 Codex installs the standards-compatible `god-prompt` Agent Skill from the companion repository and can load it from its normal skill discovery path. Keep repository-specific conventions and commands in your repository's `AGENTS.md`; use the skill for the reusable engineering workflow.
 
+**Option G — GitHub Copilot Plugin**
+```bash
+copilot plugin install AKzar1el/god-prompt-mcp
+```
+
+GitHub Copilot CLI installs the companion repository as an Agent Plugins 1.0 package. The plugin includes the same standards-compatible `god-prompt` skill plus the GodPrompt MCP server, so Copilot can load the workflow skill and keep progressive-disclosure MCP tools available from one install.
+
 If you want a single paste target, use `GodPrompt.md`. If you want progressive disclosure and a smaller always-on context footprint, use the folder layout (`SKILL.md` and the `references/` folder).
 
 **Then just use Claude normally.** No special commands, no mode switching, no skill invocations. GodPrompt activates automatically on every task.
