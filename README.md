@@ -60,6 +60,13 @@ git clone https://github.com/AKzar1el/god-prompt.git .claude/skills/god-prompt
   2. Name it "GodPrompt" and paste the contents of `SKILL.md` into the Gem instructions.
   3. Upload the reference files in the `references/` folder to the Gem's Knowledge files.
 
+**Option F — OpenAI Codex Agent Skill**
+```text
+$skill-installer install https://github.com/AKzar1el/god-prompt-mcp/tree/main/skills/god-prompt
+```
+
+Codex installs the standards-compatible `god-prompt` Agent Skill from the companion repository and can load it from its normal skill discovery path. Keep repository-specific conventions and commands in your repository's `AGENTS.md`; use the skill for the reusable engineering workflow.
+
 If you want a single paste target, use `GodPrompt.md`. If you want progressive disclosure and a smaller always-on context footprint, use the folder layout (`SKILL.md` and the `references/` folder).
 
 **Then just use Claude normally.** No special commands, no mode switching, no skill invocations. GodPrompt activates automatically on every task.
