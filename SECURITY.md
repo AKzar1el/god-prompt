@@ -1,11 +1,17 @@
 # Security Policy
 
-## Supported Versions
+## Supported versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.0.0   | :white_check_mark: |
+Security fixes target the current `main` branch. Use the latest GodPrompt version when evaluating or reporting a vulnerability.
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
-Please report all vulnerabilities to the Issues section.
+Please **do not open a public issue** for an undisclosed security vulnerability.
+
+Use GitHub's private vulnerability reporting flow for this repository:
+
+1. Open the repository's **Security** tab.
+2. Open **Advisories**.
+3. Choose **Report a vulnerability**.
+
+Include the affected file or component, the commit/version you tested, reproduction steps, and the security impact when possible. Keep vulnerability details private until a fix or disclosure plan is agreed.
