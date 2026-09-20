@@ -19,7 +19,7 @@ GitHub Sponsors is the frozen payment rail, and the current `AKzar1el` Sponsors 
 
 ## What Is This?
 
-A single Claude Code skill that replaces 30+ individual skills with one unified system. GodPrompt routes tasks through an explicit engineering workflow and requires verification before completion claims. Whether that improves real task outcomes is measured by GodPrompt Bench rather than assumed from the prompt design.
+A single portable Agent Skill and system-prompt workflow that replaces 30+ individual skills with one unified system. GodPrompt routes tasks through an explicit engineering workflow and requires verification before completion claims across supported coding agents and AI assistants. Whether that improves real task outcomes is measured by GodPrompt Bench rather than assumed from the prompt design.
 
 **The problem:** Skill-based systems like gstack ship 34 separate skills. You have to know which one to use, when to switch, how they interact. Nobody reads 34 SKILL.md files. Nobody remembers to invoke the right one at the right time. It's a toolbox without a craftsman.
 
@@ -92,7 +92,7 @@ Replace `codex` with another supported agent when needed. Both routes install th
 
 If you want a single paste target, use `GodPrompt.md`. If you want progressive disclosure and a smaller always-on context footprint, use the folder layout (`SKILL.md` and the `references/` folder).
 
-**Then just use Claude normally.** No special commands, no mode switching, no skill invocations. GodPrompt activates automatically on every task.
+**Then use your chosen host normally.** Paste/project-instruction installs stay in that host's instruction context; skill-capable coding agents can discover the portable `god-prompt` skill through their normal skill flow. No GodPrompt-specific mode switching is required.
 
 ## How It Works
 
