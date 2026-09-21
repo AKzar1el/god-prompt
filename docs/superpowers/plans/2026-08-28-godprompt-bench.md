@@ -1160,7 +1160,7 @@ Use wording equivalent to:
 ```markdown
 ## Evaluation
 
-GodPrompt's benchmark methodology, deterministic task corpus, evaluator logic, and published run artifacts live in the source project: [GodPrompt Bench](https://github.com/AKzar1el/god-prompt/tree/main/bench).
+GodPrompt's benchmark methodology, deterministic task corpus, evaluator logic, and reproducible run/export tooling live in the source project: [GodPrompt Bench](https://github.com/AKzar1el/god-prompt/tree/main/bench). No frozen reference-model run or raw benchmark artifacts have been published yet.
 
 The MCP server does not run the benchmark or claim model-level superiority itself; it distributes the GodPrompt content evaluated by that suite.
 ```
