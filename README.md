@@ -206,7 +206,7 @@ Plus patterns from real-world production usage:
 
 [GodPrompt Bench](bench/README.md) is the project's reproducible evaluation suite. It compares a neutral coding-agent baseline against the same agent with the exact repository `GodPrompt.md`, while holding task prompts, model, tools, sandbox, generation controls, and resource budgets constant.
 
-Version 1 contains 40 deterministic Python/JavaScript tasks across implementation, debugging, refactoring, scope control, verification/false completion, and tool discipline. The harness publishes evaluator logic and machine-readable artifacts rather than a hand-picked score.
+Version 1 contains 40 deterministic Python/JavaScript tasks across implementation, debugging, refactoring, scope control, verification/false completion, and tool discipline. The harness publishes evaluator logic and writes machine-readable artifacts for each run rather than reducing results to a hand-picked score.
 
 **Current status:** the benchmark infrastructure and corpus are published. No reference-model superiority claim is made until a full frozen run and its raw artifacts are published.
 
