@@ -23,7 +23,7 @@ A single portable Agent Skill and system-prompt workflow that replaces 30+ indiv
 
 **The problem:** Skill-based systems like gstack ship 34 separate skills. You have to know which one to use, when to switch, how they interact. Nobody reads 34 SKILL.md files. Nobody remembers to invoke the right one at the right time. It's a toolbox without a craftsman.
 
-**The solution:** GodPrompt is one skill that's always active. It auto-detects what kind of work you're doing and routes to the right protocol internally. You describe what you want. It handles the rest.
+**The solution:** GodPrompt is one workflow skill. Skill-capable agents can load it when the task matches its description; paste/project-instruction installs remain in that host's instruction context. Once active, GodPrompt auto-detects what kind of work you're doing and routes to the right protocol internally. You describe what you want. It handles the rest.
 
 ## Quick Start
 
@@ -139,7 +139,7 @@ GodPrompt detects 9 primary task types and routes to the right protocol. Simple 
 ```
 GodPrompt/
 ├── GodPrompt.md              # All-in-one file for quick deployment
-├── SKILL.md                  # Core protocol loaded every message
+├── SKILL.md                  # Core protocol loaded when the skill is active
 ├── references/
 │   ├── 01-PROTOCOLS.md       # Deep execution guides per task type
 │   ├── 02-GATES.md           # Verification checklists and report templates
@@ -158,11 +158,11 @@ GodPrompt/
 
 This is the key design advantage over multi-skill systems:
 
-- **SKILL.md** stays in the hot path → low token cost, covers the universal protocol and task routing
+- **SKILL.md** is the compact entry point when the skill is active → low token cost, covers the universal protocol and task routing
 - **references/01-PROTOCOLS.md**, **references/02-GATES.md**, **references/03-ANTI-PATTERNS.md** load only when deeper execution detail is needed → saves tokens on simpler tasks
 - **GodPrompt.md** exists as a combined single file for environments that don't support folder structures
 
-Multi-skill systems can fail when the wrong skill is selected or no relevant skill is loaded; GodPrompt instead keeps one routing layer active and delegates internally.
+Multi-skill systems can fail when the wrong skill is selected or no relevant skill is loaded; GodPrompt instead exposes one routing layer when relevant and delegates internally.
 
 ## What It Distills
 
@@ -195,8 +195,8 @@ Plus patterns from real-world production usage:
 | | GodPrompt | Multi-Skill Systems (e.g. gstack) |
 |--|-----------|-----------------------------------|
 | **Skills to manage** | 1 | 34+ |
-| **User needs to pick the right skill** | No — auto-detects | Yes — manual selection |
-| **Context window cost** | Lean base context via `SKILL.md` | Varies per skill loaded |
+| **User needs to pick the right skill** | Usually no — the host can select GodPrompt when relevant, then GodPrompt routes internally | Yes — manual selection |
+| **Context window cost** | Lean core context while `SKILL.md` is active | Varies per skill loaded |
 | **Covers mixed tasks** | Yes — handles BUILD+DEBUG+SHIP in one session | Requires switching between skills |
 | **Learning curve** | Single entry point | Must learn when to invoke each skill |
 | **Risk of using wrong workflow** | Reduced by automatic routing; measured behavior belongs in the benchmark results | Depends on correct skill selection |
