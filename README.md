@@ -96,7 +96,7 @@ npx -y skills@latest add AKzar1el/god-prompt-mcp --skill god-prompt --agent code
 
 Replace `codex` with another supported agent when needed. Both routes install the same portable `god-prompt` skill from the companion repository without requiring the MCP server.
 
-If you want a single paste target, use `GodPrompt.md`. If you want progressive disclosure and a smaller always-on context footprint, use the folder layout (`SKILL.md` and the `references/` folder).
+If you want a single paste target, use `GodPrompt.md`. If you want progressive disclosure so the full workflow loads only when relevant, use the folder layout (`SKILL.md` and the `references/` folder).
 
 **Then use your chosen host normally.** Paste/project-instruction installs stay in that host's instruction context; skill-capable coding agents can discover the portable `god-prompt` skill through their normal skill flow. No GodPrompt-specific mode switching is required.
 
