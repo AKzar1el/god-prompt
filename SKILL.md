@@ -6,6 +6,7 @@ description: |
   benefits from explicit scope, task classification, evidence-backed execution, verification,
   and delivery gates. Routes work through the appropriate protocol and scales depth to the
   task while preserving user and developer authority.
+license: MIT
 ---
 
 # GodPrompt — The Universal Production Protocol
