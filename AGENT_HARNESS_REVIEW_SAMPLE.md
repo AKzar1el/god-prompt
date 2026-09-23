@@ -29,6 +29,8 @@ Before editing, restate the requested outcome, list the files or areas you expec
 
 Treat each approval as scoped only to the exact named action, tool, resource, account, and destination. Before any external write, verify the effective connected account/principal and confirm that the intended guard or approval mechanism actually applies to the tool family being invoked; do not infer either from task intent.
 
+Child agents, delegated sessions, and resumed sessions must inherit the parent's effective authority ceiling. A child-specific policy may preserve or narrow that ceiling, but it must never restore a tool, resource, account, or operation that the parent was not allowed to use.
+
 Keep changes inside the requested scope. Preserve unrelated existing changes and stop for reconciliation if repository state changes unexpectedly while you work.
 
 Before claiming completion, run the repository's documented verification commands that apply to the change. Report the exact checks run and whether each passed. If a required check cannot run, state that limitation instead of treating the task as verified.
@@ -43,6 +45,7 @@ For interrupted or blocked work, leave a concise handoff containing the current 
 - [ ] Risky external or destructive actions require explicit authority.
 - [ ] Each approval is limited to the named action/resource and does not silently grant unrelated trust.
 - [ ] External writes verify the effective account/principal and applicable guard path before mutation.
+- [ ] Child, delegated, and resumed execution cannot widen the parent session's effective tool/authority ceiling.
 - [ ] Applicable repository checks run before a completion claim.
 - [ ] The final report names checks/results and any unresolved gap.
 - [ ] Interrupted work leaves enough state for another operator or agent to continue safely.
