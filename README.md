@@ -45,7 +45,10 @@ git clone https://github.com/AKzar1el/god-prompt.git .claude/skills/god-prompt
 2. Add `SKILL.md` as Project Instructions.
 3. Upload the three reference files (`references/01-PROTOCOLS.md`, `references/02-GATES.md`, `references/03-ANTI-PATTERNS.md`) as Project Knowledge.
 
-**Option D — ChatGPT Projects, Custom Instructions & MCP app**
+**Option D — ChatGPT Plugin, Projects, Custom Instructions & MCP app**
+* **From the Plugin Directory (fastest skill-only path)**:
+  1. Open [GodPrompt in ChatGPT's Plugin Directory](https://chatgpt.com/plugins/plugins_6ab2f1cc5d0081919d729fd1c2884f86).
+  2. Select **Install plugin**. This installs the scoped `god-prompt` Agent Skill; use the remote MCP app path below when you specifically want GodPrompt's seven callable tools.
 * **In a Project**:
   1. Create a new Project on chatgpt.com.
   2. Paste the contents of `SKILL.md` into the Project's Custom Instructions.
