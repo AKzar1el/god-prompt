@@ -78,10 +78,11 @@ Codex installs the standards-compatible `god-prompt` Agent Skill from the compan
 
 **Option G — GitHub Copilot Plugin**
 ```bash
-copilot plugin install AKzar1el/god-prompt-mcp
+copilot plugin marketplace add AKzar1el/god-prompt-mcp
+copilot plugin install god-prompt-mcp@god-prompt
 ```
 
-GitHub Copilot CLI installs the companion repository as an Agent Plugins 1.0 package. The plugin includes the same standards-compatible `god-prompt` skill plus the GodPrompt MCP server, so Copilot can load the workflow skill and keep progressive-disclosure MCP tools available from one install.
+GitHub Copilot CLI installs the companion repository through its versioned plugin marketplace. The plugin includes the same standards-compatible `god-prompt` skill plus the GodPrompt MCP server, so Copilot can load the workflow skill and keep progressive-disclosure MCP tools available from one install. Direct repository installs still work in current Copilot CLI releases, but the CLI marks them deprecated in favor of `plugin@marketplace` installs.
 
 **Option H — Cross-agent Agent Skill installers**
 
