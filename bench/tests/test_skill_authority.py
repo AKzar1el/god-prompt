@@ -86,6 +86,22 @@ def test_compiled_prompt_preserves_effect_aware_retry_guard() -> None:
     assert "real postcondition or authoritative zero-effect state" in compiled
 
 
+def test_interrupted_execution_requires_positive_quiescence_evidence() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+
+    assert "Execution-quiescence guard" in skill
+    assert "is not proof that an owned process" in skill
+    assert "verify current attributable liveness/ownership" in skill
+    assert "STOP rather than killing uncertain work" in skill
+
+
+def test_compiled_prompt_preserves_execution_quiescence_guard() -> None:
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+
+    assert "Execution-quiescence guard" in compiled
+    assert "verify current attributable liveness/ownership" in compiled
+
+
 def test_review_sample_verifies_delegated_liveness_and_result_receipt() -> None:
     sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
 
