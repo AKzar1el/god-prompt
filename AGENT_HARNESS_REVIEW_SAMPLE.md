@@ -31,6 +31,8 @@ Treat each approval as scoped only to the exact named action, tool, resource, ac
 
 Treat tool availability as a separate authority boundary. Before execution, verify that the live model-visible and executable tool set matches the intended allowlist; inherited user/plugin tools and built-in write or execution capabilities outside that set must be absent, not merely assumed to require a later approval.
 
+Resolve security-relevant policy before consequential capabilities start. If the controlling allowlist, deny rules, or approval policy is still loading or cannot be resolved, fail closed; if a later policy narrows authority, re-evaluate and revoke or disconnect already-live capabilities before any further consequential work.
+
 Child agents, delegated sessions, and resumed sessions must inherit the parent's effective authority ceiling. A child-specific policy may preserve or narrow that ceiling, but it must never restore a tool, resource, account, or operation that the parent was not allowed to use.
 
 Keep changes inside the requested scope. Preserve unrelated existing changes and stop for reconciliation if repository state changes unexpectedly while you work.
@@ -48,6 +50,7 @@ For interrupted or blocked work, leave a concise handoff containing the current 
 - [ ] Each approval is limited to the named action/resource and does not silently grant unrelated trust.
 - [ ] External writes verify the effective account/principal and applicable guard path before mutation.
 - [ ] The live model-visible/executable tool inventory matches the authorized allowlist, with inherited/default capabilities outside scope absent rather than only approval-gated.
+- [ ] Security-relevant policy is resolved before capabilities start, and later restrictions revoke or re-evaluate already-live capabilities before further consequential work.
 - [ ] Child, delegated, and resumed execution cannot widen the parent session's effective tool/authority ceiling.
 - [ ] Applicable repository checks run before a completion claim.
 - [ ] The final report names checks/results and any unresolved gap.
