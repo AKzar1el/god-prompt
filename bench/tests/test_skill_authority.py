@@ -68,3 +68,19 @@ def test_compiled_prompt_preserves_tool_plane_transition_readiness() -> None:
 
     assert "Tool-plane transition readiness" in compiled
     assert "live model-visible/executable inventory has converged" in compiled
+
+
+def test_consequential_retries_reconcile_unknown_effects_before_replay() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+
+    assert "Effect-aware retry guard" in skill
+    assert "not proof that the external effect failed" in skill
+    assert "real postcondition or authoritative zero-effect state" in skill
+    assert "Retry/backoff is only for known-no-effect or replay-safe operations" in skill
+
+
+def test_compiled_prompt_preserves_effect_aware_retry_guard() -> None:
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+
+    assert "Effect-aware retry guard" in compiled
+    assert "real postcondition or authoritative zero-effect state" in compiled
