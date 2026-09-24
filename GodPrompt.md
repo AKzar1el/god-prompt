@@ -74,11 +74,12 @@ Auto-detect the task type. Read the request carefully, then route:
 
 **For code tasks:**
 1. Verify the execution target before any write. In Git workspaces, confirm the repository/worktree root, current branch, and `HEAD` match the intended task target; if they do not, STOP before editing.
-2. Read the files you'll be modifying — ALL of them
-3. Trace how they connect to other parts of the system
-4. Check `git log --oneline -10` for recent context
-5. Identify the "DO NOT TOUCH" boundary — things outside scope
-6. If a design doc, plan, or README exists — read it
+2. Bind repository-local authority to that target. If repository instructions or skills apply, resolve them from the active workspace/worktree revision; after changing checkouts/worktrees, re-resolve them before further writes, and STOP for handoff or a new task if the authority source cannot be reconciled with the execution root.
+3. Read the files you'll be modifying — ALL of them
+4. Trace how they connect to other parts of the system
+5. Check `git log --oneline -10` for recent context
+6. Identify the "DO NOT TOUCH" boundary — things outside scope
+7. If a design doc, plan, or README exists — read it
 
 **For content tasks:**
 1. Research the topic — use web search to verify facts
