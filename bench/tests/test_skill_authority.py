@@ -34,3 +34,21 @@ def test_compiled_prompt_preserves_runtime_delivery_integrity_guard() -> None:
 
     assert "Runtime-delivery integrity guard" in compiled
     assert "not proof of delivered bytes" in compiled
+
+
+def test_approval_evidence_is_bound_to_material_call_arguments() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    assert "Approval-evidence binding" in skill
+    assert "exact material call parameters" in skill
+    assert "exposes only the tool name or omits material parameters" in skill
+    assert "material call arguments and effect scope" in sample
+    assert "tool-name-only permission evidence" in sample
+
+
+def test_compiled_prompt_preserves_approval_evidence_binding() -> None:
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+
+    assert "Approval-evidence binding" in compiled
+    assert "exact material call parameters" in compiled
