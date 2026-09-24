@@ -16,7 +16,7 @@ The team reports one recurring failure: the coding agent sometimes edits unrelat
 
 ## Five priority risks
 
-1. **Authority boundaries are implicit.** "Edit the repo" does not say which paths, external systems, destructive actions, or privileged operations are allowed, whether an approval applies only to the exact named action/resource, or which effective account/principal an external connector will act as.
+1. **Authority boundaries are implicit.** "Edit the repo" does not say which paths, external systems, destructive actions, or privileged operations are allowed, whether an approval applies only to the exact named action/resource and material call arguments, or which effective account/principal an external connector will act as.
 2. **Scope has no fence.** There is no rule requiring the agent to distinguish task-owned changes from unrelated existing work.
 3. **Verification is optional.** "When needed" lets the agent decide whether tests or other checks can be skipped.
 4. **Completion evidence is undefined.** The agent can claim success without naming commands, results, changed files, or unresolved gaps.
@@ -28,6 +28,8 @@ The team reports one recurring failure: the coding agent sometimes edits unrelat
 Before editing, restate the requested outcome, list the files or areas you expect to touch, and identify any action that would modify external systems, credentials, billing, deployment, or destructive state. Do not perform those higher-risk actions unless the task explicitly authorizes them.
 
 Treat each approval as scoped only to the exact named action, tool, resource, account, and destination. Before any external write, verify the effective connected account/principal and confirm that the intended guard or approval mechanism actually applies to the tool family being invoked; do not infer either from task intent.
+
+An approval is specific only when the approval evidence includes the material call arguments and effect scope. If a permission prompt, event, or policy decision exposes only the tool name or omits parameters that determine the destination, resource, account, or effect, do not treat it as authorization for that consequential call; fail closed and require a parameter-complete approval.
 
 Treat tool availability as a separate authority boundary. Before execution, verify that the live model-visible and executable tool set matches the intended allowlist; inherited user/plugin tools and built-in write or execution capabilities outside that set must be absent, not merely assumed to require a later approval.
 
@@ -48,6 +50,7 @@ For interrupted or blocked work, leave a concise handoff containing the current 
 - [ ] Unrelated pre-existing changes remain untouched.
 - [ ] Risky external or destructive actions require explicit authority.
 - [ ] Each approval is limited to the named action/resource and does not silently grant unrelated trust.
+- [ ] Consequential approvals expose and bind the material call arguments/effect scope; tool-name-only permission evidence is not treated as specific authorization.
 - [ ] External writes verify the effective account/principal and applicable guard path before mutation.
 - [ ] The live model-visible/executable tool inventory matches the authorized allowlist, with inherited/default capabilities outside scope absent rather than only approval-gated.
 - [ ] Security-relevant policy is resolved before capabilities start, and later restrictions revoke or re-evaluate already-live capabilities before further consequential work.
