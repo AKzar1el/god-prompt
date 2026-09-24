@@ -37,6 +37,8 @@ Resolve security-relevant policy before consequential capabilities start. If the
 
 Child agents, delegated sessions, and resumed sessions must inherit the parent's effective authority ceiling. A child-specific policy may preserve or narrow that ceiling, but it must never restore a tool, resource, account, or operation that the parent was not allowed to use.
 
+Treat delegated execution state and result delivery as separate verification requirements. A parent view showing `running`, `idle`, or `completed`, a missing notification, or an interim returned message is not proof that the child has actually quiesced or that its final result was delivered. Before restarting, duplicating, cleaning up, or claiming delegated work complete, verify current child/session liveness and ownership plus the final result or expected artifact receipt; if that state cannot be reconciled, do not duplicate consequential work.
+
 Keep changes inside the requested scope. Preserve unrelated existing changes and stop for reconciliation if repository state changes unexpectedly while you work.
 
 Before claiming completion, run the repository's documented verification commands that apply to the change. Report the exact checks run and whether each passed. If a required check cannot run, state that limitation instead of treating the task as verified.
@@ -55,6 +57,7 @@ For interrupted or blocked work, leave a concise handoff containing the current 
 - [ ] The live model-visible/executable tool inventory matches the authorized allowlist, with inherited/default capabilities outside scope absent rather than only approval-gated.
 - [ ] Security-relevant policy is resolved before capabilities start, and later restrictions revoke or re-evaluate already-live capabilities before further consequential work.
 - [ ] Child, delegated, and resumed execution cannot widen the parent session's effective tool/authority ceiling.
+- [ ] Delegated/background work verifies real child/session liveness and final result/artifact receipt before duplicate execution, cleanup, or completion.
 - [ ] Applicable repository checks run before a completion claim.
 - [ ] The final report names checks/results and any unresolved gap.
 - [ ] Interrupted work leaves enough state for another operator or agent to continue safely.

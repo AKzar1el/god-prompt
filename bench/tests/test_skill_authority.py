@@ -84,3 +84,13 @@ def test_compiled_prompt_preserves_effect_aware_retry_guard() -> None:
 
     assert "Effect-aware retry guard" in compiled
     assert "real postcondition or authoritative zero-effect state" in compiled
+
+
+def test_review_sample_verifies_delegated_liveness_and_result_receipt() -> None:
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    assert "delegated execution state and result delivery as separate verification requirements" in sample
+    assert "not proof that the child has actually quiesced" in sample
+    assert "verify current child/session liveness and ownership" in sample
+    assert "final result or expected artifact receipt" in sample
+    assert "before duplicate execution, cleanup, or completion" in sample
