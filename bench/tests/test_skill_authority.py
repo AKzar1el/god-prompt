@@ -110,3 +110,24 @@ def test_review_sample_verifies_delegated_liveness_and_result_receipt() -> None:
     assert "verify current child/session liveness and ownership" in sample
     assert "final result or expected artifact receipt" in sample
     assert "before duplicate execution, cleanup, or completion" in sample
+
+
+def test_user_reserved_manual_action_is_not_executed_in_parallel() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    assert "User-action reservation guard" in skill
+    assert "reserved to the user" in skill
+    assert "Do not race, duplicate" in skill
+    assert "re-read the affected state" in skill
+    assert "reserve that step to the user" in sample
+    assert "Do not execute it in parallel" in sample
+    assert "re-read the affected state" in sample
+
+
+def test_compiled_prompt_preserves_user_action_reservation_guard() -> None:
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+
+    assert "User-action reservation guard" in compiled
+    assert "reserved to the user" in compiled
+    assert "re-read the affected state" in compiled
