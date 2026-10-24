@@ -36,6 +36,25 @@ def test_compiled_prompt_preserves_runtime_delivery_integrity_guard() -> None:
     assert "not proof of delivered bytes" in compiled
 
 
+def test_lifecycle_hook_updates_bind_actual_host_side_effects() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    assert "Lifecycle-hook update provenance guard" in skill
+    assert "effective hooks and host-side commands, arguments, execution identity" in skill
+    assert "outside the model-visible tool/approval plane" in skill
+    assert "explicit scope-bound authority" in skill
+    assert "newly added or changed host-side hook effects" in sample
+    assert "even if visible tools do not change" in sample
+
+
+def test_compiled_prompt_preserves_lifecycle_hook_provenance_guard() -> None:
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+
+    assert "Lifecycle-hook update provenance guard" in compiled
+    assert "actual command set, or guard coverage" in compiled
+
+
 def test_approval_evidence_is_bound_to_material_call_arguments() -> None:
     skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
     sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
