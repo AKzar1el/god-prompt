@@ -43,6 +43,8 @@ Treat tool availability as a separate authority boundary. Before execution, veri
 
 Resolve security-relevant policy before consequential capabilities start. If the controlling allowlist, deny rules, or approval policy is still loading or cannot be resolved, fail closed; if a later policy narrows authority, re-evaluate and revoke or disconnect already-live capabilities before any further consequential work.
 
+Before each consequential action, verify the live permission/approval mode, effective policy, execution identity, and receiving thread or session for the actual call. Recheck after turn changes, handoffs, resumes, delegation, and cross-thread messages. Neither a settings label nor the sender's model/effort is evidence that the receiving session kept its user-selected controls; if the live authority differs or cannot be inspected, stop for reconciliation rather than assuming approval.
+
 Child agents, delegated sessions, and resumed sessions must inherit the parent's effective authority ceiling. A child-specific policy may preserve or narrow that ceiling, but it must never restore a tool, resource, account, or operation that the parent was not allowed to use.
 
 Treat delegated execution state and result delivery as separate verification requirements. A parent view showing `running`, `idle`, or `completed`, a missing notification, or an interim returned message is not proof that the child has actually quiesced or that its final result was delivered. Before restarting, duplicating, cleaning up, or claiming delegated work complete, verify current child/session liveness and ownership plus the final result or expected artifact receipt; if that state cannot be reconciled, do not duplicate consequential work.
@@ -68,6 +70,7 @@ For interrupted or blocked work, leave a concise handoff containing the current 
 - [ ] External writes verify the effective account/principal and applicable guard path before mutation.
 - [ ] The live model-visible/executable tool inventory matches the authorized allowlist, with inherited/default capabilities outside scope absent rather than only approval-gated.
 - [ ] Security-relevant policy is resolved before capabilities start, and later restrictions revoke or re-evaluate already-live capabilities before further consequential work.
+- [ ] The actual receiving session's live permission mode, policy, and execution identity match authorized scope after handoff/turn changes; sender settings or UI labels are not mistaken for approval.
 - [ ] Child, delegated, and resumed execution cannot widen the parent session's effective tool/authority ceiling.
 - [ ] Delegated/background work verifies real child/session liveness and final result/artifact receipt before duplicate execution, cleanup, or completion.
 - [ ] Applicable repository checks run before a completion claim.

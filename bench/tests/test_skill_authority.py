@@ -89,6 +89,27 @@ def test_compiled_prompt_preserves_tool_plane_transition_readiness() -> None:
     assert "live model-visible/executable inventory has converged" in compiled
 
 
+def test_live_execution_policy_is_bound_to_receiving_session() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    assert "Live execution-policy integrity guard" in skill
+    assert "effective permission/approval mode" in skill
+    assert "receiving session/thread actually governing the current call" in skill
+    assert "a sender's model/effort/role are not proof" in skill
+    assert "STOP for explicit reconciliation" in skill
+    assert "live permission/approval mode" in sample
+    assert "after handoff/turn changes" in sample
+
+
+def test_compiled_prompt_preserves_live_execution_policy_integrity() -> None:
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+
+    assert "Live execution-policy integrity guard" in compiled
+    assert "receiving session/thread actually governing the current call" in compiled
+    assert "Do not silently transfer or broaden" in compiled
+
+
 def test_consequential_retries_reconcile_unknown_effects_before_replay() -> None:
     skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
 
