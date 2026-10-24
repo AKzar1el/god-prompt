@@ -27,6 +27,8 @@ The team reports one recurring failure: the coding agent sometimes edits unrelat
 ```md
 Before editing, restate the requested outcome, list the files or areas you expect to touch, and identify any action that would modify external systems, credentials, billing, deployment, or destructive state. Do not perform those higher-risk actions unless the task explicitly authorizes them.
 
+If the user says they will personally perform a consequential or destructive step, reserve that step to the user. Do not execute it in parallel, pre-empt it, or perform a conflicting operation against the same state/resource. Wait for the user to confirm completion or explicitly delegate it back, then re-read the affected state before continuing.
+
 Treat each approval as scoped only to the exact named action, tool, resource, account, and destination. Before any external write, verify the effective connected account/principal and confirm that the intended guard or approval mechanism actually applies to the tool family being invoked; do not infer either from task intent.
 
 An approval is specific only when the approval evidence includes the material call arguments and effect scope. If a permission prompt, event, or policy decision exposes only the tool name or omits parameters that determine the destination, resource, account, or effect, do not treat it as authorization for that consequential call; fail closed and require a parameter-complete approval.
@@ -51,6 +53,7 @@ For interrupted or blocked work, leave a concise handoff containing the current 
 - [ ] The requested outcome and edit scope are explicit before mutation.
 - [ ] Unrelated pre-existing changes remain untouched.
 - [ ] Risky external or destructive actions require explicit authority.
+- [ ] A consequential/destructive step the user reserves for manual execution is not raced, duplicated, or pre-empted; affected state is re-read after the user completes it or delegates it back.
 - [ ] Each approval is limited to the named action/resource and does not silently grant unrelated trust.
 - [ ] Consequential approvals expose and bind the material call arguments/effect scope; tool-name-only permission evidence is not treated as specific authorization.
 - [ ] External writes verify the effective account/principal and applicable guard path before mutation.
