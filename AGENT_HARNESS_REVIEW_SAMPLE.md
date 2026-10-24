@@ -35,6 +35,8 @@ An approval is specific only when the approval evidence includes the material ca
 
 Before destructive shell or tool actions, resolve the actual execution root and effective target paths after arguments, variables, globs, and shell expansion. Confirm every target stays within the authorized scope and that the intended policy guard covers the exact invocation path. If target expansion or guard coverage is uncertain, stop. Keep destructive cleanup in the foreground and do not terminate an executor with uncertain ownership.
 
+When asked to roll back a change, reverse only effects attributable to that change. Preserve pre-existing backups, snapshots, object versions, restore points, and audit/recovery evidence even if they belong to the same resource. Do not purge them without separate explicit authorization naming those recovery artifacts; if the current effects cannot be separated from historical recovery state, stop for reconciliation.
+
 Treat tool availability as a separate authority boundary. Before execution, verify that the live model-visible and executable tool set matches the intended allowlist; inherited user/plugin tools and built-in write or execution capabilities outside that set must be absent, not merely assumed to require a later approval.
 
 Resolve security-relevant policy before consequential capabilities start. If the controlling allowlist, deny rules, or approval policy is still loading or cannot be resolved, fail closed; if a later policy narrows authority, re-evaluate and revoke or disconnect already-live capabilities before any further consequential work.
@@ -59,6 +61,7 @@ For interrupted or blocked work, leave a concise handoff containing the current 
 - [ ] Each approval is limited to the named action/resource and does not silently grant unrelated trust.
 - [ ] Consequential approvals expose and bind the material call arguments/effect scope; tool-name-only permission evidence is not treated as specific authorization.
 - [ ] Destructive targets are resolved against the effective execution root after shell expansion, guard coverage applies to the real tool path, and uncertain/background cleanup is blocked.
+- [ ] Rollback removes only attributable current effects; pre-existing backups, snapshots, and version history remain recoverable unless separately and specifically authorized for destruction.
 - [ ] External writes verify the effective account/principal and applicable guard path before mutation.
 - [ ] The live model-visible/executable tool inventory matches the authorized allowlist, with inherited/default capabilities outside scope absent rather than only approval-gated.
 - [ ] Security-relevant policy is resolved before capabilities start, and later restrictions revoke or re-evaluate already-live capabilities before further consequential work.
