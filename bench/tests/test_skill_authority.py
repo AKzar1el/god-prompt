@@ -131,3 +131,25 @@ def test_compiled_prompt_preserves_user_action_reservation_guard() -> None:
     assert "User-action reservation guard" in compiled
     assert "reserved to the user" in compiled
     assert "re-read the affected state" in compiled
+
+
+def test_effective_destructive_target_is_resolved_and_guarded() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    assert "Effective destructive-target guard" in skill
+    assert "actual execution root/worktree and effective targets" in skill
+    assert "after relevant argument, variable, glob, and shell/path expansion" in skill
+    assert "intended approval/policy guard covers that exact tool and execution path" in skill
+    assert "Keep destructive cleanup foreground and observable" in skill
+    assert "ownership remains uncertain" in skill
+    assert "resolve the actual execution root and effective target paths" in sample
+    assert "guard coverage is uncertain, stop" in sample
+
+
+def test_compiled_prompt_preserves_effective_destructive_target_guard() -> None:
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+
+    assert "Effective destructive-target guard" in compiled
+    assert "actual execution root/worktree and effective targets" in compiled
+    assert "If targets or guard coverage cannot be verified, STOP" in compiled
