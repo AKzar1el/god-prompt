@@ -79,6 +79,25 @@ def test_consequential_retries_reconcile_unknown_effects_before_replay() -> None
     assert "Retry/backoff is only for known-no-effect or replay-safe operations" in skill
 
 
+def test_rollback_does_not_destroy_preexisting_recovery_state() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    assert "Rollback-recovery preservation guard" in skill
+    assert "reverse only the minimum necessary scope" in skill
+    assert "pre-existing backups, snapshots, object version history" in skill
+    assert "separate, explicit target-specific authorization" in skill
+    assert "Rollback removes only attributable current effects" in sample
+    assert "unless separately and specifically authorized for destruction" in sample
+
+
+def test_compiled_prompt_preserves_rollback_recovery_guard() -> None:
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+
+    assert "Rollback-recovery preservation guard" in compiled
+    assert "pre-existing backups, snapshots, object version history" in compiled
+
+
 def test_compiled_prompt_preserves_effect_aware_retry_guard() -> None:
     compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
 
