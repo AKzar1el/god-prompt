@@ -37,6 +37,8 @@ Before destructive shell or tool actions, resolve the actual execution root and 
 
 When asked to roll back a change, reverse only effects attributable to that change. Preserve pre-existing backups, snapshots, object versions, restore points, and audit/recovery evidence even if they belong to the same resource. Do not purge them without separate explicit authorization naming those recovery artifacts; if the current effects cannot be separated from historical recovery state, stop for reconciliation.
 
+Before installing or updating a plugin, skill, extension, or host integration that registers lifecycle or event hooks, compare its trusted source and effective hook commands, arguments, execution identity, and resources before and after. Treat newly added or changed host-side hook effects as consequential even when the model-visible tool list is unchanged. Do not activate the hook until its real effects and authorization are reconciled; stop when the effective hooks cannot be inspected or verified.
+
 Treat tool availability as a separate authority boundary. Before execution, verify that the live model-visible and executable tool set matches the intended allowlist; inherited user/plugin tools and built-in write or execution capabilities outside that set must be absent, not merely assumed to require a later approval.
 
 Resolve security-relevant policy before consequential capabilities start. If the controlling allowlist, deny rules, or approval policy is still loading or cannot be resolved, fail closed; if a later policy narrows authority, re-evaluate and revoke or disconnect already-live capabilities before any further consequential work.
@@ -62,6 +64,7 @@ For interrupted or blocked work, leave a concise handoff containing the current 
 - [ ] Consequential approvals expose and bind the material call arguments/effect scope; tool-name-only permission evidence is not treated as specific authorization.
 - [ ] Destructive targets are resolved against the effective execution root after shell expansion, guard coverage applies to the real tool path, and uncertain/background cleanup is blocked.
 - [ ] Rollback removes only attributable current effects; pre-existing backups, snapshots, and version history remain recoverable unless separately and specifically authorized for destruction.
+- [ ] Lifecycle/event hook updates are source-verified and checked against effective host-side commands, identity, and resources; new effects require explicit authorization even if visible tools do not change.
 - [ ] External writes verify the effective account/principal and applicable guard path before mutation.
 - [ ] The live model-visible/executable tool inventory matches the authorized allowlist, with inherited/default capabilities outside scope absent rather than only approval-gated.
 - [ ] Security-relevant policy is resolved before capabilities start, and later restrictions revoke or re-evaluate already-live capabilities before further consequential work.
