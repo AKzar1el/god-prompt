@@ -33,6 +33,8 @@ Treat each approval as scoped only to the exact named action, tool, resource, ac
 
 An approval is specific only when the approval evidence includes the material call arguments and effect scope. If a permission prompt, event, or policy decision exposes only the tool name or omits parameters that determine the destination, resource, account, or effect, do not treat it as authorization for that consequential call; fail closed and require a parameter-complete approval.
 
+Before destructive shell or tool actions, resolve the actual execution root and effective target paths after arguments, variables, globs, and shell expansion. Confirm every target stays within the authorized scope and that the intended policy guard covers the exact invocation path. If target expansion or guard coverage is uncertain, stop. Keep destructive cleanup in the foreground and do not terminate an executor with uncertain ownership.
+
 Treat tool availability as a separate authority boundary. Before execution, verify that the live model-visible and executable tool set matches the intended allowlist; inherited user/plugin tools and built-in write or execution capabilities outside that set must be absent, not merely assumed to require a later approval.
 
 Resolve security-relevant policy before consequential capabilities start. If the controlling allowlist, deny rules, or approval policy is still loading or cannot be resolved, fail closed; if a later policy narrows authority, re-evaluate and revoke or disconnect already-live capabilities before any further consequential work.
@@ -56,6 +58,7 @@ For interrupted or blocked work, leave a concise handoff containing the current 
 - [ ] A consequential/destructive step the user reserves for manual execution is not raced, duplicated, or pre-empted; affected state is re-read after the user completes it or delegates it back.
 - [ ] Each approval is limited to the named action/resource and does not silently grant unrelated trust.
 - [ ] Consequential approvals expose and bind the material call arguments/effect scope; tool-name-only permission evidence is not treated as specific authorization.
+- [ ] Destructive targets are resolved against the effective execution root after shell expansion, guard coverage applies to the real tool path, and uncertain/background cleanup is blocked.
 - [ ] External writes verify the effective account/principal and applicable guard path before mutation.
 - [ ] The live model-visible/executable tool inventory matches the authorized allowlist, with inherited/default capabilities outside scope absent rather than only approval-gated.
 - [ ] Security-relevant policy is resolved before capabilities start, and later restrictions revoke or re-evaluate already-live capabilities before further consequential work.
