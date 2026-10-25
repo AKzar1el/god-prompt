@@ -331,3 +331,23 @@ def test_compiled_prompt_preserves_child_capability_readiness() -> None:
     assert "evidence from that actual child/session" in compiled
     assert "never fabricate a tool result" in compiled
     assert "Recheck after child session/model/tool-context changes" in compiled
+
+
+def test_delegated_result_origin_matches_dispatch() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+    for content in (skill, compiled):
+        assert "Delegated result-to-dispatch provenance" in content
+        assert "trusted dispatch/task receipt" in content
+        assert "actual child/session origin" in content
+        assert "independent task-scoped artifacts or postconditions" in content
+        assert "STOP dependent consequential actions" in content
+        assert "neither claim completion nor replay ambiguous work" in content
+
+
+def test_review_sample_rejects_cross_session_delegated_report() -> None:
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+    assert "dispatched task and actual child session" in sample
+    assert "unrelated concurrent session can return plausible prose" in sample
+    assert "independently inspect task-scoped artifacts or postconditions" in sample
+    assert "reconcile the real child before claiming completion or retrying" in sample
