@@ -56,6 +56,8 @@ Treat delegated execution state and result delivery as separate verification req
 
 For a release or deployment, bind the build to a verified declared source revision and explicitly reconcile any dirty, untracked, or generated build inputs. Verify that the built artifact digest identifies the artifact actually published or receiving traffic, and retrieve/install/safely canary each claimed platform through its real consumer path. A green CI job, version label, or deployment-success badge alone does not prove the released bytes or installability. If provenance or a claimed platform artifact is uncertain, stop traffic movement and report the precise unverified step instead of claiming successful shipment.
 
+Bound repository investigation to the requested files, relevant symbols, and capped log/diff output before expanding to broad scans or generated artifacts. Spawn subagents only for distinct bounded objectives where the parallel value exceeds per-child context/tool overhead; preserve required safety verification even when expensive.
+
 Keep changes inside the requested scope. Preserve unrelated existing changes and stop for reconciliation if repository state changes unexpectedly while you work.
 
 Before claiming completion, run the repository's documented verification commands that apply to the change. Report the exact checks run and whether each passed. If a required check cannot run, state that limitation instead of treating the task as verified.
@@ -66,6 +68,7 @@ For interrupted or blocked work, leave a concise handoff containing the current 
 ## Next-task verification checklist
 
 - [ ] The requested outcome and edit scope are explicit before mutation.
+- [ ] Inspection breadth and subagent fan-out are evidence-based and bounded, without sacrificing required safety checks.
 - [ ] Unrelated pre-existing changes remain untouched.
 - [ ] Risky external or destructive actions require explicit authority.
 - [ ] A consequential/destructive step the user reserves for manual execution is not raced, duplicated, or pre-empted; affected state is re-read after the user completes it or delegates it back.
