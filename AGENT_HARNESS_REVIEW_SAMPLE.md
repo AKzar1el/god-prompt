@@ -48,6 +48,8 @@ Before each consequential action, verify the live permission/approval mode, effe
 
 Child agents, delegated sessions, and resumed sessions must inherit the parent's effective authority ceiling. A child-specific policy may preserve or narrow that ceiling, but it must never restore a tool, resource, account, or operation that the parent was not allowed to use.
 
+Child agents must treat ancestor and peer session administration as a separate control-plane authority boundary. Do not archive, terminate, revoke, or reconfigure the coordinator or sibling merely because the API lists it or a self-target operation was rejected. Require explicit delegation for the exact action and target, verify session identity, and stop rather than redirecting the effect when authority is uncertain.
+
 Treat delegated execution state and result delivery as separate verification requirements. A parent view showing `running`, `idle`, or `completed`, a missing notification, or an interim returned message is not proof that the child has actually quiesced or that its final result was delivered. Before restarting, duplicating, cleaning up, or claiming delegated work complete, verify current child/session liveness and ownership plus the final result or expected artifact receipt; if that state cannot be reconciled, do not duplicate consequential work.
 
 For a release or deployment, bind the build to a verified declared source revision and explicitly reconcile any dirty, untracked, or generated build inputs. Verify that the built artifact digest identifies the artifact actually published or receiving traffic, and retrieve/install/safely canary each claimed platform through its real consumer path. A green CI job, version label, or deployment-success badge alone does not prove the released bytes or installability. If provenance or a claimed platform artifact is uncertain, stop traffic movement and report the precise unverified step instead of claiming successful shipment.
@@ -68,6 +70,7 @@ For interrupted or blocked work, leave a concise handoff containing the current 
 - [ ] A user-required draft/review checkpoint is completed and the exact downstream external effect is specifically authorized before execution; no premature send or publication.
 - [ ] Each approval is limited to the named action/resource and does not silently grant unrelated trust.
 - [ ] Consequential approvals expose and bind the material call arguments/effect scope; tool-name-only permission evidence is not treated as specific authorization.
+- [ ] Child agents do not administer ancestor or peer sessions without explicit action-and-target delegation; rejection of a self-target action is not authority to redirect it.
 - [ ] Destructive targets are resolved against the effective execution root after shell expansion, guard coverage applies to the real tool path, and uncertain/background cleanup is blocked.
 - [ ] Rollback removes only attributable current effects; pre-existing backups, snapshots, and version history remain recoverable unless separately and specifically authorized for destruction.
 - [ ] Lifecycle/event hook updates are source-verified and checked against effective host-side commands, identity, and resources; new effects require explicit authorization even if visible tools do not change.

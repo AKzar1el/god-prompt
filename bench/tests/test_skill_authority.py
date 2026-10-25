@@ -252,3 +252,23 @@ def test_compiled_prompt_preserves_user_review_checkpoint_guard() -> None:
     assert "User review/checkpoint guard" in compiled
     assert "hard precondition" in compiled
     assert "expressly authorizes the specific next action" in compiled
+
+def test_delegated_control_plane_never_redirects_to_parent_or_peer() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    assert "Delegated control-plane target guard" in skill
+    assert "ancestor, or peer session" in skill
+    assert "expressly delegates the exact action and session target" in skill
+    assert "A rejected self-target action is not permission" in skill
+    assert "STOP rather than redirecting" in skill
+    assert "ancestor and peer session administration" in sample
+    assert "stop rather than redirecting the effect" in sample
+
+
+def test_compiled_prompt_preserves_delegated_control_plane_scope() -> None:
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+
+    assert "Delegated control-plane target guard" in compiled
+    assert "parent/coordinator, ancestor, or peer session" in compiled
+    assert "A rejected self-target action is not permission" in compiled

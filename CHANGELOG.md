@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Restrict delegated control-plane actions against ancestor or peer sessions to exact, explicitly delegated targets and operations.
 - Honor user-defined review checkpoints before consequential external effects, preserving drafts until explicit action-specific approval.
 - Require live permission/policy and receiving-session authority reconciliation before consequential agent actions after handoffs, turn changes, or delegation.
 - Align the active GP-RS1 public end time with the operator-authorized 2026-09-21 15:15 Europe/Ljubljana continuation and gate the sponsor-now CTA until checkout payability is independently verified.
