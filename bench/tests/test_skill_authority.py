@@ -294,3 +294,19 @@ def test_compiled_prompt_preserves_mixed_notification_user_origin() -> None:
     assert "Mixed notification/user-turn provenance guard" in compiled
     assert "trusted channel/event-origin evidence" in compiled
     assert "STOP consequential effects" in compiled
+
+
+def test_bounded_inspection_and_delegation_economy() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    for content in (skill, compiled):
+        assert "Bounded inspection and delegation economy" in content
+        assert "cap output and prefer targeted searches" in content
+        assert "fixed per-child context/tool overhead" in content
+        assert "Never skip required safety, compliance, or correctness verification" in content
+
+    assert "Bound repository investigation to the requested files" in sample
+    assert "parallel value exceeds per-child context/tool overhead" in sample
+    assert "without sacrificing required safety checks" in sample
