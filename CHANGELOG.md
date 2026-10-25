@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Guard against merged task notifications swallowing genuine user turns without promoting untrusted notice text to user authority.
 - Restrict delegated control-plane actions against ancestor or peer sessions to exact, explicitly delegated targets and operations.
 - Honor user-defined review checkpoints before consequential external effects, preserving drafts until explicit action-specific approval.
 - Require live permission/policy and receiving-session authority reconciliation before consequential agent actions after handoffs, turn changes, or delegation.
