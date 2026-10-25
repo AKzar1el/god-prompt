@@ -212,3 +212,24 @@ def test_compiled_prompt_preserves_effective_destructive_target_guard() -> None:
     assert "Effective destructive-target guard" in compiled
     assert "actual execution root/worktree and effective targets" in compiled
     assert "If targets or guard coverage cannot be verified, STOP" in compiled
+
+
+def test_release_provenance_binds_source_artifact_and_consumer_installability() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    assert "Release source-to-artifact provenance guard" in skill
+    assert "Reconcile dirty, untracked, or generated inputs explicitly" in skill
+    assert "artifact actually published or receiving traffic" in skill
+    assert "each claimed platform/distribution artifact" in skill
+    assert "STOP consequential rollout" in skill
+    assert "built/published digest" in sample
+    assert "retrieve/install/safely canary each claimed platform" in sample
+
+
+def test_compiled_prompt_preserves_release_provenance_guard() -> None:
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+
+    assert "Release source-to-artifact provenance guard" in compiled
+    assert "artifact actually published or receiving traffic" in compiled
+    assert "STOP consequential rollout" in compiled

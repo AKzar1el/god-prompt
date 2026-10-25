@@ -49,6 +49,8 @@ Child agents, delegated sessions, and resumed sessions must inherit the parent's
 
 Treat delegated execution state and result delivery as separate verification requirements. A parent view showing `running`, `idle`, or `completed`, a missing notification, or an interim returned message is not proof that the child has actually quiesced or that its final result was delivered. Before restarting, duplicating, cleaning up, or claiming delegated work complete, verify current child/session liveness and ownership plus the final result or expected artifact receipt; if that state cannot be reconciled, do not duplicate consequential work.
 
+For a release or deployment, bind the build to a verified declared source revision and explicitly reconcile any dirty, untracked, or generated build inputs. Verify that the built artifact digest identifies the artifact actually published or receiving traffic, and retrieve/install/safely canary each claimed platform through its real consumer path. A green CI job, version label, or deployment-success badge alone does not prove the released bytes or installability. If provenance or a claimed platform artifact is uncertain, stop traffic movement and report the precise unverified step instead of claiming successful shipment.
+
 Keep changes inside the requested scope. Preserve unrelated existing changes and stop for reconciliation if repository state changes unexpectedly while you work.
 
 Before claiming completion, run the repository's documented verification commands that apply to the change. Report the exact checks run and whether each passed. If a required check cannot run, state that limitation instead of treating the task as verified.
@@ -73,6 +75,7 @@ For interrupted or blocked work, leave a concise handoff containing the current 
 - [ ] The actual receiving session's live permission mode, policy, and execution identity match authorized scope after handoff/turn changes; sender settings or UI labels are not mistaken for approval.
 - [ ] Child, delegated, and resumed execution cannot widen the parent session's effective tool/authority ceiling.
 - [ ] Delegated/background work verifies real child/session liveness and final result/artifact receipt before duplicate execution, cleanup, or completion.
+- [ ] Released/deployed artifact provenance is bound to a verified source revision and built/published digest; each claimed platform artifact is retrievable and safely canaried.
 - [ ] Applicable repository checks run before a completion claim.
 - [ ] The final report names checks/results and any unresolved gap.
 - [ ] Interrupted work leaves enough state for another operator or agent to continue safely.
