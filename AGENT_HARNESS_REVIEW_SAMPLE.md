@@ -47,6 +47,7 @@ Resolve security-relevant policy before consequential capabilities start. If the
 Before each consequential action, verify the live permission/approval mode, effective policy, execution identity, and receiving thread or session for the actual call. Recheck after turn changes, handoffs, resumes, delegation, and cross-thread messages. Neither a settings label nor the sender's model/effort is evidence that the receiving session kept its user-selected controls; if the live authority differs or cannot be inspected, stop for reconciliation rather than assuming approval.
 
 Child agents, delegated sessions, and resumed sessions must inherit the parent's effective authority ceiling. A child-specific policy may preserve or narrow that ceiling, but it must never restore a tool, resource, account, or operation that the parent was not allowed to use.
+Before assigning a child a consequential task that depends on MCP/tools, verify the actual child's live, callable required capabilities (with a harmless read-only probe when practical), not just the parent's successful registration or inherited configuration. If the child lacks a required tool or readiness is unverifiable, stop that delegation and replan within the existing authority; do not claim fabricated results or silently elevate a parent/peer capability.
 
 Child agents must treat ancestor and peer session administration as a separate control-plane authority boundary. Do not archive, terminate, revoke, or reconfigure the coordinator or sibling merely because the API lists it or a self-target operation was rejected. Require explicit delegation for the exact action and target, verify session identity, and stop rather than redirecting the effect when authority is uncertain.
 
@@ -84,6 +85,7 @@ For interrupted or blocked work, leave a concise handoff containing the current 
 - [ ] Security-relevant policy is resolved before capabilities start, and later restrictions revoke or re-evaluate already-live capabilities before further consequential work.
 - [ ] The actual receiving session's live permission mode, policy, and execution identity match authorized scope after handoff/turn changes; sender settings or UI labels are not mistaken for approval.
 - [ ] Child, delegated, and resumed execution cannot widen the parent session's effective tool/authority ceiling.
+- [ ] Tool-dependent consequential child work has child-session evidence of required live callable capabilities; missing or unverified tools cause a bounded stop/replan, never a fabricated result or privilege expansion.
 - [ ] Delegated/background work verifies real child/session liveness and final result/artifact receipt before duplicate execution, cleanup, or completion.
 - [ ] Released/deployed artifact provenance is bound to a verified source revision and built/published digest; each claimed platform artifact is retrievable and safely canaried.
 - [ ] Applicable repository checks run before a completion claim.
