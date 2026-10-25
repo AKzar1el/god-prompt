@@ -351,3 +351,22 @@ def test_review_sample_rejects_cross_session_delegated_report() -> None:
     assert "unrelated concurrent session can return plausible prose" in sample
     assert "independently inspect task-scoped artifacts or postconditions" in sample
     assert "reconcile the real child before claiming completion or retrying" in sample
+
+
+def test_delegated_artifact_materialization_integrity() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+    for content in (skill, compiled):
+        assert "Delegated artifact materialization integrity" in content
+        assert "empty placeholder, missing target, or unrelated transcript" in content
+        assert "independently verified alternate child artifact" in content
+        assert "STOP for reconciliation" in content
+        assert "do not fabricate results" in content
+
+
+def test_review_sample_checks_materialized_child_transcript() -> None:
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+    assert "advertised artifact path contains the expected nonempty task-scoped transcript" in sample
+    assert "zero-byte placeholder" in sample
+    assert "independently verified child/session-bound alternative" in sample
+    assert "stop downstream handoff or completion claims" in sample
