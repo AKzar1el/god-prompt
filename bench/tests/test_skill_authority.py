@@ -233,3 +233,22 @@ def test_compiled_prompt_preserves_release_provenance_guard() -> None:
     assert "Release source-to-artifact provenance guard" in compiled
     assert "artifact actually published or receiving traffic" in compiled
     assert "STOP consequential rollout" in compiled
+
+def test_user_review_checkpoint_blocks_premature_external_effect() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    assert "User review/checkpoint guard" in skill
+    assert "treat that checkpoint as a hard precondition" in skill
+    assert "do not perform the downstream effect" in skill
+    assert "broad task goal, earlier general approval, or completed draft" in skill
+    assert "requests a draft or preview for review" in sample
+    assert "no premature send or publication" in sample
+
+
+def test_compiled_prompt_preserves_user_review_checkpoint_guard() -> None:
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+
+    assert "User review/checkpoint guard" in compiled
+    assert "hard precondition" in compiled
+    assert "expressly authorizes the specific next action" in compiled
