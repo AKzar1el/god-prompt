@@ -310,3 +310,24 @@ def test_bounded_inspection_and_delegation_economy() -> None:
     assert "Bound repository investigation to the requested files" in sample
     assert "parallel value exceeds per-child context/tool overhead" in sample
     assert "without sacrificing required safety checks" in sample
+
+
+def test_delegated_child_requires_live_effective_capabilities() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+    assert "Delegated child capability readiness" in skill
+    assert "evidence from that actual child/session" in skill
+    assert "harmless read-only probe when practical" in skill
+    assert "inherited configuration, or successful child spawn are not proof" in skill
+    assert "never fabricate a tool result" in skill
+    assert "silently borrow a parent's or peer's privileges" in skill
+    assert "stop that delegated action" in skill
+    assert "actual child's live, callable required capabilities" in sample
+    assert "missing or unverified tools cause a bounded stop/replan" in sample
+
+def test_compiled_prompt_preserves_child_capability_readiness() -> None:
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+    assert "Delegated child capability readiness" in compiled
+    assert "evidence from that actual child/session" in compiled
+    assert "never fabricate a tool result" in compiled
+    assert "Recheck after child session/model/tool-context changes" in compiled
