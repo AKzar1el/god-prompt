@@ -410,3 +410,24 @@ def test_compiled_prompt_preserves_verification_alias_safety() -> None:
     assert "Verification workspace alias-safety guard" in compiled
     assert "Windows junctions/reparse points" in compiled
     assert "If live-source safety, alias traversal, or cleanup ownership cannot be verified, STOP" in compiled
+
+def test_user_directed_ship_artifact_scope_freeze() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    protocol = (ROOT / "references" / "01-PROTOCOLS.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    assert "User-directed ship-artifact scope freeze" in skill
+    assert "intervening side question" in skill
+    assert "unless the user explicitly amends the shipping scope" in skill
+    assert "material correctness or security problem" in skill
+    assert "Never trigger repeated delegated fact-checks solely through unrequested edits" in skill
+    assert "Freeze the user-specified ready artifact" in protocol
+    assert "side findings do not silently expand it" in sample
+
+
+def test_compiled_prompt_preserves_ship_scope_freeze() -> None:
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+
+    assert "User-directed ship-artifact scope freeze" in compiled
+    assert "Freeze the user-specified ready artifact" in compiled
+    assert "required check uncovers a material correctness or security problem" in compiled
