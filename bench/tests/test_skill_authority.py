@@ -431,3 +431,16 @@ def test_compiled_prompt_preserves_ship_scope_freeze() -> None:
     assert "User-directed ship-artifact scope freeze" in compiled
     assert "Freeze the user-specified ready artifact" in compiled
     assert "required check uncovers a material correctness or security problem" in compiled
+
+def test_resumed_agent_model_effort_profile_is_verified() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    for content in (skill, compiled):
+        assert "Resumed agent execution-profile fidelity" in content
+        assert "effective model and effort" in content
+        assert "retained agent name" in content
+        assert "never silently substitute models" in content
+    assert "A retained agent name is not proof" in sample
+    assert "stop quality- or cost-critical work" in sample
