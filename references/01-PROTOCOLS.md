@@ -246,6 +246,7 @@ Before coding, commit to a direction:
 3. No console errors in dev mode
 4. Review the diff: `git diff main` — sanity check everything
 5. No debug artifacts, TODOs, or commented-out code
+6. Freeze the user-specified ready artifact and its required verification/approval boundary; treat unrelated findings or side requests as follow-ups unless the user explicitly amends the shipping scope.
 
 ### Ship Execution
 

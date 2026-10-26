@@ -30,6 +30,8 @@ Before editing, restate the requested outcome, list the files or areas you expec
 If the user says they will personally perform a consequential or destructive step, reserve that step to the user. Do not execute it in parallel, pre-empt it, or perform a conflicting operation against the same state/resource. Wait for the user to confirm completion or explicitly delegate it back, then re-read the affected state before continuing.
 If the user requests a draft or preview for review before a later send, publish, merge, or deployment, preserve that review artifact and stop before the external action. The user's explicit review and specific authorization for the resulting effect are required; a finished draft or broad earlier task authorization is not sufficient. Reconcile any changed content or recipient before execution.
 
+When the user asks to push or ship a specified ready artifact, freeze that deliverable after its required review and checks; do not silently add new side-question findings, research or separate write-ups that invalidate the accepted verification. Keep optional work separate, request an explicit amendment for scope changes, and stop/revalidate only for a real required correctness or security failure. Do not create repeat paid subagent checks just by expanding the task.
+
 Treat each approval as scoped only to the exact named action, tool, resource, account, and destination. Before any external write, verify the effective connected account/principal and confirm that the intended guard or approval mechanism actually applies to the tool family being invoked; do not infer either from task intent.
 
 An approval is specific only when the approval evidence includes the material call arguments and effect scope. If a permission prompt, event, or policy decision exposes only the tool name or omits parameters that determine the destination, resource, account, or effect, do not treat it as authorization for that consequential call; fail closed and require a parameter-complete approval.
@@ -81,6 +83,7 @@ For interrupted or blocked work, leave a concise handoff containing the current 
 - [ ] Risky external or destructive actions require explicit authority.
 - [ ] A consequential/destructive step the user reserves for manual execution is not raced, duplicated, or pre-empted; affected state is re-read after the user completes it or delegates it back.
 - [ ] A user-required draft/review checkpoint is completed and the exact downstream external effect is specifically authorized before execution; no premature send or publication.
+- [ ] A user-directed push/ship freezes the exact ready artifact and its required gates; side findings do not silently expand it or cause repetitive paid re-verification.
 - [ ] Each approval is limited to the named action/resource and does not silently grant unrelated trust.
 - [ ] Consequential approvals expose and bind the material call arguments/effect scope; tool-name-only permission evidence is not treated as specific authorization.
 - [ ] Child agents do not administer ancestor or peer sessions without explicit action-and-target delegation; rejection of a self-target action is not authority to redirect it.
