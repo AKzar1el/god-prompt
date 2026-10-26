@@ -370,3 +370,23 @@ def test_review_sample_checks_materialized_child_transcript() -> None:
     assert "zero-byte placeholder" in sample
     assert "independently verified child/session-bound alternative" in sample
     assert "stop downstream handoff or completion claims" in sample
+
+
+def test_delegated_worktree_isolation_survives_resume_or_fails_closed() -> None:
+    for path in (ROOT / "SKILL.md", ROOT / "GodPrompt.md"):
+        content = path.read_text(encoding="utf-8")
+        assert "Delegated worktree isolation continuity" in content
+        assert "live child working directory" in content
+        assert "still-existing linked worktree, branch" in content
+        assert "the worktree has been removed" in content
+        assert "shared/main checkout" in content
+        assert "STOP write-capable resume" in content
+        assert "fresh isolated child only when authorized" in content
+
+
+def test_review_sample_rejects_resume_into_shared_checkout() -> None:
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+    assert "auto-removed worktree" in sample
+    assert "resumed child to execute in the shared/main checkout" in sample
+    assert "stop write-capable work" in sample
+    assert "reverified live cwd, linked worktree, branch and HEAD" in sample
