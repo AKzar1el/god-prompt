@@ -444,3 +444,17 @@ def test_resumed_agent_model_effort_profile_is_verified() -> None:
         assert "never silently substitute models" in content
     assert "A retained agent name is not proof" in sample
     assert "stop quality- or cost-critical work" in sample
+
+
+def test_nominal_read_only_probe_checks_real_side_effects() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    for artifact in (skill, compiled):
+        assert "Nominal read-only probe integrity" in artifact
+        assert "command may initialize configuration, lock, or backup files" in artifact
+        assert "A probe's name alone is not evidence" in artifact
+        assert "report readiness unverified" in artifact
+    assert "Such a test does not prove the live user's credentials" in sample
+    assert "a live configuration write needs exact authorization" in sample
