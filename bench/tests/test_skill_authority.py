@@ -458,3 +458,14 @@ def test_nominal_read_only_probe_checks_real_side_effects() -> None:
         assert "report readiness unverified" in artifact
     assert "Such a test does not prove the live user's credentials" in sample
     assert "a live configuration write needs exact authorization" in sample
+def test_direct_mcp_saved_result_identity_guard() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+    for content in (skill, compiled):
+        assert "Direct MCP result-artifact identity guard" in content
+        assert "same timestamp-derived path" in content
+        assert "call-distinct artifacts" in content
+        assert "do not replay an uncertain mutating call" in content
+    assert "single output file for different results" in sample
+    assert "Retry only a proven read-only/no-effect call serially" in sample
