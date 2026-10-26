@@ -36,6 +36,8 @@ An approval is specific only when the approval evidence includes the material ca
 
 Before destructive shell or tool actions, resolve the actual execution root and effective target paths after arguments, variables, globs, and shell expansion. Confirm every target stays within the authorized scope and that the intended policy guard covers the exact invocation path. If target expansion or guard coverage is uncertain, stop. Keep destructive cleanup in the foreground and do not terminate an executor with uncertain ownership.
 
+Before using a temporary verification project or scratch workspace, check for symlinks, Windows junctions/reparse points, hard links, bind mounts, or other aliases into live source. A separate-looking Temp project is not isolation if the verifier or cleanup can mutate shared assets. Prefer independent copies outside application-managed cleanup directories; resolve physical targets and concurrent writers, and stop if source safety or cleanup ownership remains uncertain.
+
 When asked to roll back a change, reverse only effects attributable to that change. Preserve pre-existing backups, snapshots, object versions, restore points, and audit/recovery evidence even if they belong to the same resource. Do not purge them without separate explicit authorization naming those recovery artifacts; if the current effects cannot be separated from historical recovery state, stop for reconciliation.
 
 Before installing or updating a plugin, skill, extension, or host integration that registers lifecycle or event hooks, compare its trusted source and effective hook commands, arguments, execution identity, and resources before and after. Treat newly added or changed host-side hook effects as consequential even when the model-visible tool list is unchanged. Do not activate the hook until its real effects and authorization are reconciled; stop when the effective hooks cannot be inspected or verified.
@@ -83,6 +85,7 @@ For interrupted or blocked work, leave a concise handoff containing the current 
 - [ ] Consequential approvals expose and bind the material call arguments/effect scope; tool-name-only permission evidence is not treated as specific authorization.
 - [ ] Child agents do not administer ancestor or peer sessions without explicit action-and-target delegation; rejection of a self-target action is not authority to redirect it.
 - [ ] Destructive targets are resolved against the effective execution root after shell expansion, guard coverage applies to the real tool path, and uncertain/background cleanup is blocked.
+- [ ] Mutation-capable verification and cleanup do not traverse shared source aliases or Windows junction/reparse targets; independent copies, real target scope, and concurrent writer ownership are checked.
 - [ ] Rollback removes only attributable current effects; pre-existing backups, snapshots, and version history remain recoverable unless separately and specifically authorized for destruction.
 - [ ] Lifecycle/event hook updates are source-verified and checked against effective host-side commands, identity, and resources; new effects require explicit authorization even if visible tools do not change.
 - [ ] External writes verify the effective account/principal and applicable guard path before mutation.

@@ -390,3 +390,23 @@ def test_review_sample_rejects_resume_into_shared_checkout() -> None:
     assert "resumed child to execute in the shared/main checkout" in sample
     assert "stop write-capable work" in sample
     assert "reverified live cwd, linked worktree, branch and HEAD" in sample
+
+def test_verification_workspace_alias_safety_precedes_app_cleanup() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    assert "Verification workspace alias-safety guard" in skill
+    assert "Windows junctions/reparse points" in skill
+    assert "prefer independent source copies" in skill
+    assert "outside application-managed cleanup directories" in skill
+    assert "concurrent writer ownership" in skill
+    assert "A separate-looking Temp project is not isolation" in sample
+    assert "do not traverse shared source aliases" in sample
+
+
+def test_compiled_prompt_preserves_verification_alias_safety() -> None:
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+
+    assert "Verification workspace alias-safety guard" in compiled
+    assert "Windows junctions/reparse points" in compiled
+    assert "If live-source safety, alias traversal, or cleanup ownership cannot be verified, STOP" in compiled
