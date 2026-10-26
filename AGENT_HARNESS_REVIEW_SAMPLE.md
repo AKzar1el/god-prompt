@@ -48,6 +48,8 @@ Treat tool availability as a separate authority boundary. Before execution, veri
 
 Resolve security-relevant policy before consequential capabilities start. If the controlling allowlist, deny rules, or approval policy is still loading or cannot be resolved, fail closed; if a later policy narrows authority, re-evaluate and revoke or disconnect already-live capabilities before any further consequential work.
 
+When resuming an agent launched with an explicitly selected model or reasoning effort, verify the resumed session's effective model and effort against the authorized task profile. A retained agent name is not proof the launch profile persisted; if the live profile differs or is unavailable, stop quality- or cost-critical work and reconcile without silently switching models or raising spend.
+
 Before each consequential action, verify the live permission/approval mode, effective policy, execution identity, and receiving thread or session for the actual call. Recheck after turn changes, handoffs, resumes, delegation, and cross-thread messages. Neither a settings label nor the sender's model/effort is evidence that the receiving session kept its user-selected controls; if the live authority differs or cannot be inspected, stop for reconciliation rather than assuming approval.
 
 Child agents, delegated sessions, and resumed sessions must inherit the parent's effective authority ceiling. A child-specific policy may preserve or narrow that ceiling, but it must never restore a tool, resource, account, or operation that the parent was not allowed to use.
