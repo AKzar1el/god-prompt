@@ -73,6 +73,18 @@ def test_compiled_prompt_preserves_approval_evidence_binding() -> None:
     assert "exact material call parameters" in compiled
 
 
+def test_unattended_runs_handoff_blocked_permission_without_bypassing() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+
+    for artifact in (skill, compiled):
+        assert "Unattended permission-handoff guard" in artifact
+        assert "NEEDS_HUMAN_APPROVAL" in artifact
+        assert "Never auto-approve, bypass the permission gate" in artifact
+        assert "host-held scheduler slot" in artifact
+        assert "Interactive approval workflows remain unchanged" in artifact
+
+
 def test_tool_plane_transitions_require_live_inventory_convergence() -> None:
     skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
 
