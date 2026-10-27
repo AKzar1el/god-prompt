@@ -94,6 +94,20 @@ def test_tool_plane_transitions_require_live_inventory_convergence() -> None:
     assert "stale, incomplete, or cannot be reconciled" in skill
 
 
+def test_project_configuration_effective_load_readiness() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    for artifact in (skill, compiled):
+        assert "Project configuration effective-load readiness" in artifact
+        assert "pre-warmed, relocated, or delegated session" in artifact
+        assert "effective instruction content/source and live governing policy" in artifact
+        assert "STOP for reload/reconciliation" in artifact
+    assert "pre-warmed or relocated session" in sample
+    assert "A configuration file on disk or accepted setting" in sample
+
+
 def test_compiled_prompt_preserves_tool_plane_transition_readiness() -> None:
     compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
 
