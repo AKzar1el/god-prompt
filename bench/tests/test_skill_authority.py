@@ -495,3 +495,13 @@ def test_direct_mcp_saved_result_identity_guard() -> None:
         assert "do not replay an uncertain mutating call" in content
     assert "single output file for different results" in sample
     assert "Retry only a proven read-only/no-effect call serially" in sample
+
+def test_provider_transition_message_lineage_is_issuer_scoped() -> None:
+    for path in (ROOT / "SKILL.md", ROOT / "GodPrompt.md"):
+        content = path.read_text(encoding="utf-8")
+        assert "Provider-transition message-lineage integrity" in content
+        assert "API endpoint/base URL" in content
+        assert "`previous_message_id`" in content
+        assert "never replay a foreign identifier" in content
+        assert "reconstruct continuity from authoritative transcript/state" in content
+        assert "do not loop on an invalid anchor" in content
