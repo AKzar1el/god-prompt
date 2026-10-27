@@ -108,6 +108,19 @@ def test_project_configuration_effective_load_readiness() -> None:
     assert "A configuration file on disk or accepted setting" in sample
 
 
+def test_effective_sandbox_startup_requires_live_isolation() -> None:
+    skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
+    compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
+    sample = (ROOT / "AGENT_HARNESS_REVIEW_SAMPLE.md").read_text(encoding="utf-8")
+
+    for artifact in (skill, compiled):
+        assert "Effective sandbox startup boundary" in artifact
+        assert "sandbox initialization and required bridge/proxy controls" in artifact
+        assert "configured `failIfUnavailable`" in artifact
+        assert "Never silently reroute unsandboxed" in artifact
+    assert "failed bridge startup with proxy authentication errors" in sample
+
+
 def test_compiled_prompt_preserves_tool_plane_transition_readiness() -> None:
     compiled = (ROOT / "GodPrompt.md").read_text(encoding="utf-8")
 

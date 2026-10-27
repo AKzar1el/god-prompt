@@ -54,6 +54,8 @@ Before each consequential action, verify the live permission/approval mode, effe
 
 At session bootstrap, including a pre-warmed or relocated session, separately confirm that project-scoped instructions, hooks, and permission controls were actually loaded into the receiving session before relying on them. A configuration file on disk or accepted setting is not effective-load evidence; when a safety-relevant guard is unverified, stop for reconciliation rather than assuming it was applied.
 
+When sandbox isolation is required, verify the actual shell execution context and bridge/proxy startup succeeded before a consequential command. A failIfUnavailable setting or SANDBOX_RUNTIME marker is insufficient evidence: a failed bridge startup with proxy authentication errors requires stopping the dependent work, preserving isolation and reporting host readiness as unverified rather than bypassing the sandbox.
+
 Child agents, delegated sessions, and resumed sessions must inherit the parent's effective authority ceiling. A child-specific policy may preserve or narrow that ceiling, but it must never restore a tool, resource, account, or operation that the parent was not allowed to use.
 A CLI `status` or `auth status` command can create configuration, lock, or backup files on its first run. Before treating a login/capability check as read-only, verify the actual command effects for that installed version or examine write behavior in an independent, non-aliased disposable location. Such a test does not prove the live user's credentials; a live configuration write needs exact authorization. If no safe probe is available, report readiness unverified rather than silently initialize user state.
 
