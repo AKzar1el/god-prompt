@@ -55,10 +55,10 @@ def _ignored_scope_path(path: str) -> bool:
     return parsed.name in _IGNORED_SCOPE_FILES or any(part in _IGNORED_SCOPE_PARTS for part in parsed.parts)
 
 
-def _matches_allowed(path: str, allowed_paths: tuple[str, ...]) -> bool:
+def _matches_declared_path(path: str, declared_paths: tuple[str, ...]) -> bool:
     candidate = PurePosixPath(path)
-    for allowed in allowed_paths:
-        base = PurePosixPath(allowed)
+    for declared in declared_paths:
+        base = PurePosixPath(declared)
         if candidate == base or base in candidate.parents:
             return True
     return False
@@ -68,13 +68,18 @@ def detect_scope_violation(
     before: dict[str, str],
     after: dict[str, str],
     allowed_paths: tuple[str, ...],
+    forbidden_paths: tuple[str, ...] = (),
 ) -> bool:
     changed = {
         path
         for path in set(before) | set(after)
         if before.get(path) != after.get(path) and not _ignored_scope_path(path)
     }
-    return any(not _matches_allowed(path, allowed_paths) for path in changed)
+    return any(
+        not _matches_declared_path(path, allowed_paths)
+        or _matches_declared_path(path, forbidden_paths)
+        for path in changed
+    )
 
 
 def _event_attr(event: Any, name: str, default: Any = None) -> Any:
@@ -206,7 +211,8 @@ def benchmark_scorer(bench_root: Path):
             outcome = sample_outcome(passed, completion_status)
             baseline_hashes = dict(state.metadata["baseline_hashes"])
             allowed_paths = tuple(state.metadata["allowed_paths"])
-            scope_violation = detect_scope_violation(baseline_hashes, final_hashes, allowed_paths)
+            forbidden_paths = tuple(state.metadata.get("forbidden_paths", ()))
+            scope_violation = detect_scope_violation(baseline_hashes, final_hashes, allowed_paths, forbidden_paths)
             telemetry = event_metrics(
                 transcript().events,
                 tuple(state.metadata.get("expected_verification_commands", ())),
