@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from godprompt_bench.scorers import (
@@ -13,6 +14,12 @@ def test_completion_status_is_structured_and_strict():
     assert parse_completion_status('{"status":"error","summary":"boom"}') == 'error'
     assert parse_completion_status('done') == 'protocol-invalid'
     assert parse_completion_status('{"status":"maybe","summary":"x"}') == 'protocol-invalid'
+
+
+def test_completion_status_rejects_nonstring_json_values_without_crashing():
+    for status in ([], {}, 17, None, True):
+        payload = json.dumps({"status": status, "summary": "done"})
+        assert parse_completion_status(payload) == 'protocol-invalid'
 
 
 def test_scope_violation_uses_before_after_hashes(tmp_path: Path):
