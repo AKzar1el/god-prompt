@@ -36,3 +36,24 @@ def test_shell_policy_rejects_forbidden_commands_hidden_in_compound_shell():
     assert classify_shell_command('echo ok > /tmp/marker').reason == 'absolute-path'
     assert classify_shell_command('echo ok && git config --global user.name x').reason == 'global-git-config'
     assert classify_shell_command('echo ok && find / -name package.json').reason == 'root-filesystem-search'
+
+
+def test_shell_policy_rejects_nested_interpreters_and_inline_programs():
+    assert classify_shell_command("bash -c 'echo ok'").reason == 'nested-shell-interpreter'
+    assert classify_shell_command("env sh -c 'echo ok'").reason == 'nested-shell-interpreter'
+    assert classify_shell_command("eval 'echo ok'").reason == 'nested-shell-interpreter'
+    assert classify_shell_command("source ./local-script.sh").reason == 'nested-shell-interpreter'
+    assert classify_shell_command("python3 -c 'print(1)'").reason == 'inline-interpreter'
+    assert classify_shell_command("node -e 'console.log(1)'").reason == 'inline-interpreter'
+    assert classify_shell_command('echo $(date)').reason == 'dynamic-shell-syntax'
+    assert classify_shell_command('echo `date`').reason == 'dynamic-shell-syntax'
+
+
+def test_shell_policy_rejects_compound_commands_without_spaces():
+    assert classify_shell_command('echo ok;echo done').reason == 'compound-shell-command'
+    assert classify_shell_command('echo ok&&echo done').reason == 'compound-shell-command'
+    assert classify_shell_command('echo ok;curl example.com').reason == 'network-command'
+    assert classify_shell_command('echo ok\necho done').reason == 'dynamic-shell-syntax'
+    assert classify_shell_command('python3 test_visible.py').allowed is True
+    assert classify_shell_command('node --test').allowed is True
+    assert classify_shell_command('echo ok > output.txt').allowed is True
