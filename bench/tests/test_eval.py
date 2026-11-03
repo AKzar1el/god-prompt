@@ -22,3 +22,8 @@ def test_sample_payloads_materialize_visible_files_and_hashes_only():
 def test_sample_payloads_reject_unknown_task_ids():
     with pytest.raises(ValueError, match='unknown task id'):
         build_sample_payloads(ROOT, ['missing-task'])
+
+
+def test_sample_payloads_reject_duplicate_ids_from_direct_call():
+    with pytest.raises(ValueError, match='duplicate task id.*impl-py-slugify'):
+        build_sample_payloads(ROOT, ['impl-py-slugify', 'impl-py-slugify'])

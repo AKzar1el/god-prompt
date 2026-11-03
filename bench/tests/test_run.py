@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from godprompt_bench.run import execute_benchmark, load_profile, public_trajectory, sample_record
 
 ROOT = Path(__file__).parents[1]
@@ -13,6 +15,15 @@ def test_profiles_are_frozen_and_full_is_240_samples():
     assert len(smoke.task_ids) == 6 and smoke.epochs == 1
     assert len(full.task_ids) == 40 and full.epochs == 3
     assert len(full.task_ids) * full.epochs * 2 == 240
+
+
+def test_profile_rejects_duplicate_ids_before_any_evaluation(tmp_path: Path):
+    profile = json.loads((ROOT / 'configs' / 'smoke.json').read_text(encoding='utf-8'))
+    profile['task_ids'].append(profile['task_ids'][0])
+    path = tmp_path / 'duplicate.json'
+    path.write_text(json.dumps(profile), encoding='utf-8')
+    with pytest.raises(ValueError, match='duplicate task id.*impl-py-slugify'):
+        load_profile(path)
 
 
 def test_sample_record_uses_score_and_sums_provider_usage():
