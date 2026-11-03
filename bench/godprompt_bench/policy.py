@@ -29,11 +29,34 @@ def _path_operand(token: str) -> str:
 
 def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     try:
-        tokens = list(command) if isinstance(command, list) else shlex.split(command)
+        if isinstance(command, list):
+            tokens = list(command)
+        else:
+            # Keep shell operators separate even when there is no whitespace.
+            lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
+            lexer.whitespace_split = True
+            tokens = list(lexer)
     except ValueError:
         return PolicyDecision(False, "invalid-shell-syntax")
     if not tokens:
         return PolicyDecision(False, "empty-command")
+
+    # The approver does not execute or parse nested programs. Deny mechanisms
+    # that can execute an entirely different command after this check.
+    if isinstance(command, str) and ("$(" in command or "`" in command or "\n" in command):
+        return PolicyDecision(False, "dynamic-shell-syntax")
+
+    shell_names = {"sh", "bash", "dash", "ash", "zsh", "ksh", "eval", "source"}
+    if any(PurePosixPath(token).name in shell_names for token in tokens):
+        return PolicyDecision(False, "nested-shell-interpreter")
+
+    inline_interpreters = {"python", "python3", "node", "perl", "ruby", "php"}
+    inline_flags = {"-c", "-e", "--eval", "--execute"}
+    for index, token in enumerate(tokens):
+        if PurePosixPath(token).name in inline_interpreters:
+            options = tokens[index + 1 : index + 5]
+            if any(option in inline_flags for option in options):
+                return PolicyDecision(False, "inline-interpreter")
 
     banned_network = {"curl", "wget", "ssh", "scp", "nc", "ncat", "telnet"}
     command_names = {PurePosixPath(token).name for token in tokens if token not in {"&&", "||", ";", "|"}}
@@ -59,6 +82,9 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
             return PolicyDecision(False, "home-path")
         if operand.startswith("../") or "/../" in operand or operand == "..":
             return PolicyDecision(False, "parent-path")
+
+    if any(token in {";", "&&", "||", "|", "&", "|&"} for token in tokens):
+        return PolicyDecision(False, "compound-shell-command")
 
     return PolicyDecision(True, "allowed")
 
