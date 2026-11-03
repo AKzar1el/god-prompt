@@ -26,6 +26,11 @@ def load_profile(path: Path) -> RunProfile:
     task_ids = raw["task_ids"]
     if not isinstance(task_ids, list) or not task_ids or not all(isinstance(v, str) for v in task_ids):
         raise ValueError("profile task_ids must be a non-empty list of strings")
+    seen_ids: set[str] = set()
+    for task_id in task_ids:
+        if task_id in seen_ids:
+            raise ValueError(f"duplicate task id in profile: {task_id}")
+        seen_ids.add(task_id)
     profile = RunProfile(
         name=str(raw["name"]),
         task_ids=tuple(task_ids),

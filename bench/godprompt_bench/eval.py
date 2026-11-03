@@ -13,6 +13,11 @@ def build_sample_payloads(bench_root: Path, task_ids: list[str] | tuple[str, ...
     validate_manifest(tasks)
     by_id = {task.id: task for task in tasks}
     selected_ids = list(task_ids) if task_ids is not None else [task.id for task in tasks]
+    seen_ids: set[str] = set()
+    for task_id in selected_ids:
+        if task_id in seen_ids:
+            raise ValueError(f"duplicate task id in sample selection: {task_id}")
+        seen_ids.add(task_id)
     missing = [task_id for task_id in selected_ids if task_id not in by_id]
     if missing:
         raise ValueError(f"unknown task id(s): {', '.join(missing)}")
