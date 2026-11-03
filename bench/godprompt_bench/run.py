@@ -6,6 +6,7 @@ import json
 import platform
 import subprocess
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 from importlib.metadata import version
 from pathlib import Path
@@ -42,6 +43,25 @@ def load_profile(path: Path) -> RunProfile:
     if min(profile.epochs, profile.max_messages, profile.max_time_seconds, profile.max_output_tokens) <= 0:
         raise ValueError("profile numeric limits must be positive")
     return profile
+
+
+def validate_sample_coverage(profile: RunProfile, records: list[SampleRecord]) -> None:
+    """Reject partial or duplicated Inspect results before publishing pass rates."""
+    expected = Counter(
+        (condition, task_id, epoch)
+        for condition in ("baseline", "godprompt")
+        for task_id in profile.task_ids
+        for epoch in range(1, profile.epochs + 1)
+    )
+    actual = Counter((record.condition, record.task_id, record.epoch) for record in records)
+    duplicates = sorted(key for key, count in actual.items() if count > 1)
+    missing = sorted(expected.keys() - actual.keys())
+    unexpected = sorted(actual.keys() - expected.keys())
+    if duplicates or missing or unexpected:
+        raise ValueError(
+            f"invalid benchmark sample coverage: duplicate={duplicates[:5]}; "
+            f"missing={missing[:5]}; unexpected={unexpected[:5]}"
+        )
 
 
 def _usage_totals(model_usage: Mapping[str, Any] | None) -> tuple[int | None, int | None]:
@@ -304,6 +324,8 @@ def execute_benchmark(
         for sample in log.samples or []:
             records.append(sample_record(sample, condition))
             trajectories.append(public_trajectory(sample, condition))
+
+    validate_sample_coverage(profile, records)
 
     manifest = build_manifest(
         repo_root,
