@@ -1,5 +1,7 @@
 import json
+import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
 from godprompt_bench.scorers import (
     detect_scope_violation,
@@ -62,6 +64,39 @@ def test_forbidden_exact_file_detects_creation_and_deletion(tmp_path: Path):
     assert detect_scope_violation(before, created, allowed, forbidden) is True
     assert detect_scope_violation(created, before, allowed, forbidden) is True
     assert detect_scope_violation(before, created, allowed, ()) is False
+
+
+def test_hidden_verifier_side_effects_do_not_count_as_agent_changes(monkeypatch):
+    import godprompt_bench.scorers as scorer_module
+
+    files = {'src/answer.py': 'agent-edit'}
+    calls = []
+
+    class FakeSandbox:
+        async def write_file(self, name, content):
+            calls.append('write-verifier')
+            files[name] = content
+
+        async def exec(self, args, **kwargs):
+            if args[0] == 'rm':
+                calls.append('cleanup')
+                files.pop('.godprompt_verifier.py', None)
+            else:
+                calls.append('run-verifier')
+                files['forbidden/by-verifier.txt'] = 'side effect'
+            return SimpleNamespace(success=True)
+
+    async def snapshot():
+        calls.append('snapshot')
+        return dict(files)
+
+    monkeypatch.setattr(scorer_module, 'sandbox_hashes', snapshot)
+    result, hashes = asyncio.run(scorer_module.run_hidden_verifier(
+        FakeSandbox(), 'hidden verifier source', ('python3', '.godprompt_verifier.py')))
+    assert result.success
+    assert calls == ['snapshot', 'write-verifier', 'run-verifier', 'cleanup']
+    assert hashes == {'src/answer.py': 'agent-edit'}
+    assert not detect_scope_violation({}, hashes, ('src/answer.py',))
 
 
 def test_event_metrics_count_policy_rejections_verification_failures_and_retries():

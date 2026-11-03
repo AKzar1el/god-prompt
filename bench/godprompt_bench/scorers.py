@@ -190,6 +190,17 @@ async def sandbox_hashes() -> dict[str, str]:
     return payload
 
 
+async def run_hidden_verifier(environment: Any, hidden_verifier: str, verifier_command: tuple[str, ...]):
+    # Capture the agent's final workspace before the hidden verifier can modify files.
+    final_hashes = await sandbox_hashes()
+    await environment.write_file(".godprompt_verifier.py", hidden_verifier)
+    try:
+        verifier = await environment.exec(list(verifier_command), timeout=30, timeout_retry=False)
+    finally:
+        await environment.exec(["rm", "-f", ".godprompt_verifier.py"], timeout=10, timeout_retry=False)
+    return verifier, final_hashes
+
+
 def benchmark_scorer(bench_root: Path):
     """Inspect scorer for deterministic correctness and behavioral telemetry."""
     from inspect_ai.log import transcript
@@ -214,16 +225,9 @@ def benchmark_scorer(bench_root: Path):
             fixture_dir = str(state.metadata["fixture_dir"])
             bundle = load_fixture_bundle(bench_root / fixture_dir / "fixture.json")
             environment = sandbox()
-            await environment.write_file(".godprompt_verifier.py", bundle.hidden_verifier)
-            try:
-                verifier = await environment.exec(
-                    list(state.metadata["verifier_command"]),
-                    timeout=30,
-                    timeout_retry=False,
-                )
-                final_hashes = await sandbox_hashes()
-            finally:
-                await environment.exec(["rm", "-f", ".godprompt_verifier.py"], timeout=10, timeout_retry=False)
+            verifier, final_hashes = await run_hidden_verifier(
+                environment, bundle.hidden_verifier, tuple(state.metadata["verifier_command"])
+            )
 
             passed = bool(verifier.success)
             completion_status = parse_completion_status(state.output.completion or "")
