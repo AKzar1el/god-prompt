@@ -135,10 +135,12 @@ def event_metrics(events: Iterable[Any], expected_commands: tuple[str, ...]) -> 
     }
 
 
-def sample_outcome(passed: bool, completion_status: str) -> dict[str, bool]:
+def sample_outcome(passed: bool, completion_status: str, *, scope_violation: bool = False) -> dict[str, bool]:
+    # A verifier success is not a valid pass if the solution changed prohibited files.
+    valid_pass = bool(passed) and not scope_violation
     return {
-        "passed": bool(passed),
-        "false_completion": completion_status == "complete" and not passed,
+        "passed": valid_pass,
+        "false_completion": completion_status == "complete" and not valid_pass,
     }
 
 
@@ -208,11 +210,11 @@ def benchmark_scorer(bench_root: Path):
 
             passed = bool(verifier.success)
             completion_status = parse_completion_status(state.output.completion or "")
-            outcome = sample_outcome(passed, completion_status)
             baseline_hashes = dict(state.metadata["baseline_hashes"])
             allowed_paths = tuple(state.metadata["allowed_paths"])
             forbidden_paths = tuple(state.metadata.get("forbidden_paths", ()))
             scope_violation = detect_scope_violation(baseline_hashes, final_hashes, allowed_paths, forbidden_paths)
+            outcome = sample_outcome(passed, completion_status, scope_violation=scope_violation)
             telemetry = event_metrics(
                 transcript().events,
                 tuple(state.metadata.get("expected_verification_commands", ())),
