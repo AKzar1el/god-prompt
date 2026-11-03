@@ -30,6 +30,15 @@ def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(redact_secrets(payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _spreadsheet_safe_cell(value: Any) -> Any:
+    """Keep untrusted text from becoming a formula when scores.csv is opened."""
+    if isinstance(value, str) and value.lstrip(" \t\r\n").startswith(("=", "+", "-", "@")):
+        return "'" + value
+    if isinstance(value, str) and value.startswith(("\t", "\r", "\n")):
+        return "'" + value
+    return value
+
+
 def export_run(
     output_dir: Path,
     manifest: dict[str, Any],
@@ -48,7 +57,7 @@ def export_run(
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for record in records_list:
-            writer.writerow(asdict(record))
+            writer.writerow({key: _spreadsheet_safe_cell(value) for key, value in asdict(record).items()})
 
     with (output_dir / "trajectories.jsonl").open("w", encoding="utf-8") as handle:
         for trajectory in trajectories_list:

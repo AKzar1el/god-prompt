@@ -1,5 +1,6 @@
 import csv
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from godprompt_bench.export import export_run
@@ -41,3 +42,23 @@ def test_export_overwrites_only_known_files_not_arbitrary_output(tmp_path: Path)
     marker.write_text('keep')
     export_run(tmp_path, {'run_id': 'r1'}, [record()], [])
     assert marker.read_text() == 'keep'
+
+
+def test_export_quotes_formula_like_csv_text_without_changing_numeric_fields(tmp_path: Path):
+    malicious = replace(record(), task_id='=HYPERLINK("https://example.invalid")', completion_status='  @SUM(1)', infrastructure_error='\t+1+1')
+    export_run(tmp_path, {'run_id': 'safe'}, [malicious], [])
+    with (tmp_path / 'scores.csv').open(newline='', encoding='utf-8') as handle:
+        row = next(csv.DictReader(handle))
+    assert row['task_id'] == "'" + malicious.task_id
+    assert row['completion_status'] == "'" + malicious.completion_status
+    assert row['infrastructure_error'] == "'" + malicious.infrastructure_error
+    assert row['epoch'] == '1'
+    assert row['passed'] == 'True'
+
+
+def test_export_leaves_normal_csv_text_unchanged(tmp_path: Path):
+    export_run(tmp_path, {'run_id': 'normal'}, [record()], [])
+    with (tmp_path / 'scores.csv').open(newline='', encoding='utf-8') as handle:
+        row = next(csv.DictReader(handle))
+    assert row['task_id'] == 'impl-py-slugify'
+    assert row['completion_status'] == 'complete'
