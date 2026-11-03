@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shlex
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
@@ -88,6 +89,22 @@ def _event_attr(event: Any, name: str, default: Any = None) -> Any:
     return getattr(event, name, default)
 
 
+def _is_verification_command(command: str, expected_commands: tuple[str, ...]) -> bool:
+    # Match an executable argv prefix, not commands printed as text or embedded in another command.
+    if not expected_commands or '\n' in command or '\r' in command:
+        return False
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=';&|<>')
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+        if any(token and all(char in ';&|<>' for char in token) for token in tokens):
+            return False
+        return any(tokens[:len(expected)] == expected for value in expected_commands
+                   if (expected := shlex.split(value)))
+    except ValueError:
+        return False
+
+
 def event_metrics(events: Iterable[Any], expected_commands: tuple[str, ...]) -> dict[str, int]:
     tool_misuse_count = 0
     verification_attempts = 0
@@ -120,7 +137,7 @@ def event_metrics(events: Iterable[Any], expected_commands: tuple[str, ...]) -> 
             continue
         cmd = arguments.get("cmd")
         command = " ".join(cmd) if isinstance(cmd, list) else str(cmd or "")
-        if any(expected in command for expected in expected_commands):
+        if _is_verification_command(command, expected_commands):
             verification_attempts += 1
         if command in failed_commands:
             retries += 1

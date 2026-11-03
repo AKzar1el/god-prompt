@@ -83,6 +83,24 @@ def test_event_metrics_count_policy_rejections_verification_failures_and_retries
     }
 
 
+def test_verification_attempts_ignore_echoed_commands_and_substrings():
+    from types import SimpleNamespace
+    from godprompt_bench.scorers import event_metrics
+
+    commands = (
+        "echo 'python3 test_visible.py'",
+        "printf 'python3 -m unittest'",
+        "python3 test_visible.py.backup",
+        "python3 -m unittest_fake",
+        "python3 test_visible.py && echo done",
+        "python3 test_visible.py",
+        "python3 -m unittest -v",
+    )
+    events = [SimpleNamespace(event='tool', function='bash', arguments={'cmd': command}, failed=False, error=None) for command in commands]
+    result = event_metrics(events, ('python3 test_visible.py', 'python3 -m unittest'))
+    assert result['verification_attempts'] == 2
+
+
 def test_sample_outcome_marks_false_completion_only_on_failed_claim():
     from godprompt_bench.scorers import sample_outcome
 
