@@ -35,6 +35,35 @@ def test_scope_violation_uses_before_after_hashes(tmp_path: Path):
     assert detect_scope_violation(before, after_forbidden, ('src/target.py',)) is True
 
 
+def test_explicit_forbidden_subtree_overrides_allowed_directory(tmp_path: Path):
+    (tmp_path / 'src' / 'private').mkdir(parents=True)
+    (tmp_path / 'src' / 'private-other').mkdir()
+    (tmp_path / 'src' / 'public.py').write_text('public')
+    (tmp_path / 'src' / 'private' / 'config.py').write_text('secret')
+    before = snapshot_hashes(tmp_path)
+    allowed = ('src',)
+    forbidden = ('src/private',)
+
+    (tmp_path / 'src' / 'public.py').write_text('changed')
+    (tmp_path / 'src' / 'private-other' / 'safe.py').write_text('ok')
+    assert detect_scope_violation(before, snapshot_hashes(tmp_path), allowed, forbidden) is False
+
+    (tmp_path / 'src' / 'private' / 'config.py').write_text('changed')
+    assert detect_scope_violation(before, snapshot_hashes(tmp_path), allowed, forbidden) is True
+
+
+def test_forbidden_exact_file_detects_creation_and_deletion(tmp_path: Path):
+    (tmp_path / 'src').mkdir()
+    allowed = ('src',)
+    forbidden = ('src/protected.py',)
+    before = snapshot_hashes(tmp_path)
+    (tmp_path / 'src' / 'protected.py').write_text('new')
+    created = snapshot_hashes(tmp_path)
+    assert detect_scope_violation(before, created, allowed, forbidden) is True
+    assert detect_scope_violation(created, before, allowed, forbidden) is True
+    assert detect_scope_violation(before, created, allowed, ()) is False
+
+
 def test_event_metrics_count_policy_rejections_verification_failures_and_retries():
     from types import SimpleNamespace
     from godprompt_bench.scorers import event_metrics
