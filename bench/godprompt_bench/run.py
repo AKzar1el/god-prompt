@@ -180,6 +180,22 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def fixture_fingerprints(bench_root: Path, task_ids: tuple[str, ...]) -> dict[str, Any]:
+    """Fingerprint selected fixture files, including their hidden verifier content."""
+    manifest = json.loads((bench_root / "tasks" / "manifest.json").read_text(encoding="utf-8"))
+    fixture_dirs = {item["id"]: item["fixture_dir"] for item in manifest}
+    hashes: dict[str, str] = {}
+    for task_id in sorted(task_ids):
+        if task_id not in fixture_dirs:
+            raise ValueError(f"missing fixture manifest entry for task {task_id}")
+        fixture_path = (bench_root / fixture_dirs[task_id] / "fixture.json").resolve()
+        if not fixture_path.is_relative_to(bench_root.resolve()) or not fixture_path.is_file():
+            raise ValueError(f"missing fixture file for task {task_id}")
+        hashes[task_id] = _sha256(fixture_path)
+    fingerprint = hashlib.sha256(json.dumps(hashes, sort_keys=True).encode("utf-8")).hexdigest()
+    return {"fixture_bundle_sha256": hashes, "fixture_bundles_sha256": fingerprint}
+
+
 def build_manifest(
     repo_root: Path,
     bench_root: Path,
@@ -221,6 +237,7 @@ def build_manifest(
         "benchmark_commit_sha": benchmark_commit_sha,
         "working_tree_dirty": working_tree_dirty,
         "task_manifest_sha256": _sha256(manifest_path),
+        **fixture_fingerprints(bench_root, profile.task_ids),
         "sandbox_dockerfile_sha256": _sha256(bench_root / "sandbox" / "Dockerfile"),
         "baseline_system_prompt_sha256": baseline_hash,
         "godprompt_system_prompt_sha256": godprompt_hash,
