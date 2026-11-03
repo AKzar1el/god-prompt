@@ -4,9 +4,41 @@ from types import SimpleNamespace
 
 import pytest
 
-from godprompt_bench.run import execute_benchmark, load_profile, public_trajectory, sample_record
+from godprompt_bench.run import execute_benchmark, load_profile, public_trajectory, sample_record, validate_sample_coverage
+from godprompt_bench.models import RunProfile
 
 ROOT = Path(__file__).parents[1]
+
+
+def test_sample_coverage_rejects_missing_duplicate_and_extra_samples():
+    profile = RunProfile(name='tiny', task_ids=('task-a', 'task-b'), epochs=2,
+                         max_messages=10, max_time_seconds=30, max_output_tokens=1000)
+    expected = [(condition, task_id, epoch)
+                for condition in ('baseline', 'godprompt')
+                for task_id in profile.task_ids for epoch in (1, 2)]
+    records = [SimpleNamespace(condition=c, task_id=t, epoch=e) for c, t, e in expected]
+    validate_sample_coverage(profile, records)
+
+    with pytest.raises(ValueError, match='missing.*godprompt.*task-b'):
+        validate_sample_coverage(profile, records[:-1])
+    with pytest.raises(ValueError, match='duplicate.*baseline.*task-a'):
+        validate_sample_coverage(profile, records + [records[0]])
+    with pytest.raises(ValueError, match='unexpected.*baseline.*task-a'):
+        validate_sample_coverage(profile, records + [SimpleNamespace(condition='baseline', task_id='task-a', epoch=3)])
+
+
+def test_execute_benchmark_rejects_incomplete_samples_before_export(monkeypatch, tmp_path):
+    import inspect_ai
+    import godprompt_bench.run as run_module
+
+    profile = load_profile(ROOT / 'configs' / 'smoke.json')
+    logs = [SimpleNamespace(metadata={'condition': condition}, eval=SimpleNamespace(model='mockllm/model'), samples=[])
+            for condition in ('baseline', 'godprompt')]
+    monkeypatch.setattr(run_module, 'build_task', lambda *args, **kwargs: object())
+    monkeypatch.setattr(inspect_ai, 'eval', lambda *args, **kwargs: logs)
+    monkeypatch.setattr(run_module, 'export_run', lambda *args, **kwargs: pytest.fail('must not publish incomplete benchmark'))
+    with pytest.raises(ValueError, match='missing'):
+        execute_benchmark(ROOT.parent, ROOT, profile, model='mockllm/model', output_dir=tmp_path)
 
 
 def test_profiles_are_frozen_and_full_is_240_samples():
@@ -79,6 +111,7 @@ def test_execute_benchmark_reads_actual_model_from_eval_spec(monkeypatch, tmp_pa
 
     monkeypatch.setattr(run_module, 'build_manifest', fake_manifest)
     monkeypatch.setattr(run_module, 'export_run', lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_module, 'validate_sample_coverage', lambda *args: None)
 
     result = execute_benchmark(
         ROOT.parent,
@@ -118,6 +151,7 @@ def test_execute_benchmark_captures_git_state_before_eval(monkeypatch, tmp_path)
     monkeypatch.setattr(run_module, '_git', fake_git)
     monkeypatch.setattr(inspect_ai, 'eval', fake_eval)
     monkeypatch.setattr(run_module, 'export_run', lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_module, 'validate_sample_coverage', lambda *args: None)
 
     execute_benchmark(
         ROOT.parent,
