@@ -82,6 +82,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: godprompt-bench-${{ inputs.profile }}-${{ github.run_id }}
-          path: bench/results
+          path: |
+            bench/results/*/manifest.json
+            bench/results/*/summary.json
+            bench/results/*/scores.csv
+            bench/results/*/trajectories.jsonl
           if-no-files-found: warn
           retention-days: 30

@@ -73,7 +73,13 @@ jobs:
         with:
           name: godprompt-bench-half-spike-${{ github.run_id }}
           path: |
-            bench/results-simulated-half
-            bench/results-real-smoke
+            bench/results-simulated-half/*/manifest.json
+            bench/results-simulated-half/*/summary.json
+            bench/results-simulated-half/*/scores.csv
+            bench/results-simulated-half/*/trajectories.jsonl
+            bench/results-real-smoke/*/manifest.json
+            bench/results-real-smoke/*/summary.json
+            bench/results-real-smoke/*/scores.csv
+            bench/results-real-smoke/*/trajectories.jsonl
           if-no-files-found: warn
           retention-days: 7
