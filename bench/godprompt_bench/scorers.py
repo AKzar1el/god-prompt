@@ -25,7 +25,7 @@ def parse_completion_status(text: str) -> str:
         return "protocol-invalid"
     status = payload.get("status")
     summary = payload.get("summary")
-    if status not in _ALLOWED_STATUSES or not isinstance(summary, str) or not summary.strip():
+    if not isinstance(status, str) or status not in _ALLOWED_STATUSES or not isinstance(summary, str) or not summary.strip():
         return "protocol-invalid"
     return status
 
