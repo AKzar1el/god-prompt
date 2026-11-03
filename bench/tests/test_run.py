@@ -4,10 +4,41 @@ from types import SimpleNamespace
 
 import pytest
 
-from godprompt_bench.run import execute_benchmark, load_profile, public_trajectory, sample_record, validate_sample_coverage
+from godprompt_bench.run import execute_benchmark, load_profile, public_trajectory, sample_record, validate_sample_coverage, fixture_fingerprints
 from godprompt_bench.models import RunProfile
 
 ROOT = Path(__file__).parents[1]
+
+
+def test_fixture_fingerprints_cover_selected_bundles_and_hidden_verifiers(tmp_path: Path):
+    tasks = tmp_path / 'tasks'
+    tasks.mkdir()
+    manifest = [
+        {'id': 'task-b', 'fixture_dir': 'tasks/b'},
+        {'id': 'task-a', 'fixture_dir': 'tasks/a'},
+    ]
+    (tasks / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+    for name in ('a', 'b'):
+        directory = tasks / name
+        directory.mkdir()
+        (directory / 'fixture.json').write_text(json.dumps({'hidden_verifier': f'check {name}', 'files': {'x': '1'}}), encoding='utf-8')
+
+    first = fixture_fingerprints(tmp_path, ('task-a', 'task-b'))
+    reverse = fixture_fingerprints(tmp_path, ('task-b', 'task-a'))
+    assert first == reverse
+    assert set(first['fixture_bundle_sha256']) == {'task-a', 'task-b'}
+    assert all(len(value) == 64 for value in first['fixture_bundle_sha256'].values())
+    assert len(first['fixture_bundles_sha256']) == 64
+    assert 'check a' not in repr(first)
+
+    (tasks / 'a' / 'fixture.json').write_text(json.dumps({'hidden_verifier': 'changed secret verifier', 'files': {'x': '1'}}), encoding='utf-8')
+    changed = fixture_fingerprints(tmp_path, ('task-a', 'task-b'))
+    assert changed['fixture_bundle_sha256']['task-a'] != first['fixture_bundle_sha256']['task-a']
+    assert changed['fixture_bundle_sha256']['task-b'] == first['fixture_bundle_sha256']['task-b']
+    assert changed['fixture_bundles_sha256'] != first['fixture_bundles_sha256']
+
+    with pytest.raises(ValueError, match='missing fixture'):
+        fixture_fingerprints(tmp_path, ('task-unknown',))
 
 
 def test_sample_coverage_rejects_missing_duplicate_and_extra_samples():
