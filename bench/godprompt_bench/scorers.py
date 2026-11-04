@@ -168,7 +168,7 @@ for root, dirs, files in os.walk("."):
     dirs[:] = sorted(d for d in dirs if d not in ignored_parts and d != ".git")
     for name in sorted(files):
         rel = os.path.relpath(os.path.join(root, name), ".").replace(os.sep, "/")
-        if any(part in ignored_parts for part in rel.split("/")):
+        if any(part in ignored_parts for part in rel.split("/")) or os.path.islink(rel):
             continue
         with open(rel, "rb") as fh:
             out[rel] = hashlib.sha256(fh.read()).hexdigest()
