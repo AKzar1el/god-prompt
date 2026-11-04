@@ -3,7 +3,7 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
-from godprompt_bench.export import export_run
+from godprompt_bench.export import export_run, redact_secrets
 from godprompt_bench.models import SampleRecord
 
 
@@ -87,3 +87,28 @@ def test_public_artifacts_redact_credentials_embedded_in_text_values(tmp_path: P
             assert secret not in text, (name, secret)
     assert '[REDACTED]' in (tmp_path / 'scores.csv').read_text(encoding='utf-8')
     assert 'failed with token=' in (tmp_path / 'scores.csv').read_text(encoding='utf-8')
+
+
+def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: Path):
+    # All values are made-up placeholders, not credentials; plain text must still be sanitized.
+    entries = (
+        ('OPENAI_API_KEY', 'FAKE_OPENAI_VALUE_123'),
+        ('ANTHROPIC_API_KEY', 'FAKE_ANTHROPIC_VALUE_234'),
+        ('AWS_SECRET_ACCESS_KEY', 'FAKE_AWS_VALUE_345'),
+        ('POSTGRES_PASSWORD', 'FAKE_DATABASE_VALUE_456'),
+        ('CLOUDFLARE_API_TOKEN', 'FAKE_CLOUDFLARE_VALUE_567'),
+    )
+    text = ' '.join(f'{key}={value}' for key, value in entries)
+    export_run(
+        tmp_path,
+        {'run_id': 'synthetic-only', 'note': text},
+        [replace(record(), infrastructure_error=text)],
+        [{'events': [{'output': text}]}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        assert '[REDACTED]' in exported
+        for key, value in entries:
+            assert value not in exported, (name, key)
+            assert key in exported
+    assert redact_secrets('USER_NAME=example TOKENIZER=bert') == 'USER_NAME=example TOKENIZER=bert'
