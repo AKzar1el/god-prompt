@@ -14,9 +14,12 @@ def _rate(numerator: int, denominator: int) -> float | None:
 def _summarize(records: list[SampleRecord]) -> dict[str, int | float | None]:
     model_records = [record for record in records if record.infrastructure_error is None]
     latencies = [record.latency_seconds for record in model_records if record.latency_seconds is not None]
-    # Also correct historic records whose pass flag predates scope-aware scoring.
+    # Correct historic records whose stored outcome flags predate scope-aware scoring.
     passed = sum(record.passed and not record.scope_violation for record in model_records)
-    false_completions = sum(record.false_completion for record in model_records)
+    false_completions = sum(
+        record.completion_status == "complete" and (not record.passed or record.scope_violation)
+        for record in model_records
+    )
     scope_violations = sum(record.scope_violation for record in model_records)
     return {
         "samples": len(records),
