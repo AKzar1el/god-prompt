@@ -77,3 +77,28 @@ def test_shell_policy_allows_harmless_command_names_as_literal_output():
     assert classify_shell_command('echo curl > /tmp/output').reason == 'absolute-path'
     assert classify_shell_command('env bash -c true').reason == 'nested-shell-interpreter'
     assert classify_shell_command('python3 -c pass').reason == 'inline-interpreter'
+
+
+def test_shell_policy_rejects_split_string_env_and_delayed_inline_programs():
+    # Only classify these payloads; never execute them.
+    for command in (
+        "env -S 'sh -c whoami'",
+        "env --split-string='bash -c whoami'",
+        "env -i -S 'sh -c whoami'",
+        "echo ok && env -S 'sh -c whoami'",
+        "env -S 'sh -c whoami' || echo denied",
+        "python3 -I -B -q -W ignore -c 'print(1)'",
+        "node --no-warnings --trace-uncaught --input-type=commonjs --title=x --eval 'console.log(1)'",
+        "python3 -I -B -q -W ignore -cprint(1)",
+        "node --no-warnings --eval=console.log(1)",
+    ):
+        assert not classify_shell_command(command).allowed, command
+
+    for command in (
+        'python3 -I -B test_visible.py',
+        'python3 test_visible.py -c',
+        'node script.js --eval',
+        'node --test',
+        'echo env -S',
+    ):
+        assert classify_shell_command(command).allowed, command
