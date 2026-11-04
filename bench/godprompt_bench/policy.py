@@ -111,7 +111,8 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
         if operand.startswith("../") or "/../" in operand or operand == "..":
             return PolicyDecision(False, "parent-path")
 
-    if any(token in {";", "&&", "||", "|", "&", "|&", "(", ")"} for token in tokens):
+    if any(token in {";", "&&", "||", "|", "&", "|&"} or (token and not token.strip("()"))
+           for token in tokens):
         return PolicyDecision(False, "compound-shell-command")
 
     return PolicyDecision(True, "allowed")

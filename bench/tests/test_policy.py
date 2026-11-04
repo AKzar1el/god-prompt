@@ -111,6 +111,8 @@ def test_shell_policy_rejects_subshell_grouping_without_running_payloads():
         '(python3 -c pass)',
         '(echo ok)',
         'echo ok && (curl https://example.invalid)',
+        '(( 1 + 1 ))',
+        '((echo ok))',
     ):
         assert not classify_shell_command(command).allowed, command
 
