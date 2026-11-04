@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from dataclasses import dataclass
 
@@ -65,7 +65,16 @@ def load_manifest(path: Path) -> list[TaskSpec]:
 
 def _validate_relative(path: str, field: str, task_id: str) -> None:
     parsed = PurePosixPath(path)
-    if parsed.is_absolute() or ".." in parsed.parts:
+    windows = PureWindowsPath(path)
+    # Fixture paths use POSIX separators; backslashes can escape the root on Windows.
+    if (
+        parsed == PurePosixPath(".")
+        or parsed.is_absolute()
+        or ".." in parsed.parts
+        or "\\" in path
+        or windows.drive
+        or windows.root
+    ):
         raise ValueError(f"{task_id}: {field} must be a safe relative path")
 
 
