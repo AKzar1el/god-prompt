@@ -68,13 +68,19 @@ jobs:
         run: docker compose -f bench/sandbox/compose.yaml build
 
       - name: Run benchmark
+        env:
+          BENCH_PROFILE: ${{ inputs.profile }}
+          BENCH_MODEL: ${{ inputs.model }}
+          BENCH_SEED: ${{ inputs.seed }}
+          BENCH_REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+          BENCH_REASONING_MODE: ${{ inputs.reasoning_mode }}
         run: |
           python -m godprompt_bench.run \
-            --profile '${{ inputs.profile }}' \
-            --model '${{ inputs.model }}' \
-            --seed '${{ inputs.seed }}' \
-            --reasoning-effort '${{ inputs.reasoning_effort }}' \
-            --reasoning-mode '${{ inputs.reasoning_mode }}' \
+            --profile "$BENCH_PROFILE" \
+            --model "$BENCH_MODEL" \
+            --seed "$BENCH_SEED" \
+            --reasoning-effort "$BENCH_REASONING_EFFORT" \
+            --reasoning-mode "$BENCH_REASONING_MODE" \
             --output bench/results
 
       - name: Upload benchmark artifacts
