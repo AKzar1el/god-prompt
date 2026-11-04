@@ -102,3 +102,18 @@ def test_shell_policy_rejects_split_string_env_and_delayed_inline_programs():
         'echo env -S',
     ):
         assert classify_shell_command(command).allowed, command
+
+
+def test_shell_policy_rejects_subshell_grouping_without_running_payloads():
+    for command in (
+        '(curl https://example.invalid)',
+        '(bash -c whoami)',
+        '(python3 -c pass)',
+        '(echo ok)',
+        'echo ok && (curl https://example.invalid)',
+    ):
+        assert not classify_shell_command(command).allowed, command
+
+    # Quoted parentheses remain ordinary literal output, not shell grouping.
+    assert classify_shell_command('echo "(curl)"').allowed
+    assert classify_shell_command("printf '%s' '(bash)'").allowed
