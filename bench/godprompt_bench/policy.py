@@ -46,30 +46,39 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     if isinstance(command, str) and ("$(" in command or "`" in command or "\n" in command):
         return PolicyDecision(False, "dynamic-shell-syntax")
 
+    # echo/printf render arguments as data; an argument named "curl" or "bash"
+    # is not a command. Keep the full scan for every command containing shell
+    # control operators so a real chained command can never be overlooked.
+    literal_output = (
+        tokens[0] in {"echo", "printf"}
+        and not any(token in {";", "&&", "||", "|", "&", "|&"} for token in tokens)
+    )
+    executable_tokens = tokens[:1] if literal_output else tokens
+
     shell_names = {"sh", "bash", "dash", "ash", "zsh", "ksh", "eval", "source"}
-    if any(PurePosixPath(token).name in shell_names for token in tokens):
+    if any(PurePosixPath(token).name in shell_names for token in executable_tokens):
         return PolicyDecision(False, "nested-shell-interpreter")
 
     inline_interpreters = {"python", "python3", "node", "perl", "ruby", "php"}
     inline_flags = {"-c", "-e", "--eval", "--execute"}
-    for index, token in enumerate(tokens):
+    for index, token in enumerate(executable_tokens):
         if PurePosixPath(token).name in inline_interpreters:
-            options = tokens[index + 1 : index + 5]
+            options = executable_tokens[index + 1 : index + 5]
             if any(option in inline_flags for option in options):
                 return PolicyDecision(False, "inline-interpreter")
 
     banned_network = {"curl", "wget", "ssh", "scp", "nc", "ncat", "telnet"}
-    command_names = {PurePosixPath(token).name for token in tokens if token not in {"&&", "||", ";", "|"}}
+    command_names = {PurePosixPath(token).name for token in executable_tokens if token not in {"&&", "||", ";", "|"}}
     if command_names & banned_network:
         return PolicyDecision(False, "network-command")
 
-    for index, token in enumerate(tokens):
+    for index, token in enumerate(executable_tokens):
         executable = PurePosixPath(token).name
-        if executable == "git" and index + 2 < len(tokens):
-            tail = tokens[index + 1 :]
+        if executable == "git" and index + 2 < len(executable_tokens):
+            tail = executable_tokens[index + 1 :]
             if tail and tail[0] == "config" and "--global" in tail:
                 return PolicyDecision(False, "global-git-config")
-        if executable == "find" and index + 1 < len(tokens) and tokens[index + 1] == "/":
+        if executable == "find" and index + 1 < len(executable_tokens) and executable_tokens[index + 1] == "/":
             return PolicyDecision(False, "root-filesystem-search")
 
     for token in tokens[1:]:

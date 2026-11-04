@@ -57,3 +57,23 @@ def test_shell_policy_rejects_compound_commands_without_spaces():
     assert classify_shell_command('python3 test_visible.py').allowed is True
     assert classify_shell_command('node --test').allowed is True
     assert classify_shell_command('echo ok > output.txt').allowed is True
+
+
+def test_shell_policy_allows_harmless_command_names_as_literal_output():
+    for command in (
+        'echo curl',
+        'echo bash',
+        'echo python3',
+        'printf %s wget',
+        'printf %s node',
+        'echo git config --global',
+    ):
+        assert classify_shell_command(command).allowed is True, command
+
+    # Literal output never excuses a real second command or dynamic execution.
+    assert classify_shell_command('echo curl;curl https://example.com').reason == 'network-command'
+    assert classify_shell_command('printf %s bash && bash -c true').reason == 'nested-shell-interpreter'
+    assert classify_shell_command('echo $(curl example.com)').reason == 'dynamic-shell-syntax'
+    assert classify_shell_command('echo curl > /tmp/output').reason == 'absolute-path'
+    assert classify_shell_command('env bash -c true').reason == 'nested-shell-interpreter'
+    assert classify_shell_command('python3 -c pass').reason == 'inline-interpreter'
