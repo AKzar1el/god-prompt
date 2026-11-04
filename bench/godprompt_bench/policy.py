@@ -33,7 +33,7 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
             tokens = list(command)
         else:
             # Keep shell operators separate even when there is no whitespace.
-            lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
+            lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>()")
             lexer.whitespace_split = True
             tokens = list(lexer)
     except ValueError:
@@ -111,7 +111,8 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
         if operand.startswith("../") or "/../" in operand or operand == "..":
             return PolicyDecision(False, "parent-path")
 
-    if any(token in {";", "&&", "||", "|", "&", "|&"} for token in tokens):
+    if any(token in {";", "&&", "||", "|", "&", "|&"} or (token and not token.strip("()"))
+           for token in tokens):
         return PolicyDecision(False, "compound-shell-command")
 
     return PolicyDecision(True, "allowed")
