@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from godprompt_bench.scorers import (
     detect_scope_violation,
     parse_completion_status,
@@ -88,6 +90,30 @@ def test_agent_created_verifier_named_files_are_visible_to_scope_checks(tmp_path
         cwd=tmp_path, capture_output=True, text=True, check=True,
     )
     assert json.loads(sandbox_snapshot.stdout) == after
+
+
+def test_sandbox_hashes_do_not_follow_file_symlinks_outside_workspace(tmp_path: Path):
+    from godprompt_bench.scorers import _SANDBOX_HASH_SCRIPT
+
+    workspace = tmp_path / 'workspace'
+    workspace.mkdir()
+    (workspace / 'regular.txt').write_text('workspace content')
+    external = tmp_path / 'outside.txt'
+    external.write_text('harmless fixture outside the sandbox workspace')
+    try:
+        (workspace / 'alias.txt').symlink_to(external)
+    except (OSError, NotImplementedError):
+        pytest.skip('file symlinks unavailable on this platform')
+
+    # The local snapshot already skips symlinks. The sandbox must agree and
+    # must not open the file target outside its workspace.
+    expected = snapshot_hashes(workspace)
+    assert set(expected) == {'regular.txt'}
+    snapshot = subprocess.run(
+        [sys.executable, '-c', _SANDBOX_HASH_SCRIPT],
+        cwd=workspace, capture_output=True, text=True, check=True,
+    )
+    assert json.loads(snapshot.stdout) == expected
 
 
 def test_hidden_verifier_side_effects_do_not_count_as_agent_changes(monkeypatch):
