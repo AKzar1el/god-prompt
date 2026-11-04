@@ -1,5 +1,7 @@
 import json
 import asyncio
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -64,6 +66,28 @@ def test_forbidden_exact_file_detects_creation_and_deletion(tmp_path: Path):
     assert detect_scope_violation(before, created, allowed, forbidden) is True
     assert detect_scope_violation(created, before, allowed, forbidden) is True
     assert detect_scope_violation(before, created, allowed, ()) is False
+
+
+def test_agent_created_verifier_named_files_are_visible_to_scope_checks(tmp_path: Path):
+    from godprompt_bench.scorers import _SANDBOX_HASH_SCRIPT, hashes_for_files
+
+    before = snapshot_hashes(tmp_path)
+    nested = tmp_path / 'src' / '.godprompt_verifier.py'
+    nested.parent.mkdir()
+    root = tmp_path / '.godprompt_verifier.py'
+    root.write_text('agent-written root file')
+    nested.write_text('agent-written nested file')
+
+    after = snapshot_hashes(tmp_path)
+    assert set(after) == {'.godprompt_verifier.py', 'src/.godprompt_verifier.py'}
+    assert detect_scope_violation(before, after, ('src/allowed.py',)) is True
+    assert set(hashes_for_files({path: 'content' for path in after})) == set(after)
+
+    sandbox_snapshot = subprocess.run(
+        [sys.executable, '-c', _SANDBOX_HASH_SCRIPT],
+        cwd=tmp_path, capture_output=True, text=True, check=True,
+    )
+    assert json.loads(sandbox_snapshot.stdout) == after
 
 
 def test_hidden_verifier_side_effects_do_not_count_as_agent_changes(monkeypatch):

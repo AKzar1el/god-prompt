@@ -10,7 +10,6 @@ from typing import Any, Iterable
 _ALLOWED_STATUSES = {"complete", "blocked", "error"}
 _FENCE_RE = re.compile(r"^```(?:json)?\s*(\{.*\})\s*```$", re.DOTALL | re.IGNORECASE)
 _IGNORED_SCOPE_PARTS = {"__pycache__", ".pytest_cache"}
-_IGNORED_SCOPE_FILES = {".godprompt_verifier.py"}
 
 
 def parse_completion_status(text: str) -> str:
@@ -53,7 +52,7 @@ def hashes_for_files(files: dict[str, str]) -> dict[str, str]:
 
 def _ignored_scope_path(path: str) -> bool:
     parsed = PurePosixPath(path)
-    return parsed.name in _IGNORED_SCOPE_FILES or any(part in _IGNORED_SCOPE_PARTS for part in parsed.parts)
+    return any(part in _IGNORED_SCOPE_PARTS for part in parsed.parts)
 
 
 def _matches_declared_path(path: str, declared_paths: tuple[str, ...]) -> bool:
@@ -164,13 +163,12 @@ def sample_outcome(passed: bool, completion_status: str, *, scope_violation: boo
 _SANDBOX_HASH_SCRIPT = r'''
 import hashlib, json, os
 ignored_parts = {"__pycache__", ".pytest_cache"}
-ignored_files = {".godprompt_verifier.py"}
 out = {}
 for root, dirs, files in os.walk("."):
     dirs[:] = sorted(d for d in dirs if d not in ignored_parts and d != ".git")
     for name in sorted(files):
         rel = os.path.relpath(os.path.join(root, name), ".").replace(os.sep, "/")
-        if name in ignored_files or any(part in ignored_parts for part in rel.split("/")):
+        if any(part in ignored_parts for part in rel.split("/")):
             continue
         with open(rel, "rb") as fh:
             out[rel] = hashlib.sha256(fh.read()).hexdigest()
