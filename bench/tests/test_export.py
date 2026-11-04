@@ -62,3 +62,28 @@ def test_export_leaves_normal_csv_text_unchanged(tmp_path: Path):
         row = next(csv.DictReader(handle))
     assert row['task_id'] == 'impl-py-slugify'
     assert row['completion_status'] == 'complete'
+
+
+def test_public_artifacts_redact_credentials_embedded_in_text_values(tmp_path: Path):
+    """A secret inside an innocent-looking message/error key must not leak."""
+    synthetic_key = 'sk-proj-EXAMPLEONLY1234567890'
+    synthetic_bearer = 'syntheticBearer1234567890'
+    synthetic_github = 'ghp_SYNTHETICEXAMPLE1234567890'
+    source = {
+        'run_id': 'test',
+        'note': f'OPENAI_API_KEY={synthetic_key} and Authorization: Bearer {synthetic_bearer}',
+    }
+    trajectory = {
+        'task_id': 'fixture',
+        'messages': [{'role': 'assistant', 'content': f'Bearer {synthetic_bearer}'}],
+        'events': [{'output': f'GITHUB_TOKEN: {synthetic_github}'}],
+    }
+    damaged = replace(record(), infrastructure_error=f'failed with token={synthetic_key}; gh={synthetic_github}')
+    export_run(tmp_path, source, [damaged], [trajectory])
+
+    for name in ('manifest.json', 'trajectories.jsonl', 'scores.csv'):
+        text = (tmp_path / name).read_text(encoding='utf-8')
+        for secret in (synthetic_key, synthetic_bearer, synthetic_github):
+            assert secret not in text, (name, secret)
+    assert '[REDACTED]' in (tmp_path / 'scores.csv').read_text(encoding='utf-8')
+    assert 'failed with token=' in (tmp_path / 'scores.csv').read_text(encoding='utf-8')
