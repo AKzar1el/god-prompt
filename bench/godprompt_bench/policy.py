@@ -3,7 +3,7 @@ from __future__ import annotations
 import shlex
 from functools import lru_cache
 from dataclasses import dataclass
-from pathlib import PurePosixPath
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any
 
 
@@ -17,7 +17,16 @@ def validate_workspace_path(path: str) -> bool:
     if not path or "\x00" in path or path.startswith("~") or "$HOME" in path:
         return False
     parsed = PurePosixPath(path)
-    if parsed.is_absolute() or ".." in parsed.parts:
+    windows = PureWindowsPath(path)
+    # An editor can interpret backslashes and drive-relative paths on Windows.
+    if (
+        parsed == PurePosixPath(".")
+        or parsed.is_absolute()
+        or ".." in parsed.parts
+        or "\\" in path
+        or windows.drive
+        or windows.root
+    ):
         return False
     return True
 
