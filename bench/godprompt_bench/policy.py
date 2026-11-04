@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shlex
 from functools import lru_cache
 from dataclasses import dataclass
@@ -94,10 +95,19 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                for token in executable_tokens):
             return PolicyDecision(False, "dynamic-env-command")
 
-    inline_interpreters = {"python", "python3", "node", "perl", "ruby", "php"}
+    inline_interpreters = {"python", "python3", "node", "nodejs", "perl", "ruby", "php"}
     inline_flags = {"-c", "-e", "--eval", "--execute"}
     for index, token in enumerate(executable_tokens):
-        if PurePosixPath(token).name in inline_interpreters:
+        executable_name = PurePosixPath(token).name
+        # Common version-suffixed interpreter binaries can run the same inline
+        # payloads as their unversioned names (e.g. python3.12 -c).
+        if executable_name in inline_interpreters or re.fullmatch(
+            r"(?:python[23]|pypy[23]?|perl5|ruby[23]|php[578])(?:\.\d+)*",
+            executable_name,
+        ):
+            is_node = executable_name in {"node", "nodejs"}
+            is_perl = executable_name.startswith("perl")
+            is_php = executable_name.startswith("php")
             # Examine the full interpreter option prefix, not only four tokens.
             # Stop at a script operand so ordinary script arguments remain data.
             consumes_value = False
@@ -107,7 +117,13 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                     continue
                 if option == "--":
                     break
-                if (option in inline_flags or option.startswith(("--eval=", "--execute=", "-c", "-e"))):
+                if (
+                    option in inline_flags
+                    or option.startswith(("--eval=", "--execute=", "-c", "-e"))
+                    or (is_node and (option.startswith("-p") or option == "--print" or option.startswith("--print=")))
+                    or (is_perl and option.startswith("-E"))
+                    or (is_php and option.startswith("-r"))
+                ):
                     return PolicyDecision(False, "inline-interpreter")
                 if option in {"-W", "-X", "--check-hash-based-pycs", "-r", "--require", "--import", "--loader", "--title"}:
                     consumes_value = True
