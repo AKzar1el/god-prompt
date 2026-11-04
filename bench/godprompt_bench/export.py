@@ -11,9 +11,25 @@ from .aggregate import aggregate
 from .models import SampleRecord
 
 _SECRET_KEY = re.compile(r"(?:api_?key|authorization|access_?token|refresh_?token|secret|password)", re.IGNORECASE)
+_INLINE_CREDENTIAL = re.compile(
+    r"(?i)(\b(?:api[_-]?key|authorization|access[_-]?token|refresh[_-]?token|"
+    r"github[_-]?token|token|secret|password)\s*[:=]\s*)"
+    r"(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;]+)"
+)
+_BEARER_TOKEN = re.compile(r"(?i)(\bBearer\s+)[a-z0-9._~+/=-]{8,}")
+_KNOWN_TOKEN = re.compile(r"\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9_]{12,}|github_pat_[A-Za-z0-9_]{12,})\b")
+
+
+def _redact_text(text: str) -> str:
+    """Redact credential-shaped substrings even inside otherwise public text."""
+    text = _BEARER_TOKEN.sub(lambda match: f"{match.group(1)}[REDACTED]", text)
+    text = _INLINE_CREDENTIAL.sub(lambda match: f"{match.group(1)}[REDACTED]", text)
+    return _KNOWN_TOKEN.sub("[REDACTED]", text)
 
 
 def redact_secrets(value: Any) -> Any:
+    if isinstance(value, str):
+        return _redact_text(value)
     if isinstance(value, dict):
         return {
             key: "[REDACTED]" if _SECRET_KEY.search(str(key)) else redact_secrets(item)
@@ -57,7 +73,7 @@ def export_run(
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for record in records_list:
-            writer.writerow({key: _spreadsheet_safe_cell(value) for key, value in asdict(record).items()})
+            writer.writerow({key: _spreadsheet_safe_cell(redact_secrets(value)) for key, value in asdict(record).items()})
 
     with (output_dir / "trajectories.jsonl").open("w", encoding="utf-8") as handle:
         for trajectory in trajectories_list:
