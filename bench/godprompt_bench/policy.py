@@ -27,6 +27,25 @@ def _path_operand(token: str) -> str:
     return token.lstrip("0123456789<>")
 
 
+def _has_dynamic_dollar(command: str) -> bool:
+    # shlex strips quoting before policy checks, but a shell expands unescaped
+    # dollars outside single quotes (including ANSI-C $'...' command fragments).
+    quote = None
+    escaped = False
+    for char in command:
+        if escaped:
+            escaped = False
+        elif char == "\\" and quote != "'":
+            escaped = True
+        elif char == "'" and quote != '"':
+            quote = None if quote == "'" else "'"
+        elif char == '"' and quote != "'":
+            quote = None if quote == '"' else '"'
+        elif char == "$" and quote != "'":
+            return True
+    return False
+
+
 def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     try:
         if isinstance(command, list):
@@ -43,7 +62,7 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
 
     # The approver does not execute or parse nested programs. Deny mechanisms
     # that can execute an entirely different command after this check.
-    if isinstance(command, str) and ("$(" in command or "`" in command or "\n" in command):
+    if isinstance(command, str) and (_has_dynamic_dollar(command) or "`" in command or "\n" in command):
         return PolicyDecision(False, "dynamic-shell-syntax")
 
     # echo/printf render arguments as data; an argument named "curl" or "bash"

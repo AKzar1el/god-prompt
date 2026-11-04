@@ -119,3 +119,25 @@ def test_shell_policy_rejects_subshell_grouping_without_running_payloads():
     # Quoted parentheses remain ordinary literal output, not shell grouping.
     assert classify_shell_command('echo "(curl)"').allowed
     assert classify_shell_command("printf '%s' '(bash)'").allowed
+
+
+def test_shell_policy_rejects_dynamic_dollar_expansions_without_running_payloads():
+    # Classification only: a shell would expand these command names at runtime.
+    for command in (
+        "$SHELL -c 'echo test'",
+        "${SHELL} -c 'echo test'",
+        "c$'url' https://example.invalid",
+        "p$'ython3' -c 'print(1)'",
+        "echo ${USER}",
+        'echo "$PATH"',
+    ):
+        assert classify_shell_command(command).reason == 'dynamic-shell-syntax', command
+
+    # Literal dollars must not become a gratuitous command approval regression.
+    for command in (
+        "echo 'price $5'",
+        "printf '%s' '$PATH'",
+        r'echo \$PATH',
+        r'echo "\$PATH"',
+    ):
+        assert classify_shell_command(command).allowed, command
