@@ -1,13 +1,28 @@
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from godprompt_bench.run import execute_benchmark, load_profile, public_trajectory, sample_record, validate_sample_coverage, fixture_fingerprints, condition_batches
+from godprompt_bench.run import execute_benchmark, load_profile, public_trajectory, sample_record, validate_sample_coverage, fixture_fingerprints, condition_batches, build_manifest
 from godprompt_bench.models import RunProfile
 
 ROOT = Path(__file__).parents[1]
+
+
+def test_run_manifest_fingerprints_actual_compose_isolation_configuration():
+    profile = load_profile(ROOT / 'configs' / 'smoke.json')
+    manifest = build_manifest(
+        ROOT.parent, ROOT, profile,
+        requested_model='mockllm/model', actual_models=['mockllm/model'],
+        temperature=None, seed=7, reasoning_effort=None, reasoning_mode=None,
+        records=[], benchmark_commit_sha='benchmark-sha',
+        godprompt_commit_sha='prompt-sha', working_tree_dirty=False,
+    )
+    config = ROOT / 'sandbox' / 'compose.yaml'
+    assert manifest['sandbox_compose_sha256'] == hashlib.sha256(config.read_bytes()).hexdigest()
+    assert manifest['sandbox_compose_sha256'] != manifest['sandbox_dockerfile_sha256']
 
 
 def test_condition_batches_counterbalance_order_without_additional_samples():
