@@ -59,13 +59,32 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     if any(PurePosixPath(token).name in shell_names for token in executable_tokens):
         return PolicyDecision(False, "nested-shell-interpreter")
 
+    # GNU env -S re-tokenizes a single argument into a new command, hiding
+    # executable names from the normal shell-token scan.
+    if "env" in {PurePosixPath(token).name for token in executable_tokens}:
+        if any(token.startswith(("-S", "--split-string=")) or token == "--split-string"
+               for token in executable_tokens):
+            return PolicyDecision(False, "dynamic-env-command")
+
     inline_interpreters = {"python", "python3", "node", "perl", "ruby", "php"}
     inline_flags = {"-c", "-e", "--eval", "--execute"}
     for index, token in enumerate(executable_tokens):
         if PurePosixPath(token).name in inline_interpreters:
-            options = executable_tokens[index + 1 : index + 5]
-            if any(option in inline_flags for option in options):
-                return PolicyDecision(False, "inline-interpreter")
+            # Examine the full interpreter option prefix, not only four tokens.
+            # Stop at a script operand so ordinary script arguments remain data.
+            consumes_value = False
+            for option in executable_tokens[index + 1 :]:
+                if consumes_value:
+                    consumes_value = False
+                    continue
+                if option == "--":
+                    break
+                if (option in inline_flags or option.startswith(("--eval=", "--execute=", "-c", "-e"))):
+                    return PolicyDecision(False, "inline-interpreter")
+                if option in {"-W", "-X", "--check-hash-based-pycs", "-r", "--require", "--import", "--loader", "--title"}:
+                    consumes_value = True
+                elif not option.startswith("-"):
+                    break
 
     banned_network = {"curl", "wget", "ssh", "scp", "nc", "ncat", "telnet"}
     command_names = {PurePosixPath(token).name for token in executable_tokens if token not in {"&&", "||", ";", "|"}}
