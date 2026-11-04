@@ -45,17 +45,16 @@ git clone https://github.com/AKzar1el/god-prompt.git .claude/skills/god-prompt
 2. Add `SKILL.md` as Project Instructions.
 3. Upload the three reference files (`references/01-PROTOCOLS.md`, `references/02-GATES.md`, `references/03-ANTI-PATTERNS.md`) as Project Knowledge.
 
-**Option D — ChatGPT Plugin, Projects, Custom Instructions & MCP app**
+**Option D — ChatGPT Plugin, Projects & MCP app**
 * **From the Plugin Directory (fastest skill-only path)**:
   1. Open [GodPrompt in ChatGPT's Plugin Directory](https://chatgpt.com/plugins/plugins_6ab2f1cc5d0081919d729fd1c2884f86).
   2. Select **Install plugin**. This installs the scoped `god-prompt` Agent Skill; use the remote MCP app path below when you specifically want GodPrompt's seven callable tools.
-* **In a Project**:
+* **In a Project (file-backed reference, not an installed skill)**:
   1. Create a new Project on chatgpt.com.
-  2. Paste the contents of `SKILL.md` into the Project's Custom Instructions.
-  3. Upload the reference files in the `references/` folder to the Project files.
-* **Globally (Custom Instructions)**:
-  1. Go to **Customize ChatGPT** in your account settings.
-  2. Paste the contents of `GodPrompt.md` in the "How would you like ChatGPT to respond?" field.
+  2. Add `SKILL.md` and the three files in `references/` as Project files.
+  3. In **Project settings**, add a short instruction such as: "For software engineering tasks, consult the uploaded SKILL.md and relevant reference files; follow its verification gates."
+  4. Work inside that Project. Uploaded files provide reference context; they do not install an Agent Skill or guarantee every reference is loaded automatically.
+* **Global Custom Instructions**: Do not paste the full `GodPrompt.md` or `SKILL.md` there. Both exceed ChatGPT's global Custom Instructions limits (1,500 characters for Free/Go; 5,000 for Plus/Pro/Business/Enterprise/Edu as of November 2026). Use the Plugin Directory option above for a scoped skill, or the file-backed Project option for reusable context. See [OpenAI's Custom Instructions limits](https://help.openai.com/en/articles/8096356-custom-instructions-for-chatgpt) and [Project setup](https://help.openai.com/en/articles/10169521-projects-in-chatgpt).
 * **As a remote MCP app (ChatGPT web, supported Business/Enterprise/Edu workspaces)**:
   1. Enable ChatGPT Developer Mode, then open **Settings > Apps > Create** (workspace controls may require an admin or authorized developer).
   2. Use `https://god-prompt-mcp.tomi-seregi99.workers.dev/mcp` as the MCP endpoint and select no authentication.
