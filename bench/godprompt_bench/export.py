@@ -10,7 +10,11 @@ from typing import Any, Iterable
 from .aggregate import aggregate
 from .models import SampleRecord
 
-_SECRET_KEY = re.compile(r"(?:api_?key|authorization|access_?token|refresh_?token|secret|password)", re.IGNORECASE)
+_SECRET_KEY = re.compile(
+    r"(?:api[_-]?key|authorization|access[_-]?token|refresh[_-]?token|"
+    r"session[_-]?token|id[_-]?token|private[_-]?key|secret|password|^token$)",
+    re.IGNORECASE,
+)
 _INLINE_CREDENTIAL = re.compile(
     r"(?i)(\b(?:[a-z][a-z0-9]*[_-])*(?:api[_-]?key|authorization|"
     r"access[_-]?token|refresh[_-]?token|secret[_-]access[_-]?key|"

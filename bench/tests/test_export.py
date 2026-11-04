@@ -112,3 +112,27 @@ def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: P
             assert value not in exported, (name, key)
             assert key in exported
     assert redact_secrets('USER_NAME=example TOKENIZER=bert') == 'USER_NAME=example TOKENIZER=bert'
+
+
+def test_public_exports_redact_structured_session_tokens_and_private_keys(tmp_path: Path):
+    # Synthetic placeholders expose sensitive key-name gaps without using real credentials.
+    fake_values = ('FAKE_SESSION_678', 'FAKE_ID_TOKEN_987', 'FAKE_PRIVATE_123', 'FAKE_AUTH_456')
+    source = {
+        'session_token': fake_values[0],
+        'nested': {'id_token': fake_values[1], 'privateKey': fake_values[2]},
+        'tokenizer': 'bert',
+        'token_count': 17,
+    }
+    trajectory = {'events': [{'token': fake_values[3], 'token_count': 3}]}
+    export_run(tmp_path, source, [record()], [trajectory])
+
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    event = json.loads((tmp_path / 'trajectories.jsonl').read_text(encoding='utf-8'))['events'][0]
+    assert manifest['session_token'] == '[REDACTED]'
+    assert manifest['nested'] == {'id_token': '[REDACTED]', 'privateKey': '[REDACTED]'}
+    assert event == {'token': '[REDACTED]', 'token_count': 3}
+    assert manifest['tokenizer'] == 'bert'
+    assert manifest['token_count'] == 17
+    for name in ('manifest.json', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        assert not any(value in exported for value in fake_values)
