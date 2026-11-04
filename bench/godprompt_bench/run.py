@@ -261,6 +261,16 @@ def _condition_for_log(log: Any) -> str:
     raise RuntimeError("could not determine benchmark condition from Inspect log")
 
 
+def condition_batches(task_ids: tuple[str, ...]) -> list[tuple[str, tuple[str, ...]]]:
+    """Counterbalance baseline-first and treatment-first tasks without repeats."""
+    baseline_first = task_ids[::2]
+    treatment_first = task_ids[1::2]
+    batches = [("baseline", baseline_first), ("godprompt", baseline_first)]
+    if treatment_first:
+        batches.extend((("godprompt", treatment_first), ("baseline", treatment_first)))
+    return batches
+
+
 def execute_benchmark(
     repo_root: Path,
     bench_root: Path,
@@ -295,13 +305,13 @@ def execute_benchmark(
             condition,
             bench_root,
             repo_root,
-            profile.task_ids,
+            batch_ids,
             epochs=profile.epochs,
             max_messages=profile.max_messages,
             max_time_seconds=profile.max_time_seconds,
             max_output_tokens=profile.max_output_tokens,
         )
-        for condition in ("baseline", "godprompt")
+        for condition, batch_ids in condition_batches(profile.task_ids)
     ]
     raw_log_dir = output_dir / "inspect-logs"
     raw_log_dir.mkdir(parents=True, exist_ok=True)
