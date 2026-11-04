@@ -71,6 +71,45 @@ def test_shell_policy_rejects_nested_interpreters_and_inline_programs():
     assert classify_shell_command('echo `date`').reason == 'dynamic-shell-syntax'
 
 
+def test_shell_policy_rejects_versioned_inline_interpreter_aliases():
+    # Classify adversarial commands as strings; never execute the payload.
+    for command in (
+        "python3.11 -c 'print(1)'",
+        "python3.12 -I -c 'print(1)'",
+        "env python3.13 -c 'print(1)'",
+        "pypy3 -c 'print(1)'",
+        "nodejs --eval 'console.log(1)'",
+        "nodejs -p '1 + 1'",
+        "node --print '1 + 1'",
+        "perl5.36 -e 'print(1)'",
+        "perl5.36 -E 'say 1'",
+        "ruby3.2 -e 'puts 1'",
+        "php -r 'echo 1;'",
+        "php8.3 -r 'echo 1;'",
+        "echo ok && python3.12 -c 'print(1)'",
+        "echo ok && nodejs --print '1 + 1'",
+    ):
+        assert classify_shell_command(command).reason == 'inline-interpreter', command
+
+    # Invoking an ordinary local script must remain possible.
+    for command in (
+        'python3.12 test_visible.py',
+        'nodejs --test',
+        'pypy3 test_visible.py',
+        'perl5.36 test_visible.pl',
+        'echo python3.12',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+    for argv in (
+        ['python3.12', '-c', 'print(1)'],
+        ['/usr/bin/python3.11', '-I', '-c', 'print(1)'],
+        ['nodejs', '-p', '1 + 1'],
+        ['php8.3', '-r', 'echo 1;'],
+    ):
+        assert classify_shell_command(argv).reason == 'inline-interpreter', argv
+
+
 def test_shell_policy_rejects_compound_commands_without_spaces():
     assert classify_shell_command('echo ok;echo done').reason == 'compound-shell-command'
     assert classify_shell_command('echo ok&&echo done').reason == 'compound-shell-command'
