@@ -9,6 +9,28 @@ def test_workspace_paths_stay_relative():
     assert validate_workspace_path('src/../../secret') is False
 
 
+def test_text_editor_paths_reject_windows_escapes_and_workspace_root():
+    from godprompt_bench.policy import classify_tool_call
+
+    # These are classified only; no host paths or editor tools are accessed.
+    for path in (
+        r'..\secret.txt',
+        r'src\..\secret.txt',
+        r'C:\secret.txt',
+        r'C:secret.txt',
+        r'\\server\share\secret.txt',
+        r'\Windows\win.ini',
+        '.',
+        './',
+    ):
+        assert not validate_workspace_path(path), path
+        assert classify_tool_call('text_editor', {'path': path}).reason == 'outside-workspace', path
+
+    for path in ('src/app.py', 'nested/test.mjs', './src/app.py'):
+        assert validate_workspace_path(path), path
+        assert classify_tool_call('text_editor', {'path': path}).allowed, path
+
+
 def test_shell_policy_rejects_network_and_host_mutations():
     assert classify_shell_command('python3 test_visible.py').allowed is True
     assert classify_shell_command('node --test').allowed is True
