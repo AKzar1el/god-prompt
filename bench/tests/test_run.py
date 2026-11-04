@@ -4,10 +4,25 @@ from types import SimpleNamespace
 
 import pytest
 
-from godprompt_bench.run import execute_benchmark, load_profile, public_trajectory, sample_record, validate_sample_coverage, fixture_fingerprints
+from godprompt_bench.run import execute_benchmark, load_profile, public_trajectory, sample_record, validate_sample_coverage, fixture_fingerprints, condition_batches
 from godprompt_bench.models import RunProfile
 
 ROOT = Path(__file__).parents[1]
+
+
+def test_condition_batches_counterbalance_order_without_additional_samples():
+    task_ids = tuple(f'task-{i}' for i in range(6))
+    batches = condition_batches(task_ids)
+    assert batches == [
+        ('baseline', ('task-0', 'task-2', 'task-4')),
+        ('godprompt', ('task-0', 'task-2', 'task-4')),
+        ('godprompt', ('task-1', 'task-3', 'task-5')),
+        ('baseline', ('task-1', 'task-3', 'task-5')),
+    ]
+    assert condition_batches(task_ids) == batches
+    for condition in ('baseline', 'godprompt'):
+        assert sorted(task for label, group in batches if label == condition for task in group) == sorted(task_ids)
+    assert condition_batches(('solo',)) == [('baseline', ('solo',)), ('godprompt', ('solo',))]
 
 
 def test_fixture_fingerprints_cover_selected_bundles_and_hidden_verifiers(tmp_path: Path):
