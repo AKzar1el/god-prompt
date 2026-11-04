@@ -1,9 +1,11 @@
+import json
 from collections import Counter
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from godprompt_bench.corpus import load_manifest, validate_manifest
+from godprompt_bench.corpus import load_fixture_bundle, load_manifest, validate_manifest
 
 ROOT = Path(__file__).parents[1]
 
@@ -43,6 +45,30 @@ def test_manifest_rejects_duplicate_ids(tmp_path: Path):
     tasks = load_manifest(manifest)
     with pytest.raises(ValueError, match='duplicate task id'):
         validate_manifest(tasks)
+
+
+@pytest.mark.parametrize('unsafe', [
+    r'..\outside', r'C:\private\fixture', r'C:relative', r'\rooted',
+    r'tasks\..\private', '../outside', '/absolute', '.', '',
+])
+def test_manifest_and_fixture_reject_nonportable_or_escaping_paths(tmp_path: Path, unsafe: str):
+    task = load_manifest(ROOT / 'tasks' / 'manifest.json')[0]
+    for altered in (
+        replace(task, fixture_dir=unsafe),
+        replace(task, allowed_paths=(unsafe,)),
+        replace(task, forbidden_paths=(unsafe,)),
+    ):
+        with pytest.raises(ValueError, match='safe relative path'):
+            validate_manifest([altered])
+
+    fixture = tmp_path / 'fixture.json'
+    fixture.write_text(json.dumps({
+        'files': {unsafe: 'content'},
+        'hidden_verifier': 'print("safe")',
+        'starter_expected_pass': False,
+    }), encoding='utf-8')
+    with pytest.raises(ValueError, match='safe relative path'):
+        load_fixture_bundle(fixture)
 
 
 def test_all_fixture_directories_exist_and_are_safe():
