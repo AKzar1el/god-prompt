@@ -121,6 +121,8 @@ A run writes raw Inspect logs plus a public result directory containing:
 
 `manifest.json` records the requested and actual model identifiers, supported generation controls, resource limits, exact Inspect/Python versions, benchmark and GodPrompt commit provenance, corpus and sandbox hashes, task counts, and infrastructure failures.
 
+The sandbox provenance includes SHA-256 hashes for both `sandbox/Dockerfile` and the actual `sandbox/compose.yaml` supplied to Inspect. These identify the checked-in isolation settings (including networking and capabilities), but do not attest to the resolved base-image digest on the execution host.
+
 `scores.csv` contains one row per task/condition/epoch. `summary.json` can be regenerated from those rows. `trajectories.jsonl` contains observable non-system messages plus tool/approval events. System prompts are reproducible from the recorded commit hashes and are not duplicated into every trajectory. Reasoning-content blocks are excluded; the benchmark does not request, reconstruct, or publish hidden chain-of-thought.
 
 Credential-like fields are recursively redacted from public JSON/JSONL exports.

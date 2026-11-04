@@ -239,6 +239,7 @@ def build_manifest(
         "task_manifest_sha256": _sha256(manifest_path),
         **fixture_fingerprints(bench_root, profile.task_ids),
         "sandbox_dockerfile_sha256": _sha256(bench_root / "sandbox" / "Dockerfile"),
+        "sandbox_compose_sha256": _sha256(bench_root / "sandbox" / "compose.yaml"),
         "baseline_system_prompt_sha256": baseline_hash,
         "godprompt_system_prompt_sha256": godprompt_hash,
         "epochs": profile.epochs,
