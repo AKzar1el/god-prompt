@@ -130,7 +130,7 @@ def test_hidden_verifier_side_effects_do_not_count_as_agent_changes(monkeypatch)
         async def exec(self, args, **kwargs):
             if args[0] == 'rm':
                 calls.append('cleanup')
-                files.pop('.godprompt_verifier.py', None)
+                files.pop(args[-1], None)
             else:
                 calls.append('run-verifier')
                 files['forbidden/by-verifier.txt'] = 'side effect'
@@ -146,7 +146,40 @@ def test_hidden_verifier_side_effects_do_not_count_as_agent_changes(monkeypatch)
     assert result.success
     assert calls == ['snapshot', 'write-verifier', 'run-verifier', 'cleanup']
     assert hashes == {'src/answer.py': 'agent-edit'}
+    assert not any(name.startswith('.godprompt_verifier_') for name in files)
     assert not detect_scope_violation({}, hashes, ('src/answer.py',))
+
+
+def test_hidden_verifier_does_not_overwrite_agent_reserved_filename(monkeypatch):
+    import godprompt_bench.scorers as scorer_module
+
+    files = {'.godprompt_verifier.py': 'agent-created file'}
+    written = []
+    executed = []
+
+    class FakeSandbox:
+        async def write_file(self, name, content):
+            written.append(name)
+            files[name] = content
+
+        async def exec(self, args, **kwargs):
+            executed.append(args)
+            if args[0] == 'rm':
+                files.pop(args[-1], None)
+            return SimpleNamespace(success=True)
+
+    async def snapshot():
+        return dict(files)
+
+    monkeypatch.setattr(scorer_module, 'sandbox_hashes', snapshot)
+    _, agent_hashes = asyncio.run(scorer_module.run_hidden_verifier(
+        FakeSandbox(), 'secret verifier', ('python3', '.godprompt_verifier.py', 'case-id')))
+
+    assert agent_hashes == {'.godprompt_verifier.py': 'agent-created file'}
+    assert files == {'.godprompt_verifier.py': 'agent-created file'}
+    assert len(written) == 1 and written[0] != '.godprompt_verifier.py'
+    assert executed[0] == ['python3', written[0], 'case-id']
+    assert executed[1][-1] == written[0]
 
 
 def test_event_metrics_count_policy_rejections_verification_failures_and_retries():
