@@ -32,16 +32,17 @@ def load_profile(path: Path) -> RunProfile:
         if task_id in seen_ids:
             raise ValueError(f"duplicate task id in profile: {task_id}")
         seen_ids.add(task_id)
+    limit_fields = ("epochs", "max_messages", "max_time_seconds", "max_output_tokens")
+    if any(type(raw[field]) is not int or raw[field] <= 0 for field in limit_fields):
+        raise ValueError("profile numeric limits must be positive integers")
     profile = RunProfile(
         name=str(raw["name"]),
         task_ids=tuple(task_ids),
-        epochs=int(raw["epochs"]),
-        max_messages=int(raw["max_messages"]),
-        max_time_seconds=int(raw["max_time_seconds"]),
-        max_output_tokens=int(raw["max_output_tokens"]),
+        epochs=raw["epochs"],
+        max_messages=raw["max_messages"],
+        max_time_seconds=raw["max_time_seconds"],
+        max_output_tokens=raw["max_output_tokens"],
     )
-    if min(profile.epochs, profile.max_messages, profile.max_time_seconds, profile.max_output_tokens) <= 0:
-        raise ValueError("profile numeric limits must be positive")
     return profile
 
 
