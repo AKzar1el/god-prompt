@@ -155,6 +155,23 @@ def test_shell_policy_rejects_python_timeit_module_inline_code():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_python_debugger_module_entry_points():
+    # pdb can execute debugger commands including Python statements. Data-only strings.
+    for command in (
+        'python3 -m pdb test_visible.py',
+        "python3.12 -I -m pdb -c '!print(1)' test_visible.py",
+        'pypy3 -mpdb test_visible.py',
+        'env python3 -m pdb test_visible.py',
+    ):
+        assert classify_shell_command(command).reason == 'inline-interpreter', command
+
+    assert classify_shell_command(['python3', '-m', 'pdb', 'test_visible.py']).reason == 'inline-interpreter'
+
+    # Do not reject harmless module names after the actual script operand.
+    for command in ('python3 -m pytest -q', 'python3 test_visible.py -m pdb', 'echo pdb'):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_compound_commands_without_spaces():
     assert classify_shell_command('echo ok;echo done').reason == 'compound-shell-command'
     assert classify_shell_command('echo ok&&echo done').reason == 'compound-shell-command'
