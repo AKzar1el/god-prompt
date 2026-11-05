@@ -110,6 +110,34 @@ def test_shell_policy_rejects_versioned_inline_interpreter_aliases():
         assert classify_shell_command(argv).reason == 'inline-interpreter', argv
 
 
+def test_shell_policy_rejects_inline_code_after_interpreter_option_operands():
+    # These are data-only classifier inputs; no code payload is executed.
+    for command in (
+        "php -d display_errors=1 -r 'echo 1;'",
+        "php8.3 -d display_errors=1 -r 'echo 1;'",
+        "php -ddisplay_errors=1 -r 'echo 1;'",
+        "ruby -I lib -e 'puts 1'",
+        "ruby3.2 -I lib -e 'puts 1'",
+        "perl -I lib -e 'print 1'",
+        "perl5.36 -I lib -E 'say 1'",
+    ):
+        assert classify_shell_command(command).reason == 'inline-interpreter', command
+
+    for argv in (
+        ['php', '-d', 'display_errors=1', '-r', 'echo 1;'],
+        ['ruby', '-I', 'lib', '-e', 'puts 1'],
+        ['perl', '-I', 'lib', '-e', 'print 1'],
+    ):
+        assert classify_shell_command(argv).reason == 'inline-interpreter', argv
+
+    for command in (
+        'php -d display_errors=1 script.php',
+        'ruby -I lib script.rb',
+        'perl -I lib script.pl',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_compound_commands_without_spaces():
     assert classify_shell_command('echo ok;echo done').reason == 'compound-shell-command'
     assert classify_shell_command('echo ok&&echo done').reason == 'compound-shell-command'
