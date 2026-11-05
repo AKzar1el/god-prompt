@@ -108,6 +108,7 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
             is_node = executable_name in {"node", "nodejs"}
             is_perl = executable_name.startswith("perl")
             is_php = executable_name.startswith("php")
+            is_ruby = executable_name.startswith("ruby")
             # Examine the full interpreter option prefix, not only four tokens.
             # Stop at a script operand so ordinary script arguments remain data.
             consumes_value = False
@@ -125,7 +126,11 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                     or (is_php and option.startswith("-r"))
                 ):
                     return PolicyDecision(False, "inline-interpreter")
-                if option in {"-W", "-X", "--check-hash-based-pycs", "-r", "--require", "--import", "--loader", "--title"}:
+                if (
+                    option in {"-W", "-X", "--check-hash-based-pycs", "-r", "--require", "--import", "--loader", "--title"}
+                    or (is_php and option == "-d")
+                    or ((is_perl or is_ruby) and option == "-I")
+                ):
                     consumes_value = True
                 elif not option.startswith("-"):
                     break
