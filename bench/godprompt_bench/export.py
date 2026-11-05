@@ -12,8 +12,11 @@ from .models import SampleRecord
 
 _SECRET_KEY = re.compile(
     r"(?:api[_-]?key|authorization|access[_-]?token|refresh[_-]?token|"
-    r"session[_-]?token|id[_-]?token|private[_-]?key|secret|password|^token$)",
+    r"session[_-]?token|id[_-]?token|private[_-]?key|secret|password|cookie|^token$)",
     re.IGNORECASE,
+)
+_HTTP_CREDENTIAL_HEADER = re.compile(
+    r"(?i)(\b(?:authorization|(?:set[-_])?cookie)\s*[:=]\s*)[^\r\n]*"
 )
 _INLINE_CREDENTIAL = re.compile(
     r"(?i)(\b(?:[a-z][a-z0-9]*[_-])*(?:api[_-]?key|authorization|"
@@ -27,6 +30,8 @@ _KNOWN_TOKEN = re.compile(r"\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-
 
 def _redact_text(text: str) -> str:
     """Redact credential-shaped substrings even inside otherwise public text."""
+    # Header values may contain multiple cookie pairs or a Basic/Digest credential.
+    text = _HTTP_CREDENTIAL_HEADER.sub(lambda match: f"{match.group(1)}[REDACTED]", text)
     text = _BEARER_TOKEN.sub(lambda match: f"{match.group(1)}[REDACTED]", text)
     text = _INLINE_CREDENTIAL.sub(lambda match: f"{match.group(1)}[REDACTED]", text)
     return _KNOWN_TOKEN.sub("[REDACTED]", text)

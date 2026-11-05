@@ -136,3 +136,28 @@ def test_public_exports_redact_structured_session_tokens_and_private_keys(tmp_pa
     for name in ('manifest.json', 'trajectories.jsonl'):
         exported = (tmp_path / name).read_text(encoding='utf-8')
         assert not any(value in exported for value in fake_values)
+
+
+def test_public_exports_redact_http_authorization_and_cookie_headers(tmp_path: Path):
+    # Synthetic values only: HTTP headers can contain credentials without secret-shaped keys.
+    fake_basic = 'FAKE_BASIC_AUTH_BLOB_123'
+    fake_session = 'FAKE_SESSION_COOKIE_456'
+    fake_csrf = 'FAKE_CSRF_COOKIE_789'
+    headers = (
+        f'Authorization: Basic {fake_basic}\n'
+        f'Cookie: session={fake_session}; csrf={fake_csrf}\n'
+        'Note: preserve this harmless line'
+    )
+    export_run(
+        tmp_path,
+        {'headers': {'Cookie': f'sid={fake_session}', 'Set-Cookie': f'csrf={fake_csrf}'}, 'note': headers},
+        [replace(record(), infrastructure_error=headers)],
+        [{'events': [{'output': f'Set-Cookie: sid={fake_session}; csrf={fake_csrf}\nDone'}]}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        public = (tmp_path / name).read_text(encoding='utf-8')
+        for secret in (fake_basic, fake_session, fake_csrf):
+            assert secret not in public, (name, secret)
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['headers'] == {'Cookie': '[REDACTED]', 'Set-Cookie': '[REDACTED]'}
+    assert 'Note: preserve this harmless line' in manifest['note']
