@@ -89,6 +89,25 @@ def test_public_artifacts_redact_credentials_embedded_in_text_values(tmp_path: P
     assert 'failed with token=' in (tmp_path / 'scores.csv').read_text(encoding='utf-8')
 
 
+def test_public_exports_redact_unquoted_basic_authorization_headers(tmp_path: Path):
+    # Synthetic base64 strings only: the auth scheme must not hide the credential.
+    basic = 'U3ludGhldGljOlRlc3RPbmx5'
+    proxy_basic = 'dGVzdDpvdmx5'
+    message = f'Authorization: Basic {basic}; Proxy-Authorization: BASIC {proxy_basic}'
+    export_run(
+        tmp_path,
+        {'run_id': 'synthetic-basic', 'note': message},
+        [replace(record(), infrastructure_error=message)],
+        [{'events': [{'output': message}]}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        assert basic not in exported, name
+        assert proxy_basic not in exported, name
+        assert 'Authorization: [REDACTED]' in exported, name
+    assert redact_secrets('The Basic documentation is public') == 'The Basic documentation is public'
+
+
 def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: Path):
     # All values are made-up placeholders, not credentials; plain text must still be sanitized.
     entries = (
