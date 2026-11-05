@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 import hashlib
 import json
+import os
 import re
 import shlex
 from pathlib import Path, PurePosixPath
@@ -35,13 +36,19 @@ def parse_completion_status(text: str) -> str:
 def snapshot_hashes(root: Path) -> dict[str, str]:
     result: dict[str, str] = {}
     for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.is_symlink():
-            continue
         relative = path.relative_to(root).as_posix()
         if _ignored_scope_path(relative):
             continue
-        result[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+        if path.is_symlink():
+            result[relative] = _symlink_hash(path)
+        elif path.is_file():
+            result[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
     return result
+
+
+def _symlink_hash(path: Path) -> str:
+    # Fingerprint the link itself; never read a target outside the workspace.
+    return hashlib.sha256(b"symlink\0" + os.fsencode(os.readlink(path))).hexdigest()
 
 
 def hashes_for_files(files: dict[str, str]) -> dict[str, str]:
@@ -172,13 +179,20 @@ import hashlib, json, os
 ignored_parts = {"__pycache__", ".pytest_cache"}
 out = {}
 for root, dirs, files in os.walk("."):
-    dirs[:] = sorted(d for d in dirs if d not in ignored_parts and d != ".git")
+    for name in sorted(dirs):
+        rel = os.path.relpath(os.path.join(root, name), ".").replace(os.sep, "/")
+        if name not in ignored_parts and name != ".git" and os.path.islink(os.path.join(root, name)):
+            out[rel] = hashlib.sha256(b"symlink\0" + os.fsencode(os.readlink(os.path.join(root, name)))).hexdigest()
+    dirs[:] = sorted(d for d in dirs if d not in ignored_parts and d != ".git" and not os.path.islink(os.path.join(root, d)))
     for name in sorted(files):
         rel = os.path.relpath(os.path.join(root, name), ".").replace(os.sep, "/")
-        if any(part in ignored_parts for part in rel.split("/")) or os.path.islink(rel):
+        if any(part in ignored_parts for part in rel.split("/")):
             continue
-        with open(rel, "rb") as fh:
-            out[rel] = hashlib.sha256(fh.read()).hexdigest()
+        if os.path.islink(rel):
+            out[rel] = hashlib.sha256(b"symlink\0" + os.fsencode(os.readlink(rel))).hexdigest()
+        else:
+            with open(rel, "rb") as fh:
+                out[rel] = hashlib.sha256(fh.read()).hexdigest()
 print(json.dumps(out, sort_keys=True))
 '''.strip()
 

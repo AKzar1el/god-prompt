@@ -105,15 +105,43 @@ def test_sandbox_hashes_do_not_follow_file_symlinks_outside_workspace(tmp_path: 
     except (OSError, NotImplementedError):
         pytest.skip('file symlinks unavailable on this platform')
 
-    # The local snapshot already skips symlinks. The sandbox must agree and
-    # must not open the file target outside its workspace.
+    # Both snapshots fingerprint the link without reading its external target.
     expected = snapshot_hashes(workspace)
-    assert set(expected) == {'regular.txt'}
+    assert set(expected) == {'regular.txt', 'alias.txt'}
+    assert expected['alias.txt'] != snapshot_hashes(tmp_path)['outside.txt']
     snapshot = subprocess.run(
         [sys.executable, '-c', _SANDBOX_HASH_SCRIPT],
         cwd=workspace, capture_output=True, text=True, check=True,
     )
     assert json.loads(snapshot.stdout) == expected
+
+
+def test_scope_snapshots_detect_symlink_creation_without_reading_targets(tmp_path: Path):
+    from godprompt_bench.scorers import _SANDBOX_HASH_SCRIPT
+
+    workspace = tmp_path / 'workspace'
+    workspace.mkdir()
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (outside / 'private.txt').write_text('outside workspace')
+    before = snapshot_hashes(workspace)
+    file_link = workspace / 'forbidden-file'
+    dir_link = workspace / 'forbidden-dir'
+    try:
+        file_link.symlink_to(outside / 'private.txt')
+        dir_link.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip('symlinks unavailable on this platform')
+
+    after = snapshot_hashes(workspace)
+    sandbox_snapshot = subprocess.run(
+        [sys.executable, '-c', _SANDBOX_HASH_SCRIPT],
+        cwd=workspace, capture_output=True, text=True, check=True,
+    )
+    assert json.loads(sandbox_snapshot.stdout) == after
+    assert set(after) == {'forbidden-file', 'forbidden-dir'}
+    assert detect_scope_violation(before, after, ('allowed',)) is True
+    assert 'forbidden-dir/private.txt' not in after
 
 
 def test_hidden_verifier_side_effects_do_not_count_as_agent_changes(monkeypatch):
