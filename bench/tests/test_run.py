@@ -153,6 +153,20 @@ def test_sample_record_uses_score_and_sums_provider_usage():
     assert record.infrastructure_error is None
 
 
+def test_usage_totals_ignore_invalid_provider_counters_without_losing_valid_counts():
+    from godprompt_bench.run import _usage_totals
+
+    invalid = SimpleNamespace(
+        input_tokens='unknown', input_tokens_cache_read=-3,
+        input_tokens_cache_write=2.5, output_tokens=float('nan'),
+    )
+    valid = SimpleNamespace(
+        input_tokens=10, input_tokens_cache_read='3',
+        input_tokens_cache_write=2, output_tokens=7,
+    )
+    assert _usage_totals({'invalid': invalid, 'valid': valid}) == (15, 7)
+
+
 def test_public_trajectory_excludes_system_and_reasoning_content():
     messages = [
         SimpleNamespace(role='system', model_dump=lambda **kwargs: {'role': 'system', 'content': 'secret prompt'}),

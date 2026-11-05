@@ -65,16 +65,32 @@ def validate_sample_coverage(profile: RunProfile, records: list[SampleRecord]) -
         )
 
 
+def _safe_token_count(value: Any) -> int:
+    # Provider telemetry must never abort an otherwise valid evaluation run.
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return max(0, value)
+    if isinstance(value, str) and value.strip().isdecimal():
+        try:
+            return int(value.strip())
+        except ValueError:
+            return 0
+    if isinstance(value, float) and value >= 0 and value.is_integer():
+        return int(value)
+    return 0
+
+
 def _usage_totals(model_usage: Mapping[str, Any] | None) -> tuple[int | None, int | None]:
     if not model_usage:
         return None, None
     input_tokens = 0
     output_tokens = 0
     for usage in model_usage.values():
-        input_tokens += int(getattr(usage, "input_tokens", 0) or 0)
-        input_tokens += int(getattr(usage, "input_tokens_cache_read", 0) or 0)
-        input_tokens += int(getattr(usage, "input_tokens_cache_write", 0) or 0)
-        output_tokens += int(getattr(usage, "output_tokens", 0) or 0)
+        input_tokens += _safe_token_count(getattr(usage, "input_tokens", 0))
+        input_tokens += _safe_token_count(getattr(usage, "input_tokens_cache_read", 0))
+        input_tokens += _safe_token_count(getattr(usage, "input_tokens_cache_write", 0))
+        output_tokens += _safe_token_count(getattr(usage, "output_tokens", 0))
     return input_tokens, output_tokens
 
 
