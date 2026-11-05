@@ -210,3 +210,29 @@ def test_event_metrics_identifies_rejection_by_named_benchmark_approver_without_
 
     events = [SimpleNamespace(event='approval', decision='reject', approver='godprompt_workspace', metadata=None)]
     assert event_metrics(events, ())['tool_misuse_count'] == 1
+
+
+def test_event_metrics_handles_malformed_approval_metadata_without_aborting():
+    from godprompt_bench.scorers import event_metrics
+
+    events = [
+        {'event': 'approval', 'decision': 'reject', 'metadata': ['not a mapping']},
+        {'event': 'approval', 'decision': 'reject', 'approver': 'godprompt_workspace', 'metadata': 'unexpected'},
+    ]
+    assert event_metrics(events, ())['tool_misuse_count'] == 1
+
+
+def test_event_metrics_ignores_malformed_tool_arguments_but_counts_failures():
+    from godprompt_bench.scorers import event_metrics
+
+    events = [
+        {'event': 'tool', 'function': 'bash', 'arguments': ['unexpected'], 'failed': True},
+        {'event': 'tool', 'function': 'bash', 'arguments': {'cmd': ['python3', None]}, 'failed': True},
+        {'event': 'tool', 'function': 'bash', 'arguments': {'cmd': 'python3 test_visible.py'}, 'failed': False},
+    ]
+    assert event_metrics(events, ('python3 test_visible.py',)) == {
+        'tool_misuse_count': 0,
+        'verification_attempts': 1,
+        'failed_tool_calls': 2,
+        'retries': 0,
+    }
