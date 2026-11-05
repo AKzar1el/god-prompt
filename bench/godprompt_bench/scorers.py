@@ -7,6 +7,7 @@ import re
 import shlex
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
+from uuid import uuid4
 
 _ALLOWED_STATUSES = {"complete", "blocked", "error"}
 _FENCE_RE = re.compile(r"^```(?:json)?\s*(\{.*\})\s*```$", re.DOTALL | re.IGNORECASE)
@@ -197,11 +198,17 @@ async def sandbox_hashes() -> dict[str, str]:
 async def run_hidden_verifier(environment: Any, hidden_verifier: str, verifier_command: tuple[str, ...]):
     # Capture the agent's final workspace before the hidden verifier can modify files.
     final_hashes = await sandbox_hashes()
-    await environment.write_file(".godprompt_verifier.py", hidden_verifier)
+    placeholder = ".godprompt_verifier.py"
+    if verifier_command.count(placeholder) != 1:
+        raise ValueError("hidden verifier command must reference its script exactly once")
+    # Never replace or delete a file created by the agent under the conventional name.
+    verifier_file = f".godprompt_verifier_{uuid4().hex}.py"
+    command = [verifier_file if arg == placeholder else arg for arg in verifier_command]
+    await environment.write_file(verifier_file, hidden_verifier)
     try:
-        verifier = await environment.exec(list(verifier_command), timeout=30, timeout_retry=False)
+        verifier = await environment.exec(command, timeout=30, timeout_retry=False)
     finally:
-        await environment.exec(["rm", "-f", ".godprompt_verifier.py"], timeout=10, timeout_retry=False)
+        await environment.exec(["rm", "-f", "--", verifier_file], timeout=10, timeout_retry=False)
     return verifier, final_hashes
 
 
