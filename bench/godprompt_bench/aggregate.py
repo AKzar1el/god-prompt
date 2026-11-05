@@ -49,8 +49,13 @@ def _summarize(records: list[SampleRecord]) -> dict[str, int | float | None]:
 
 def aggregate(records: Iterable[SampleRecord]) -> dict:
     items = list(records)
+    conditions = ("baseline", "godprompt")
+    for record in items:
+        if record.condition not in conditions:
+            raise ValueError(f"unknown benchmark condition: {record.condition!r}")
+
     result: dict = {}
-    for condition in ("baseline", "godprompt"):
+    for condition in conditions:
         result[condition] = _summarize([r for r in items if r.condition == condition])
 
     categories: dict[str, list[SampleRecord]] = defaultdict(list)
@@ -59,7 +64,7 @@ def aggregate(records: Iterable[SampleRecord]) -> dict:
     result["by_category"] = {
         category: {
             condition: _summarize([r for r in category_records if r.condition == condition])
-            for condition in ("baseline", "godprompt")
+            for condition in conditions
         }
         for category, category_records in sorted(categories.items())
     }
