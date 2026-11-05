@@ -109,15 +109,22 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
             is_perl = executable_name.startswith("perl")
             is_php = executable_name.startswith("php")
             is_ruby = executable_name.startswith("ruby")
+            is_python = executable_name.startswith(("python", "pypy"))
             # Examine the full interpreter option prefix, not only four tokens.
             # Stop at a script operand so ordinary script arguments remain data.
             consumes_value = False
-            for option in executable_tokens[index + 1 :]:
+            options = executable_tokens[index + 1 :]
+            for offset, option in enumerate(options):
                 if consumes_value:
                     consumes_value = False
                     continue
                 if option == "--":
                     break
+                # python -m timeit evaluates command-line statements without -c.
+                if is_python and (option == "-mtimeit" or (
+                    option == "-m" and offset + 1 < len(options) and options[offset + 1] == "timeit"
+                )):
+                    return PolicyDecision(False, "inline-interpreter")
                 if (
                     option in inline_flags
                     or option.startswith(("--eval=", "--execute=", "-c", "-e"))

@@ -138,6 +138,23 @@ def test_shell_policy_rejects_inline_code_after_interpreter_option_operands():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_python_timeit_module_inline_code():
+    # The timeit module evaluates a supplied statement; classify only, never run it.
+    for command in (
+        "python3 -m timeit 'print(1)'",
+        "python3.12 -I -m timeit -s 'print(1)'",
+        "pypy3 -mtimeit 'print(1)'",
+        "env python3 -m timeit 'print(1)'",
+    ):
+        assert classify_shell_command(command).reason == 'inline-interpreter', command
+
+    for command in (
+        'python3 -m pytest -q',
+        'python3 script.py -m timeit',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_compound_commands_without_spaces():
     assert classify_shell_command('echo ok;echo done').reason == 'compound-shell-command'
     assert classify_shell_command('echo ok&&echo done').reason == 'compound-shell-command'
