@@ -89,6 +89,22 @@ def test_public_artifacts_redact_credentials_embedded_in_text_values(tmp_path: P
     assert 'failed with token=' in (tmp_path / 'scores.csv').read_text(encoding='utf-8')
 
 
+def test_public_exports_redact_short_bearer_credentials(tmp_path: Path):
+    # Bearer tokens need not be eight characters long to be credentials.
+    synthetic_token = 'abc123'
+    text = f'Bearer {synthetic_token}'
+    export_run(
+        tmp_path,
+        {'note': text},
+        [replace(record(), infrastructure_error=text)],
+        [{'output': text}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        assert synthetic_token not in exported, name
+        assert 'Bearer [REDACTED]' in exported, name
+
+
 def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: Path):
     # All values are made-up placeholders, not credentials; plain text must still be sanitized.
     entries = (
