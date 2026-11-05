@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 import hashlib
 import json
 import re
@@ -116,7 +117,9 @@ def event_metrics(events: Iterable[Any], expected_commands: tuple[str, ...]) -> 
         if event_type == "approval":
             metadata = _event_attr(event, "metadata", {}) or {}
             named_benchmark_approver = _event_attr(event, "approver") == "godprompt_workspace"
-            tagged_benchmark_rejection = metadata.get("godprompt_bench_policy") == "rejected"
+            tagged_benchmark_rejection = (
+                isinstance(metadata, Mapping) and metadata.get("godprompt_bench_policy") == "rejected"
+            )
             if _event_attr(event, "decision") == "reject" and (
                 named_benchmark_approver or tagged_benchmark_rejection
             ):
@@ -134,8 +137,11 @@ def event_metrics(events: Iterable[Any], expected_commands: tuple[str, ...]) -> 
 
         if function != "bash":
             continue
-        cmd = arguments.get("cmd")
-        command = " ".join(cmd) if isinstance(cmd, list) else str(cmd or "")
+        cmd = arguments.get("cmd") if isinstance(arguments, Mapping) else None
+        if isinstance(cmd, (list, tuple)):
+            command = " ".join(cmd) if all(isinstance(part, str) for part in cmd) else ""
+        else:
+            command = cmd if isinstance(cmd, str) else ""
         if _is_verification_command(command, expected_commands):
             verification_attempts += 1
         if command in failed_commands:
