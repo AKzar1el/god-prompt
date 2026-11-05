@@ -1,4 +1,5 @@
 from dataclasses import replace
+import json
 
 from godprompt_bench.aggregate import aggregate
 from godprompt_bench.models import SampleRecord
@@ -62,3 +63,22 @@ def test_legacy_scope_violations_also_count_as_false_completion_claims():
     assert baseline['false_completions'] == 1
     assert baseline['false_completion_rate'] == 1 / 3
     assert summary['by_category']['implementation']['baseline']['false_completions'] == 1
+
+
+def test_aggregate_excludes_invalid_latency_values_from_public_summary():
+    records = [
+        rec('baseline', True, latency=3.0),
+        rec('baseline', True, latency=1.0),
+        rec('baseline', True, latency=float('nan')),
+        rec('baseline', True, latency=float('inf')),
+        rec('baseline', True, latency=float('-inf')),
+        rec('baseline', True, latency=-10.0),
+        rec('godprompt', True, latency=float('nan')),
+    ]
+    summary = aggregate(records)
+    assert summary['baseline']['samples'] == 6
+    assert summary['baseline']['median_latency_seconds'] == 2.0
+    assert summary['godprompt']['median_latency_seconds'] is None
+    assert summary['by_category']['implementation']['baseline']['median_latency_seconds'] == 2.0
+    # The exported summary must remain strict JSON, not nonstandard NaN/Infinity values.
+    json.dumps(summary, allow_nan=False)
