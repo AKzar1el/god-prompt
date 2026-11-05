@@ -47,6 +47,19 @@ def test_manifest_rejects_duplicate_ids(tmp_path: Path):
         validate_manifest(tasks)
 
 
+@pytest.mark.parametrize('field,invalid', [
+    ('id', 123), ('category', ['implementation']), ('runtime', True),
+    ('fixture_dir', 42), ('user_prompt', {'text': 'run'}),
+])
+def test_manifest_rejects_non_string_required_scalars(tmp_path: Path, field: str, invalid: object):
+    source = json.loads((ROOT / 'tasks' / 'manifest.json').read_text(encoding='utf-8'))[0]
+    source[field] = invalid
+    manifest = tmp_path / 'manifest.json'
+    manifest.write_text(json.dumps([source]), encoding='utf-8')
+    with pytest.raises(ValueError, match=f'{field} must be a string'):
+        load_manifest(manifest)
+
+
 @pytest.mark.parametrize('unsafe', [
     r'..\outside', r'C:\private\fixture', r'C:relative', r'\rooted',
     r'tasks\..\private', '../outside', '/absolute', '.', '',

@@ -44,13 +44,16 @@ def load_manifest(path: Path) -> list[TaskSpec]:
         missing = required - item.keys()
         if missing:
             raise ValueError(f"task {index} missing fields: {sorted(missing)}")
+        for field in ("id", "category", "runtime", "fixture_dir", "user_prompt"):
+            if not isinstance(item[field], str):
+                raise ValueError(f"task {index}: {field} must be a string")
         tasks.append(
             TaskSpec(
-                id=str(item["id"]),
-                category=str(item["category"]),
-                runtime=str(item["runtime"]),
-                fixture_dir=str(item["fixture_dir"]),
-                user_prompt=str(item["user_prompt"]),
+                id=item["id"],
+                category=item["category"],
+                runtime=item["runtime"],
+                fixture_dir=item["fixture_dir"],
+                user_prompt=item["user_prompt"],
                 verifier_command=_tuple(item["verifier_command"], "verifier_command"),
                 allowed_paths=_tuple(item["allowed_paths"], "allowed_paths"),
                 forbidden_paths=_tuple(item.get("forbidden_paths", []), "forbidden_paths"),
