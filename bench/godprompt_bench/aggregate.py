@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from math import isfinite
 from statistics import median
 from typing import Iterable
 
@@ -13,7 +14,12 @@ def _rate(numerator: int, denominator: int) -> float | None:
 
 def _summarize(records: list[SampleRecord]) -> dict[str, int | float | None]:
     model_records = [record for record in records if record.infrastructure_error is None]
-    latencies = [record.latency_seconds for record in model_records if record.latency_seconds is not None]
+    latencies = [
+        record.latency_seconds for record in model_records
+        if record.latency_seconds is not None
+        and isfinite(record.latency_seconds)
+        and record.latency_seconds >= 0
+    ]
     # Correct historic records whose stored outcome flags predate scope-aware scoring.
     passed = sum(record.passed and not record.scope_violation for record in model_records)
     false_completions = sum(
