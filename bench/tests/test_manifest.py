@@ -71,6 +71,18 @@ def test_manifest_and_fixture_reject_nonportable_or_escaping_paths(tmp_path: Pat
         load_fixture_bundle(fixture)
 
 
+@pytest.mark.parametrize('alias', ('src/./a.py', 'src//a.py', './src/a.py'))
+def test_fixture_rejects_paths_that_alias_after_normalization(tmp_path: Path, alias: str):
+    fixture = tmp_path / 'fixture.json'
+    fixture.write_text(json.dumps({
+        'files': {'src/a.py': 'first', alias: 'overwrites the same file'},
+        'hidden_verifier': 'print("safe")',
+        'starter_expected_pass': False,
+    }), encoding='utf-8')
+    with pytest.raises(ValueError, match='safe relative path'):
+        load_fixture_bundle(fixture)
+
+
 def test_all_fixture_directories_exist_and_are_safe():
     tasks = load_manifest(ROOT / 'tasks' / 'manifest.json')
     for task in tasks:

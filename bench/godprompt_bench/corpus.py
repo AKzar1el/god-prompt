@@ -71,6 +71,7 @@ def _validate_relative(path: str, field: str, task_id: str) -> None:
         parsed == PurePosixPath(".")
         or parsed.is_absolute()
         or ".." in parsed.parts
+        or path != parsed.as_posix()
         or "\\" in path
         or windows.drive
         or windows.root
