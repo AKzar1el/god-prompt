@@ -172,6 +172,28 @@ def test_shell_policy_rejects_python_debugger_module_entry_points():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_python_interactive_module_entry_points():
+    # These inputs are classified as data; no interactive modules are launched.
+    for command in (
+        'python3 -m code',
+        'python3.12 -I -m asyncio',
+        'pypy3 -mcode',
+        'env python3 -masyncio',
+        'echo ok && python3 -m code',
+    ):
+        assert classify_shell_command(command).reason == 'inline-interpreter', command
+
+    assert classify_shell_command(['python3', '-m', 'asyncio']).reason == 'inline-interpreter'
+
+    # Noninteractive modules and module-looking script arguments remain allowed.
+    for command in (
+        'python3 -m pytest -q',
+        'python3 -m json.tool data.json',
+        'python3 test_visible.py -m code',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_compound_commands_without_spaces():
     assert classify_shell_command('echo ok;echo done').reason == 'compound-shell-command'
     assert classify_shell_command('echo ok&&echo done').reason == 'compound-shell-command'
