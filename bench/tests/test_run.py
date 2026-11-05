@@ -119,6 +119,23 @@ def test_profile_rejects_duplicate_ids_before_any_evaluation(tmp_path: Path):
         load_profile(path)
 
 
+@pytest.mark.parametrize(('field', 'invalid'), (
+    ('epochs', True),
+    ('epochs', 1.5),
+    ('max_messages', '10'),
+    ('max_time_seconds', False),
+    ('max_output_tokens', 0),
+))
+def test_profile_rejects_non_integer_or_nonpositive_budgets(tmp_path: Path, field, invalid):
+    # Reject silently coerced configuration before running any paid evaluations.
+    profile = json.loads((ROOT / 'configs' / 'smoke.json').read_text(encoding='utf-8'))
+    profile[field] = invalid
+    path = tmp_path / 'invalid-budget.json'
+    path.write_text(json.dumps(profile), encoding='utf-8')
+    with pytest.raises(ValueError, match='profile numeric limits must be positive integers'):
+        load_profile(path)
+
+
 def test_sample_record_uses_score_and_sums_provider_usage():
     score = SimpleNamespace(
         value={'passed': 1, 'false_completion': 0, 'scope_violation': 0, 'tool_misuse_count': 1, 'verification_attempts': 2, 'failed_tool_calls': 1, 'retries': 1},
