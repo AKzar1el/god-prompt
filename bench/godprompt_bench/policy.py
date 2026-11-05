@@ -120,10 +120,10 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                     continue
                 if option == "--":
                     break
-                # timeit evaluates statements; pdb accepts interactive Python commands.
-                # Neither entry point needs the interpreter's own -c flag.
-                if is_python and (option in {"-mtimeit", "-mpdb"} or (
-                    option == "-m" and offset + 1 < len(options) and options[offset + 1] in {"timeit", "pdb"}
+                # These modules evaluate statements or expose interactive Python
+                # consoles; none requires the interpreter's own -c flag.
+                if is_python and (option in {"-mtimeit", "-mpdb", "-mcode", "-masyncio"} or (
+                    option == "-m" and offset + 1 < len(options) and options[offset + 1] in {"timeit", "pdb", "code", "asyncio"}
                 )):
                     return PolicyDecision(False, "inline-interpreter")
                 if (
