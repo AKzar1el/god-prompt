@@ -147,18 +147,22 @@ def _strip_reasoning(value: Any) -> Any:
 def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
     messages: list[dict[str, Any]] = []
     for message in getattr(sample, "messages", []) or []:
-        role = getattr(message, "role", None)
         dumped = _dump(message)
-        if role == "system" or not isinstance(dumped, dict):
+        if not isinstance(dumped, dict):
+            continue
+        # Inspect objects and normalized mappings must enforce the same privacy boundary.
+        private_roles = {"system", "developer"}
+        if getattr(message, "role", None) in private_roles or dumped.get("role") in private_roles:
             continue
         messages.append(_strip_reasoning(dumped))
 
     events: list[dict[str, Any]] = []
     for event in getattr(sample, "events", []) or []:
-        if getattr(event, "event", None) not in {"tool", "approval"}:
-            continue
         dumped = _dump(event)
-        if isinstance(dumped, dict):
+        if isinstance(dumped, dict) and (
+            getattr(event, "event", None) in {"tool", "approval"}
+            or dumped.get("event") in {"tool", "approval"}
+        ):
             events.append(_strip_reasoning(dumped))
 
     return {

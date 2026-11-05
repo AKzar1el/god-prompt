@@ -169,6 +169,33 @@ def test_public_trajectory_excludes_system_and_reasoning_content():
     assert trajectory['events'][0]['event'] == 'tool'
 
 
+def test_public_trajectory_filters_private_roles_in_mapping_and_object_messages():
+    messages = [
+        {'role': 'system', 'content': 'synthetic private system prompt'},
+        {'role': 'developer', 'content': 'synthetic private developer prompt'},
+        SimpleNamespace(role='developer', model_dump=lambda **kwargs: {
+            'role': 'developer', 'content': 'private object message',
+        }),
+        {'role': 'user', 'content': 'visible task'},
+        {'role': 'assistant', 'content': [
+            {'type': 'reasoning', 'reasoning': 'private'},
+            {'type': 'text', 'text': 'visible answer'},
+        ]},
+    ]
+    events = [
+        {'event': 'tool', 'function': 'bash', 'arguments': {'cmd': 'pytest'}},
+        {'event': 'approval', 'decision': 'allow'},
+        {'event': 'model', 'content': 'not public'},
+    ]
+    sample = SimpleNamespace(id='fixture', epoch=1, messages=messages, events=events)
+
+    public = public_trajectory(sample, 'baseline')
+    assert [message['role'] for message in public['messages']] == ['user', 'assistant']
+    assert public['messages'][1]['content'] == [{'type': 'text', 'text': 'visible answer'}]
+    assert [event['event'] for event in public['events']] == ['tool', 'approval']
+    assert 'private' not in json.dumps(public)
+
+
 def test_execute_benchmark_reads_actual_model_from_eval_spec(monkeypatch, tmp_path):
     import inspect_ai
     import godprompt_bench.run as run_module
