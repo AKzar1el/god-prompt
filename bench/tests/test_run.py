@@ -192,6 +192,33 @@ def test_sample_record_uses_score_and_sums_provider_usage():
     assert record.infrastructure_error is None
 
 
+@pytest.mark.parametrize('field,value', [
+    ('input_tokens', -3),
+    ('input_tokens', True),
+    ('input_tokens_cache_read', '7'),
+    ('input_tokens_cache_write', 2.5),
+    ('output_tokens', float('nan')),
+    ('output_tokens', float('inf')),
+])
+def test_usage_totals_rejects_invalid_token_telemetry(field, value):
+    from godprompt_bench.run import _usage_totals
+
+    usage = SimpleNamespace(
+        input_tokens=10, input_tokens_cache_read=2, input_tokens_cache_write=1,
+        output_tokens=5,
+    )
+    setattr(usage, field, value)
+    with pytest.raises(ValueError, match='invalid model usage token count'):
+        _usage_totals({'synthetic-model': usage})
+
+
+def test_usage_totals_accepts_integral_floats_and_missing_optional_counts():
+    from godprompt_bench.run import _usage_totals
+
+    usage = SimpleNamespace(input_tokens=5.0, input_tokens_cache_read=None, output_tokens=3.0)
+    assert _usage_totals({'synthetic-model': usage}) == (5, 3)
+
+
 def test_public_trajectory_excludes_system_and_reasoning_content():
     messages = [
         SimpleNamespace(role='system', model_dump=lambda **kwargs: {'role': 'system', 'content': 'secret prompt'}),
