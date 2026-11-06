@@ -150,9 +150,15 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
 
     for index, token in enumerate(executable_tokens):
         executable = PurePosixPath(token).name
-        if executable == "git" and index + 2 < len(executable_tokens):
+        if executable == "git":
             tail = executable_tokens[index + 1 :]
-            if tail and tail[0] == "config" and "--global" in tail:
+            # Git accepts global options (including -C <path> and -c <value>)
+            # before the subcommand; inspect the actual subcommand, not tail[0].
+            offset = 0
+            options_with_values = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"}
+            while offset < len(tail) and tail[offset].startswith("-"):
+                offset += 2 if tail[offset] in options_with_values else 1
+            if offset < len(tail) and tail[offset] == "config" and "--global" in tail[offset + 1 :]:
                 return PolicyDecision(False, "global-git-config")
         if executable == "find" and index + 1 < len(executable_tokens) and executable_tokens[index + 1] == "/":
             return PolicyDecision(False, "root-filesystem-search")

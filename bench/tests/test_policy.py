@@ -42,6 +42,20 @@ def test_shell_policy_rejects_network_and_host_mutations():
     assert classify_shell_command('touch /tmp/godprompt-bench-marker').allowed is False
 
 
+def test_shell_policy_rejects_global_git_config_after_git_options():
+    # Classification only: never execute these host-mutating Git invocations.
+    for command in (
+        'git -C repo config --global user.name x',
+        'git -c color.ui=always config --global user.email example@example.invalid',
+        'git --no-pager config --global user.name x',
+        'env git -C repo config --global user.name x',
+    ):
+        assert classify_shell_command(command).reason == 'global-git-config', command
+
+    for command in ('git -C repo status', 'git -C repo config --local user.name'):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_tool_call_policy_covers_bash_and_editor_paths():
     from godprompt_bench.policy import classify_tool_call
 
