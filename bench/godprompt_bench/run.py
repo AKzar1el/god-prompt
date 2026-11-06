@@ -27,6 +27,8 @@ def load_profile(path: Path) -> RunProfile:
     unknown = raw.keys() - required
     if unknown:
         raise ValueError(f"unknown profile fields: {sorted(unknown)}")
+    if not isinstance(raw["name"], str) or not raw["name"].strip():
+        raise ValueError("profile name must be a non-empty string")
     task_ids = raw["task_ids"]
     if not isinstance(task_ids, list) or not task_ids or not all(isinstance(v, str) for v in task_ids):
         raise ValueError("profile task_ids must be a non-empty list of strings")
@@ -39,7 +41,7 @@ def load_profile(path: Path) -> RunProfile:
     if any(type(raw[field]) is not int or raw[field] <= 0 for field in limit_fields):
         raise ValueError("profile numeric limits must be positive integers")
     profile = RunProfile(
-        name=str(raw["name"]),
+        name=raw["name"],
         task_ids=tuple(task_ids),
         epochs=raw["epochs"],
         max_messages=raw["max_messages"],

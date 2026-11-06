@@ -129,6 +129,17 @@ def test_profile_rejects_unknown_resource_limit_fields(tmp_path: Path):
         load_profile(path)
 
 
+@pytest.mark.parametrize('invalid_name', (None, 12, {}, [], '', '  \t '))
+def test_profile_requires_nonempty_string_name(tmp_path: Path, invalid_name):
+    # Do not mislabel exported benchmark results using str(None) or repr(dict).
+    profile = json.loads((ROOT / 'configs' / 'smoke.json').read_text(encoding='utf-8'))
+    profile['name'] = invalid_name
+    path = tmp_path / 'invalid-name.json'
+    path.write_text(json.dumps(profile), encoding='utf-8')
+    with pytest.raises(ValueError, match='profile name must be a non-empty string'):
+        load_profile(path)
+
+
 @pytest.mark.parametrize(('field', 'invalid'), (
     ('epochs', True),
     ('epochs', 1.5),
