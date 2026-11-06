@@ -110,9 +110,20 @@ def _is_verification_command(command: str, expected_commands: tuple[str, ...]) -
         for value in expected_commands:
             expected = shlex.split(value)
             if expected and tokens[:len(expected)] == expected:
-                # Help and version queries do not execute the test suite.
-                if not any(arg in {'-h', '--help', '--version'} for arg in tokens[len(expected):]):
-                    return True
+                extra = tokens[len(expected):]
+                # Query-only invocations must not inflate verification telemetry.
+                if any(arg in {'-h', '--help', '--version'} for arg in extra):
+                    continue
+                pytest_runner = (
+                    PurePosixPath(expected[0]).name in {'pytest', 'py.test'}
+                    or any(left == '-m' and right == 'pytest' for left, right in zip(expected, expected[1:]))
+                )
+                if pytest_runner and any(
+                    arg in {'--collect-only', '--setup-plan'} or arg.startswith('--collect-only=')
+                    for arg in extra
+                ):
+                    continue
+                return True
         return False
     except ValueError:
         return False

@@ -264,6 +264,21 @@ def test_verification_attempts_exclude_help_and_version_only_commands(command, e
     assert metrics['verification_attempts'] == expected_attempts
 
 
+@pytest.mark.parametrize('command,expected_attempts', [
+    ('python3 -m pytest -q --collect-only', 0),
+    ('python3 -m pytest -q --setup-plan', 0),
+    ('python3 -m pytest -q --collect-only=tree', 0),
+    ('python3 -m pytest -q tests/test_policy.py', 1),
+])
+def test_verification_attempts_require_executing_tests(command, expected_attempts):
+    from godprompt_bench.scorers import event_metrics
+    from types import SimpleNamespace
+
+    event = SimpleNamespace(event='tool', function='bash', arguments={'cmd': command}, failed=False, error=None)
+    metrics = event_metrics((event,), ('python3 -m pytest -q',))
+    assert metrics['verification_attempts'] == expected_attempts
+
+
 def test_sample_outcome_marks_false_completion_only_on_failed_claim():
     from godprompt_bench.scorers import sample_outcome
 
