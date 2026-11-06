@@ -73,6 +73,26 @@ def test_manifest_rejects_misspelled_optional_security_fields(tmp_path: Path, or
         load_manifest(manifest)
 
 
+@pytest.mark.parametrize('payload', ([], None, 42, 'invalid'))
+def test_fixture_bundle_rejects_non_object_root(tmp_path: Path, payload: object):
+    fixture = tmp_path / 'fixture.json'
+    fixture.write_text(json.dumps(payload), encoding='utf-8')
+    with pytest.raises(ValueError, match='fixture root must be an object'):
+        load_fixture_bundle(fixture)
+
+
+def test_fixture_bundle_rejects_unknown_fields(tmp_path: Path):
+    fixture = tmp_path / 'fixture.json'
+    fixture.write_text(json.dumps({
+        'files': {'src/main.py': 'print("ok")'},
+        'hidden_verifier': 'print("safe")',
+        'starter_expected_pass': False,
+        'starter_expeced_pass': True,
+    }), encoding='utf-8')
+    with pytest.raises(ValueError, match='fixture unknown fields:'):
+        load_fixture_bundle(fixture)
+
+
 @pytest.mark.parametrize('unsafe', [
     r'..\outside', r'C:\private\fixture', r'C:relative', r'\rooted',
     r'tasks\..\private', '../outside', '/absolute', '.', '',

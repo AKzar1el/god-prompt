@@ -118,6 +118,11 @@ class FixtureBundle:
 
 def load_fixture_bundle(path: Path) -> FixtureBundle:
     raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("fixture root must be an object")
+    unknown = raw.keys() - {"files", "hidden_verifier", "starter_expected_pass"}
+    if unknown:
+        raise ValueError(f"fixture unknown fields: {sorted(unknown)}")
     files = raw.get("files")
     verifier = raw.get("hidden_verifier")
     expected = raw.get("starter_expected_pass")
