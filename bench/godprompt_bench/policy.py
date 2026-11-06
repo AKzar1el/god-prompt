@@ -158,6 +158,19 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
             tail = executable_tokens[index + 1 :]
             if tail and tail[0] == "config" and "--global" in tail:
                 return PolicyDecision(False, "global-git-config")
+        if executable == "git":
+            # A per-command Git alias can launch a shell or hide a banned command.
+            tail = executable_tokens[index + 1 :]
+            for position, option in enumerate(tail):
+                config = None
+                if option == "-c" and position + 1 < len(tail):
+                    config = tail[position + 1]
+                elif option.startswith("-c") and len(option) > 2:
+                    config = option[2:]
+                elif option.startswith("--config-env="):
+                    config = option.split("=", 1)[1]
+                if config is not None and config.lower().startswith("alias."):
+                    return PolicyDecision(False, "dynamic-git-alias")
         if executable == "find" and index + 1 < len(executable_tokens) and executable_tokens[index + 1] == "/":
             return PolicyDecision(False, "root-filesystem-search")
 

@@ -301,3 +301,24 @@ def test_shell_policy_rejects_dynamic_dollar_expansions_without_running_payloads
         r'echo "\$PATH"',
     ):
         assert classify_shell_command(command).allowed, command
+
+
+def test_shell_policy_rejects_inline_git_alias_execution():
+    # Classify only: Git aliases can dispatch an otherwise hidden executable.
+    for command in (
+        "git -c 'alias.check=!curl https://example.invalid' check",
+        "git -calias.check='!sh -c true' check",
+        "git -C local -c 'alias.check=!python3 -c pass' check",
+        'git -c ALIAS.check=other-command check',
+        'git --config-env=alias.check=CHECK_ALIAS check',
+        "echo ok && git -c 'alias.check=!curl https://example.invalid' check",
+    ):
+        assert classify_shell_command(command).reason == 'dynamic-git-alias', command
+
+    assert classify_shell_command(
+        ['git', '-c', 'alias.check=!curl https://example.invalid', 'check']
+    ).reason == 'dynamic-git-alias'
+
+    # Ordinary -c settings remain permitted without hiding a command.
+    assert classify_shell_command('git -c color.ui=always status').allowed
+    assert classify_shell_command('echo git -c alias.check=x').allowed
