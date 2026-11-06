@@ -105,6 +105,26 @@ def test_public_exports_redact_short_bearer_credentials(tmp_path: Path):
         assert 'Bearer [REDACTED]' in exported, name
 
 
+def test_public_exports_redact_http_basic_authorization_payloads(tmp_path: Path):
+    # Base64 payloads are synthetic test values, never live credentials.
+    encoded_user = 'dXNlcjp0ZXN0LW9ubHk='
+    encoded_proxy = 'cHJveHk6dGVzdC1vbmx5'
+    headers = f'Authorization: Basic {encoded_user}; Proxy-Authorization=basic {encoded_proxy}'
+    export_run(
+        tmp_path,
+        {'note': headers, 'description': 'Basic authentication is documented'},
+        [replace(record(), infrastructure_error=headers)],
+        [{'events': [{'output': headers}]}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        assert encoded_user not in exported, name
+        assert encoded_proxy not in exported, name
+        assert '[REDACTED]' in exported, name
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['description'] == 'Basic authentication is documented'
+
+
 def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: Path):
     # All values are made-up placeholders, not credentials; plain text must still be sanitized.
     entries = (
