@@ -26,6 +26,10 @@ _BEARER_TOKEN = re.compile(r"(?i)(\bBearer\s+)[a-z0-9._~+/=-]+")
 _HTTP_BASIC_TOKEN = re.compile(
     r"(?i)(\b(?:proxy-)?authorization[ \t]*[:=][ \t]*basic[ \t]+)[a-z0-9+/_=-]+"
 )
+_HTTP_NAMED_TOKEN = re.compile(
+    r"(?i)(\b(?:proxy-)?authorization[ \t]*[:=][ \t]*)"
+    r"(?:token|api[_-]?key)[ \t]+[^\s,;]+"
+)
 _COOKIE_HEADER = re.compile(r"(?i)(\b(?:set-cookie|cookie)[ \t]*:[ \t]*)(?=[^\r\n]*=)[^\r\n]+")
 _KNOWN_TOKEN = re.compile(r"\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9_]{12,}|github_pat_[A-Za-z0-9_]{12,})\b")
 
@@ -34,6 +38,7 @@ def _redact_text(text: str) -> str:
     """Redact credential-shaped substrings even inside otherwise public text."""
     text = _COOKIE_HEADER.sub(lambda match: f"{match.group(1)}[REDACTED]", text)
     text = _HTTP_BASIC_TOKEN.sub(lambda match: f"{match.group(1)}[REDACTED]", text)
+    text = _HTTP_NAMED_TOKEN.sub(lambda match: f"{match.group(1)}[REDACTED]", text)
     text = _BEARER_TOKEN.sub(lambda match: f"{match.group(1)}[REDACTED]", text)
     text = _INLINE_CREDENTIAL.sub(lambda match: f"{match.group(1)}[REDACTED]", text)
     return _KNOWN_TOKEN.sub("[REDACTED]", text)
@@ -44,7 +49,8 @@ def redact_secrets(value: Any) -> Any:
         return _redact_text(value)
     if isinstance(value, dict):
         return {
-            key: "[REDACTED]" if _SECRET_KEY.search(str(key)) else redact_secrets(item)
+            (_redact_text(key) if isinstance(key, str) else key):
+                "[REDACTED]" if _SECRET_KEY.search(str(key)) else redact_secrets(item)
             for key, item in value.items()
         }
     if isinstance(value, list):
