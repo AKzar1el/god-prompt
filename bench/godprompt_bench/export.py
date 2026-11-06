@@ -12,13 +12,15 @@ from .models import SampleRecord
 
 _SECRET_KEY = re.compile(
     r"(?:api[_-]?key|authorization|access[_-]?token|refresh[_-]?token|"
-    r"session[_-]?token|id[_-]?token|private[_-]?key|secret|password|^token$)",
+    r"session[_-]?token|id[_-]?token|(?:auth|oauth|client)[_-]?token|"
+    r"private[_-]?key|secret|password|^token$)",
     re.IGNORECASE,
 )
 _INLINE_CREDENTIAL = re.compile(
     r"(?i)(\b(?:[a-z][a-z0-9]*[_-])*(?:api[_-]?key|authorization|"
     r"access[_-]?token|refresh[_-]?token|secret[_-]access[_-]?key|"
-    r"secret[_-]?key|github[_-]?token|token|secret|password)\s*[:=]\s*)"
+    r"secret[_-]?key|github[_-]?token|(?:auth|oauth|client)[_-]?token|"
+    r"token|secret|password)\s*[:=]\s*)"
     r"(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;]+)"
 )
 _BEARER_TOKEN = re.compile(r"(?i)(\bBearer\s+)[a-z0-9._~+/=-]+")
