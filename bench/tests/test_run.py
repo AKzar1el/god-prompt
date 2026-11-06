@@ -192,6 +192,45 @@ def test_sample_record_uses_score_and_sums_provider_usage():
     assert record.infrastructure_error is None
 
 
+@pytest.mark.parametrize(('field', 'invalid'), (
+    ('passed', 'false'),
+    ('passed', 2),
+    ('scope_violation', -1),
+    ('false_completion', 0.5),
+    ('scope_violation', float('nan')),
+    ('retries', float('inf')),
+    ('tool_misuse_count', -1),
+    ('verification_attempts', 1.5),
+    ('failed_tool_calls', '2'),
+    ('retries', True),
+))
+def test_sample_record_rejects_invalid_score_metrics(field, invalid):
+    # Malformed persisted scores must not inflate pass rates or corrupt totals.
+    score = SimpleNamespace(value={field: invalid}, metadata={'completion_status': 'complete'})
+    sample = SimpleNamespace(
+        id='fixture', epoch=1, metadata={'category': 'debugging'},
+        scores={'godprompt_bench': score}, model_usage=None,
+        total_time=0.5, error=None, limit=None,
+    )
+    with pytest.raises(ValueError, match=f'invalid benchmark score metric: {field}'):
+        sample_record(sample, 'baseline')
+
+
+def test_sample_record_accepts_integral_float_score_values():
+    score = SimpleNamespace(
+        value={'passed': 1.0, 'scope_violation': 0.0, 'tool_misuse_count': 2.0},
+        metadata={'completion_status': 'complete'},
+    )
+    sample = SimpleNamespace(
+        id='fixture', epoch=1, metadata={}, scores={'godprompt_bench': score},
+        model_usage=None, total_time=None, error=None, limit=None,
+    )
+    record = sample_record(sample, 'baseline')
+    assert record.passed is True
+    assert record.scope_violation is False
+    assert record.tool_misuse_count == 2
+
+
 def test_public_trajectory_excludes_system_and_reasoning_content():
     messages = [
         SimpleNamespace(role='system', model_dump=lambda **kwargs: {'role': 'system', 'content': 'secret prompt'}),

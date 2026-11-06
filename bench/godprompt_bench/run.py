@@ -9,6 +9,7 @@ import uuid
 from collections import Counter
 from datetime import datetime, timezone
 from importlib.metadata import version
+from math import isfinite
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -85,6 +86,20 @@ def _usage_totals(model_usage: Mapping[str, Any] | None) -> tuple[int | None, in
     return input_tokens, output_tokens
 
 
+def _score_metric(values: Mapping[str, Any], field: str, *, binary: bool = False) -> int:
+    value = values.get(field, 0)
+    if (
+        type(value) not in (int, float, bool)
+        or (type(value) is bool and not binary)
+        or (type(value) is float and not isfinite(value))
+        or value < 0
+        or value != int(value)
+        or (binary and value > 1)
+    ):
+        raise ValueError(f"invalid benchmark score metric: {field}")
+    return int(value)
+
+
 def sample_record(sample: Any, condition: str) -> SampleRecord:
     score = (getattr(sample, "scores", None) or {}).get("godprompt_bench")
     limit = getattr(sample, "limit", None)
@@ -115,14 +130,14 @@ def sample_record(sample: Any, condition: str) -> SampleRecord:
         category=str(metadata.get("category", "unknown")),
         condition=condition,
         epoch=int(sample.epoch),
-        passed=bool(values.get("passed", 0)),
+        passed=bool(_score_metric(values, "passed", binary=True)),
         completion_status=completion_status,
-        false_completion=bool(values.get("false_completion", 0)),
-        scope_violation=bool(values.get("scope_violation", 0)),
-        tool_misuse_count=int(values.get("tool_misuse_count", 0) or 0),
-        verification_attempts=int(values.get("verification_attempts", 0) or 0),
-        failed_tool_calls=int(values.get("failed_tool_calls", 0) or 0),
-        retries=int(values.get("retries", 0) or 0),
+        false_completion=bool(_score_metric(values, "false_completion", binary=True)),
+        scope_violation=bool(_score_metric(values, "scope_violation", binary=True)),
+        tool_misuse_count=_score_metric(values, "tool_misuse_count"),
+        verification_attempts=_score_metric(values, "verification_attempts"),
+        failed_tool_calls=_score_metric(values, "failed_tool_calls"),
+        retries=_score_metric(values, "retries"),
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         latency_seconds=getattr(sample, "total_time", None),
