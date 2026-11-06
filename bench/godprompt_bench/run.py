@@ -155,7 +155,8 @@ def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
         dumped = _dump(message)
         if not isinstance(dumped, dict):
             continue
-        if dumped.get("role", getattr(message, "role", None)) in ("system", "developer"):
+        # Unknown or malformed roles may contain privileged prompt material.
+        if dumped.get("role", getattr(message, "role", None)) not in ("user", "assistant", "tool"):
             continue
         messages.append(_strip_reasoning(dumped))
 

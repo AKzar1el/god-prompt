@@ -195,6 +195,26 @@ def test_public_trajectory_filters_privileged_mapping_messages_and_keeps_mapping
     assert 'PRIVATE' not in json.dumps(trajectory)
 
 
+def test_public_trajectory_fails_closed_for_unknown_or_malformed_message_roles():
+    sample = SimpleNamespace(
+        id='fixture', epoch=1,
+        messages=[
+            {'role': 'SYSTEM', 'content': 'SYNTHETIC_SYSTEM_PRIVATE'},
+            {'role': 'DEVELOPER', 'content': 'SYNTHETIC_DEVELOPER_PRIVATE'},
+            {'role': 'policy', 'content': 'SYNTHETIC_UNKNOWN_PRIVATE'},
+            {'role': None, 'content': 'SYNTHETIC_UNTYPED_PRIVATE'},
+            {'content': 'SYNTHETIC_MISSING_ROLE_PRIVATE'},
+            {'role': 'user', 'content': 'public task'},
+            {'role': 'assistant', 'content': 'public answer'},
+            {'role': 'tool', 'content': 'public tool result'},
+        ],
+        events=[],
+    )
+    messages = public_trajectory(sample, 'baseline')['messages']
+    assert [message['role'] for message in messages] == ['user', 'assistant', 'tool']
+    assert 'PRIVATE' not in json.dumps(messages)
+
+
 def test_execute_benchmark_reads_actual_model_from_eval_spec(monkeypatch, tmp_path):
     import inspect_ai
     import godprompt_bench.run as run_module
