@@ -49,6 +49,9 @@ def _summarize(records: list[SampleRecord]) -> dict[str, int | float | None]:
 
 def aggregate(records: Iterable[SampleRecord]) -> dict:
     items = list(records)
+    for record in items:
+        if record.condition not in ("baseline", "godprompt"):
+            raise ValueError(f"unknown benchmark condition: {record.condition!r}")
     result: dict = {}
     for condition in ("baseline", "godprompt"):
         result[condition] = _summarize([r for r in items if r.condition == condition])
