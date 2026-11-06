@@ -209,6 +209,50 @@ def test_shell_policy_rejects_python_interactive_module_entry_points():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_direct_package_manager_network_commands():
+    # Data-only classification: do not download, install, or execute packages.
+    for command in (
+        'pip install demo-package',
+        'pip3 download demo-package',
+        'pip3.12 wheel demo-package',
+        'pip --disable-pip-version-check install demo-package',
+        'PIP_NO_CACHE_DIR=1 pip install demo-package',
+        'env PIP_NO_CACHE_DIR=1 pip3 install demo-package',
+        'env -u PIP_INDEX_URL pip download demo-package',
+        'npm install',
+        'npm ci',
+        'NODE_ENV=test npm ci',
+        'npm --prefix fixtures ci',
+        'npm exec demo-tool',
+        'npm x demo-tool',
+        'npx --yes demo-tool',
+        'env npm ci',
+        'command npm install',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+
+    for argv in (
+        ['pip3', 'install', 'demo-package'],
+        ['npm', 'ci'],
+        ['env', 'npm', 'install', '--offline'],
+        ['/usr/bin/npx', '--yes', 'demo-tool'],
+    ):
+        assert classify_shell_command(argv).reason == 'network-command', argv
+
+    for command in (
+        'pip list',
+        'npm test',
+        'npm run test',
+        'npm run build',
+        'node test_visible.js npm install',
+        'python3 test_visible.py pip install',
+        'echo npm install',
+        'printf %s npx',
+    ):
+        assert classify_shell_command(command).allowed, command
+    assert not classify_shell_command('echo ok && npm install').allowed
+
+
 def test_shell_policy_rejects_compound_commands_without_spaces():
     assert classify_shell_command('echo ok;echo done').reason == 'compound-shell-command'
     assert classify_shell_command('echo ok&&echo done').reason == 'compound-shell-command'

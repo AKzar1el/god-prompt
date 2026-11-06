@@ -46,7 +46,7 @@ Infrastructure failures are reported separately from model failures. Aggregate o
 
 ## Isolation
 
-Tasks run in an Inspect AI Docker sandbox with outbound networking disabled (`network_mode: none`). The model receives only `bash` and `text_editor` tools. An approval policy rejects network commands, absolute/parent-path access, root filesystem searches, and global Git configuration changes.
+Tasks run in an Inspect AI Docker sandbox with outbound networking disabled (`network_mode: none`). The model receives only `bash` and `text_editor` tools. An approval policy rejects network commands (including direct package installation, downloading, and package execution), absolute/parent-path access, root filesystem searches, and global Git configuration changes. This restriction applies to model tool calls inside a task; the benchmark setup instructions below run outside that task sandbox.
 
 Tool-policy rejection is itself measured; it does not silently disappear from the run.
 
