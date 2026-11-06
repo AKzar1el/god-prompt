@@ -60,6 +60,19 @@ def test_manifest_rejects_non_string_required_scalars(tmp_path: Path, field: str
         load_manifest(manifest)
 
 
+@pytest.mark.parametrize('original,typo', [
+    ('forbidden_paths', 'forbiden_paths'),
+    ('expected_verification_commands', 'expected_verfication_commands'),
+])
+def test_manifest_rejects_misspelled_optional_security_fields(tmp_path: Path, original: str, typo: str):
+    source = json.loads((ROOT / 'tasks' / 'manifest.json').read_text(encoding='utf-8'))[0]
+    source[typo] = source.pop(original)
+    manifest = tmp_path / 'manifest.json'
+    manifest.write_text(json.dumps([source]), encoding='utf-8')
+    with pytest.raises(ValueError, match='unknown fields'):
+        load_manifest(manifest)
+
+
 @pytest.mark.parametrize('unsafe', [
     r'..\outside', r'C:\private\fixture', r'C:relative', r'\rooted',
     r'tasks\..\private', '../outside', '/absolute', '.', '',
