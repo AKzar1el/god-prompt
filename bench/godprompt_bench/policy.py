@@ -162,7 +162,11 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                     break
 
     banned_network = {"curl", "wget", "ssh", "scp", "nc", "ncat", "telnet"}
-    command_names = {PurePosixPath(token).name for token in executable_tokens if token not in {"&&", "||", ";", "|"}}
+    # Windows resolves these network binaries case-insensitively with .exe suffixes.
+    command_names = {
+        PurePosixPath(token).name.casefold().removesuffix(".exe")
+        for token in executable_tokens if token not in {"&&", "||", ";", "|"}
+    }
     if command_names & banned_network:
         return PolicyDecision(False, "network-command")
 
