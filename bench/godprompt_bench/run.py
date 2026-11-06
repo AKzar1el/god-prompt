@@ -135,12 +135,17 @@ def _strip_reasoning(value: Any) -> Any:
     if isinstance(value, list):
         result = []
         for item in value:
-            if isinstance(item, Mapping) and str(item.get("type", "")).lower() in {"reasoning", "redacted_reasoning"}:
+            if isinstance(item, Mapping) and str(item.get("type", "")).lower() in {
+                "reasoning", "redacted_reasoning", "thinking", "redacted_thinking"
+            }:
                 continue
             result.append(_strip_reasoning(item))
         return result
     if isinstance(value, Mapping):
-        return {key: _strip_reasoning(item) for key, item in value.items() if key not in {"reasoning", "encrypted_content"}}
+        return {
+            key: _strip_reasoning(item) for key, item in value.items()
+            if key not in {"reasoning", "thinking", "redacted_thinking", "encrypted_content"}
+        }
     return value
 
 
