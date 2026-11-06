@@ -9,6 +9,7 @@ import uuid
 from collections import Counter
 from datetime import datetime, timezone
 from importlib.metadata import version
+from math import isfinite
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -72,16 +73,30 @@ def validate_sample_coverage(profile: RunProfile, records: list[SampleRecord]) -
         )
 
 
+def _token_count(value: Any, field: str) -> int:
+    if value is None:
+        return 0
+    if type(value) is int:
+        count = value
+    elif type(value) is float and isfinite(value) and value.is_integer():
+        count = int(value)
+    else:
+        raise ValueError(f"invalid model usage token count: {field}")
+    if count < 0:
+        raise ValueError(f"invalid model usage token count: {field}")
+    return count
+
+
 def _usage_totals(model_usage: Mapping[str, Any] | None) -> tuple[int | None, int | None]:
     if not model_usage:
         return None, None
     input_tokens = 0
     output_tokens = 0
     for usage in model_usage.values():
-        input_tokens += int(getattr(usage, "input_tokens", 0) or 0)
-        input_tokens += int(getattr(usage, "input_tokens_cache_read", 0) or 0)
-        input_tokens += int(getattr(usage, "input_tokens_cache_write", 0) or 0)
-        output_tokens += int(getattr(usage, "output_tokens", 0) or 0)
+        input_tokens += _token_count(getattr(usage, "input_tokens", None), "input_tokens")
+        input_tokens += _token_count(getattr(usage, "input_tokens_cache_read", None), "input_tokens_cache_read")
+        input_tokens += _token_count(getattr(usage, "input_tokens_cache_write", None), "input_tokens_cache_write")
+        output_tokens += _token_count(getattr(usage, "output_tokens", None), "output_tokens")
     return input_tokens, output_tokens
 
 
