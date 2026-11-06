@@ -193,6 +193,38 @@ def test_sample_record_uses_score_and_sums_provider_usage():
 
 
 @pytest.mark.parametrize('field,value', [
+    ('passed', 'false'),
+    ('passed', -1),
+    ('passed', 2),
+    ('false_completion', '0'),
+    ('false_completion', float('nan')),
+    ('scope_violation', 0.5),
+    ('scope_violation', []),
+])
+def test_sample_record_rejects_invalid_binary_score_flags(field, value):
+    score = SimpleNamespace(value={field: value}, metadata={'completion_status': 'complete'})
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1, metadata={}, scores={'godprompt_bench': score},
+        model_usage=None, total_time=1.0, error=None, limit=None,
+    )
+    with pytest.raises(ValueError, match=f'invalid benchmark score flag: {field}'):
+        sample_record(sample, 'baseline')
+
+
+def test_sample_record_accepts_boolean_and_binary_numeric_score_flags():
+    score = SimpleNamespace(
+        value={'passed': True, 'false_completion': 0.0, 'scope_violation': 1.0},
+        metadata={'completion_status': 'complete'},
+    )
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1, metadata={}, scores={'godprompt_bench': score},
+        model_usage=None, total_time=1.0, error=None, limit=None,
+    )
+    record = sample_record(sample, 'godprompt')
+    assert (record.passed, record.false_completion, record.scope_violation) == (True, False, True)
+
+
+@pytest.mark.parametrize('field,value', [
     ('tool_misuse_count', True),
     ('verification_attempts', -1),
     ('failed_tool_calls', 1.5),
