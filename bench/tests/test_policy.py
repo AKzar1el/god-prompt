@@ -209,6 +209,43 @@ def test_shell_policy_rejects_python_interactive_module_entry_points():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_python_package_installers_and_network_modules():
+    # Classifier inputs only: never run installers or start a network server.
+    for command in (
+        'python3 -m pip install untrusted-package',
+        'python3.12 -I -m pip --version',
+        'python3.12 -W ignore -m pip install untrusted-package',
+        'python3 -mpip install untrusted-package',
+        'python3 -m pip._internal install untrusted-package',
+        'env python3 -m ensurepip',
+        'python3 -mensurepip',
+        'python3 -m http.server 8000',
+        'python3 -mhttp.server 8000',
+        'pip install untrusted-package',
+        'pip3.12 install untrusted-package',
+        'env -i pip3 install untrusted-package',
+        'env -u HOME pip install untrusted-package',
+        'env -- pip install untrusted-package',
+    ):
+        assert not classify_shell_command(command).allowed, command
+
+    for argv in (
+        ['python3', '-m', 'pip', 'install', 'untrusted-package'],
+        ['python3', '-mhttp.server', '8000'],
+        ['pip3', 'install', 'untrusted-package'],
+    ):
+        assert not classify_shell_command(argv).allowed, argv
+
+    # Ordinary offline verification and argument text remain usable.
+    for command in (
+        'python3 -m pytest -q',
+        'python3 -m json.tool data.json',
+        'python3 test_visible.py -m pip',
+        'echo pip',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_compound_commands_without_spaces():
     assert classify_shell_command('echo ok;echo done').reason == 'compound-shell-command'
     assert classify_shell_command('echo ok&&echo done').reason == 'compound-shell-command'

@@ -124,6 +124,17 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                     continue
                 if option == "--":
                     break
+                # -m launches a module as a program. Package installers and
+                # the built-in HTTP server bypass the shell's network denylist.
+                if is_python:
+                    module = (
+                        options[offset + 1] if option == "-m" and offset + 1 < len(options)
+                        else option[2:] if option.startswith("-m") else ""
+                    )
+                    if module in {"pip", "ensurepip", "http.server"} or module.startswith(
+                        ("pip.", "ensurepip.", "http.server.")
+                    ):
+                        return PolicyDecision(False, "unsafe-python-module")
                 # These modules evaluate statements or expose interactive Python
                 # consoles; none requires the interpreter's own -c flag.
                 if is_python and (option in {"-mtimeit", "-mpdb", "-mcode", "-masyncio"} or (
@@ -149,7 +160,20 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
 
     banned_network = {"curl", "wget", "ssh", "scp", "nc", "ncat", "telnet"}
     command_names = {PurePosixPath(token).name for token in executable_tokens if token not in {"&&", "||", ";", "|"}}
-    if command_names & banned_network:
+    # Only identify pip as a command, not as an ordinary script argument.
+    program_index = 0
+    if PurePosixPath(executable_tokens[0]).name == "env":
+        program_index = 1
+        while program_index < len(executable_tokens):
+            option = executable_tokens[program_index]
+            if option in {"-u", "--unset", "-C", "--chdir"}:
+                program_index += 2
+            elif option == "--" or option.startswith("-") or "=" in option:
+                program_index += 1
+            else:
+                break
+    program = PurePosixPath(executable_tokens[program_index]).name if program_index < len(executable_tokens) else ""
+    if command_names & banned_network or re.fullmatch(r"pip(?:[23](?:\.\d+)*)?|pipx", program):
         return PolicyDecision(False, "network-command")
 
     for index, token in enumerate(executable_tokens):
