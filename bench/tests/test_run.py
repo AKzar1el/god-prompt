@@ -158,7 +158,10 @@ def test_public_trajectory_excludes_system_and_reasoning_content():
         SimpleNamespace(role='system', model_dump=lambda **kwargs: {'role': 'system', 'content': 'secret prompt'}),
         SimpleNamespace(role='user', model_dump=lambda **kwargs: {'role': 'user', 'content': 'task'}),
         SimpleNamespace(role='assistant', model_dump=lambda **kwargs: {'role': 'assistant', 'content': [
-            {'type': 'reasoning', 'reasoning': 'private'}, {'type': 'text', 'text': 'public'}
+            {'type': 'reasoning', 'reasoning': 'private'},
+            {'type': 'thinking', 'thinking': 'synthetic private thought'},
+            {'type': 'redacted_thinking', 'data': 'synthetic opaque block'},
+            {'type': 'text', 'text': 'public', 'thinking': 'synthetic private field'},
         ]}),
     ]
     event = SimpleNamespace(event='tool', model_dump=lambda **kwargs: {'event': 'tool', 'function': 'bash', 'arguments': {'cmd': 'python test.py'}, 'result': 'ok'})
