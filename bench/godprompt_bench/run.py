@@ -24,6 +24,9 @@ def load_profile(path: Path) -> RunProfile:
     missing = required - raw.keys()
     if missing:
         raise ValueError(f"profile missing fields: {sorted(missing)}")
+    unknown = raw.keys() - required
+    if unknown:
+        raise ValueError(f"unknown profile fields: {sorted(unknown)}")
     task_ids = raw["task_ids"]
     if not isinstance(task_ids, list) or not task_ids or not all(isinstance(v, str) for v in task_ids):
         raise ValueError("profile task_ids must be a non-empty list of strings")

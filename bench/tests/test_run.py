@@ -119,6 +119,16 @@ def test_profile_rejects_duplicate_ids_before_any_evaluation(tmp_path: Path):
         load_profile(path)
 
 
+def test_profile_rejects_unknown_resource_limit_fields(tmp_path: Path):
+    # A misspelled budget key must not silently leave the default cap in effect.
+    profile = json.loads((ROOT / 'configs' / 'smoke.json').read_text(encoding='utf-8'))
+    profile['max_output_token'] = 100
+    path = tmp_path / 'misspelled-budget.json'
+    path.write_text(json.dumps(profile), encoding='utf-8')
+    with pytest.raises(ValueError, match='unknown profile fields.*max_output_token'):
+        load_profile(path)
+
+
 @pytest.mark.parametrize(('field', 'invalid'), (
     ('epochs', True),
     ('epochs', 1.5),
