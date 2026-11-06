@@ -107,8 +107,13 @@ def _is_verification_command(command: str, expected_commands: tuple[str, ...]) -
         tokens = list(lexer)
         if any(token and all(char in ';&|<>' for char in token) for token in tokens):
             return False
-        return any(tokens[:len(expected)] == expected for value in expected_commands
-                   if (expected := shlex.split(value)))
+        for value in expected_commands:
+            expected = shlex.split(value)
+            if expected and tokens[:len(expected)] == expected:
+                # Help and version queries do not execute the test suite.
+                if not any(arg in {'-h', '--help', '--version'} for arg in tokens[len(expected):]):
+                    return True
+        return False
     except ValueError:
         return False
 

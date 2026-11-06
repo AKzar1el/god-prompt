@@ -247,6 +247,23 @@ def test_verification_attempts_ignore_echoed_commands_and_substrings():
     assert result['verification_attempts'] == 2
 
 
+@pytest.mark.parametrize('command,expected_attempts', [
+    ('python3 -m unittest --help', 0),
+    ('python3 -m unittest -h', 0),
+    ('python3 -m unittest --version', 0),
+    ('python3 -m unittest -v --help', 0),
+    ('python3 test_visible.py --help', 0),
+    ('python3 -m unittest -v', 1),
+    ('python3 test_visible.py', 1),
+])
+def test_verification_attempts_exclude_help_and_version_only_commands(command, expected_attempts):
+    from godprompt_bench.scorers import event_metrics
+
+    event = SimpleNamespace(event='tool', function='bash', arguments={'cmd': command}, failed=False, error=None)
+    metrics = event_metrics((event,), ('python3 test_visible.py', 'python3 -m unittest'))
+    assert metrics['verification_attempts'] == expected_attempts
+
+
 def test_sample_outcome_marks_false_completion_only_on_failed_claim():
     from godprompt_bench.scorers import sample_outcome
 
