@@ -38,12 +38,16 @@ def load_manifest(path: Path) -> list[TaskSpec]:
         "verifier_command",
         "allowed_paths",
     }
+    allowed = required | {"forbidden_paths", "expected_verification_commands"}
     for index, item in enumerate(raw):
         if not isinstance(item, dict):
             raise ValueError(f"task {index} must be an object")
         missing = required - item.keys()
         if missing:
             raise ValueError(f"task {index} missing fields: {sorted(missing)}")
+        unknown = item.keys() - allowed
+        if unknown:
+            raise ValueError(f"task {index} unknown fields: {sorted(unknown)}")
         for field in ("id", "category", "runtime", "fixture_dir", "user_prompt"):
             if not isinstance(item[field], str):
                 raise ValueError(f"task {index}: {field} must be a string")
