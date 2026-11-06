@@ -125,6 +125,28 @@ def test_public_exports_redact_http_basic_authorization_payloads(tmp_path: Path)
     assert manifest['description'] == 'Basic authentication is documented'
 
 
+def test_public_exports_redact_url_userinfo_credentials(tmp_path: Path):
+    # Synthetic credentials can appear in database and HTTP connection URLs.
+    db_url = 'postgresql://db-user:FAKEDB123@db.example.invalid:5432/app'
+    http_url = 'https://viewer:FAKEWEB456@api.example.invalid/v1'
+    redis_url = 'rediss://:FAKEREDIS789@cache.example.invalid:6380/0'
+    text = f'connection={db_url} endpoint {http_url} cache {redis_url}'
+    export_run(
+        tmp_path,
+        {'note': text, 'public_url': 'https://api.example.invalid/v1'},
+        [replace(record(), infrastructure_error=text)],
+        [{'events': [{'output': text}]}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        for secret in ('FAKEDB123', 'FAKEWEB456', 'FAKEREDIS789', 'db-user'):
+            assert secret not in exported, (name, secret)
+        assert exported.count('[REDACTED]@') == 3, name
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['public_url'] == 'https://api.example.invalid/v1'
+    assert redact_secrets('Contact ops@example.invalid') == 'Contact ops@example.invalid'
+
+
 def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: Path):
     # All values are made-up placeholders, not credentials; plain text must still be sanitized.
     entries = (
