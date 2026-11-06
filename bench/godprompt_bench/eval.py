@@ -23,9 +23,13 @@ def build_sample_payloads(bench_root: Path, task_ids: list[str] | tuple[str, ...
         raise ValueError(f"unknown task id(s): {', '.join(missing)}")
 
     payloads: list[dict[str, Any]] = []
+    fixture_root = bench_root.resolve()
     for task_id in selected_ids:
         spec = by_id[task_id]
-        bundle = load_fixture_bundle(bench_root / spec.fixture_dir / "fixture.json")
+        fixture_path = (bench_root / spec.fixture_dir / "fixture.json").resolve()
+        if not fixture_path.is_relative_to(fixture_root):
+            raise ValueError(f"{task_id}: fixture file must stay within benchmark root")
+        bundle = load_fixture_bundle(fixture_path)
         payloads.append(
             {
                 "id": spec.id,
