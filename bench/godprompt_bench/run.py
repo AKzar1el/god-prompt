@@ -156,13 +156,19 @@ def _strip_reasoning(value: Any) -> Any:
     return value
 
 
+def _is_public_message_role(role: Any) -> bool:
+    value = getattr(role, "value", role)
+    return isinstance(value, str) and value in {"user", "assistant", "tool"}
+
+
 def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
     messages: list[dict[str, Any]] = []
     for message in getattr(sample, "messages", []) or []:
         dumped = _dump(message)
         if not isinstance(dumped, dict):
             continue
-        if dumped.get("role", getattr(message, "role", None)) in ("system", "developer"):
+        roles = [role for role in (dumped.get("role"), getattr(message, "role", None)) if role is not None]
+        if not roles or not all(_is_public_message_role(role) for role in roles):
             continue
         messages.append(_strip_reasoning(dumped))
 
