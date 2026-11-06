@@ -152,19 +152,21 @@ def _strip_reasoning(value: Any) -> Any:
 def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
     messages: list[dict[str, Any]] = []
     for message in getattr(sample, "messages", []) or []:
-        role = getattr(message, "role", None)
         dumped = _dump(message)
-        if role == "system" or not isinstance(dumped, dict):
+        if not isinstance(dumped, dict):
+            continue
+        if dumped.get("role", getattr(message, "role", None)) in ("system", "developer"):
             continue
         messages.append(_strip_reasoning(dumped))
 
     events: list[dict[str, Any]] = []
     for event in getattr(sample, "events", []) or []:
-        if getattr(event, "event", None) not in {"tool", "approval"}:
-            continue
         dumped = _dump(event)
-        if isinstance(dumped, dict):
-            events.append(_strip_reasoning(dumped))
+        if not isinstance(dumped, dict):
+            continue
+        if dumped.get("event", getattr(event, "event", None)) not in ("tool", "approval"):
+            continue
+        events.append(_strip_reasoning(dumped))
 
     return {
         "task_id": str(sample.id),
