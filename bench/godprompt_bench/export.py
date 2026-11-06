@@ -12,7 +12,8 @@ from .models import SampleRecord
 
 _SECRET_KEY = re.compile(
     r"(?:api[_-]?key|authorization|access[_-]?token|refresh[_-]?token|"
-    r"session[_-]?token|id[_-]?token|private[_-]?key|secret|password|^token$)",
+    r"session[_-]?token|id[_-]?token|private[_-]?key|secret|password|^token$|"
+    r"^(?:cookie|set[_-]?cookie)$)",
     re.IGNORECASE,
 )
 _INLINE_CREDENTIAL = re.compile(
@@ -25,11 +26,13 @@ _BEARER_TOKEN = re.compile(r"(?i)(\bBearer\s+)[a-z0-9._~+/=-]+")
 _HTTP_BASIC_TOKEN = re.compile(
     r"(?i)(\b(?:proxy-)?authorization[ \t]*[:=][ \t]*basic[ \t]+)[a-z0-9+/_=-]+"
 )
+_COOKIE_HEADER = re.compile(r"(?i)(\b(?:set-cookie|cookie)[ \t]*:[ \t]*)(?=[^\r\n]*=)[^\r\n]+")
 _KNOWN_TOKEN = re.compile(r"\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9_]{12,}|github_pat_[A-Za-z0-9_]{12,})\b")
 
 
 def _redact_text(text: str) -> str:
     """Redact credential-shaped substrings even inside otherwise public text."""
+    text = _COOKIE_HEADER.sub(lambda match: f"{match.group(1)}[REDACTED]", text)
     text = _HTTP_BASIC_TOKEN.sub(lambda match: f"{match.group(1)}[REDACTED]", text)
     text = _BEARER_TOKEN.sub(lambda match: f"{match.group(1)}[REDACTED]", text)
     text = _INLINE_CREDENTIAL.sub(lambda match: f"{match.group(1)}[REDACTED]", text)

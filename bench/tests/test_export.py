@@ -125,6 +125,33 @@ def test_public_exports_redact_http_basic_authorization_payloads(tmp_path: Path)
     assert manifest['description'] == 'Basic authentication is documented'
 
 
+def test_public_exports_redact_cookie_headers_and_structured_cookie_fields(tmp_path: Path):
+    # Synthetic cookie values must not become public benchmark artifacts.
+    cookie = 'Cookie: sessionid=FAKE_SESSION_123; csrftoken=FAKE_CSRF_456'
+    set_cookie = 'Set-Cookie: sid=FAKE_SET_COOKIE_789; HttpOnly; Secure'
+    headers = f'request headers:\n{cookie}\n{set_cookie}\nstatus: 200'
+    export_run(
+        tmp_path,
+        {'note': headers, 'Cookie': 'sid=FAKE_STRUCTURED_987', 'cookie_enabled': True},
+        [replace(record(), infrastructure_error=headers)],
+        [{'events': [{'output': headers, 'set-cookie': 'sid=FAKE_EVENT_654'}]}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        for secret in (
+            'FAKE_SESSION_123', 'FAKE_CSRF_456', 'FAKE_SET_COOKIE_789',
+            'FAKE_STRUCTURED_987', 'FAKE_EVENT_654',
+        ):
+            assert secret not in exported, (name, secret)
+        assert 'status: 200' in exported
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['Cookie'] == '[REDACTED]'
+    assert manifest['cookie_enabled'] is True
+    assert 'Cookie: [REDACTED]' in manifest['note']
+    assert 'Set-Cookie: [REDACTED]' in manifest['note']
+    assert redact_secrets('Cookie recipes are popular') == 'Cookie recipes are popular'
+
+
 def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: Path):
     # All values are made-up placeholders, not credentials; plain text must still be sanitized.
     entries = (
