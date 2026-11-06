@@ -20,6 +20,8 @@ from .models import RunProfile, SampleRecord
 
 def load_profile(path: Path) -> RunProfile:
     raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("profile root must be an object")
     required = {"name", "task_ids", "epochs", "max_messages", "max_time_seconds", "max_output_tokens"}
     missing = required - raw.keys()
     if missing:
@@ -30,8 +32,8 @@ def load_profile(path: Path) -> RunProfile:
     if not isinstance(raw["name"], str) or not raw["name"].strip():
         raise ValueError("profile name must be a non-empty string")
     task_ids = raw["task_ids"]
-    if not isinstance(task_ids, list) or not task_ids or not all(isinstance(v, str) for v in task_ids):
-        raise ValueError("profile task_ids must be a non-empty list of strings")
+    if not isinstance(task_ids, list) or not task_ids or not all(isinstance(v, str) and v.strip() for v in task_ids):
+        raise ValueError("profile task_ids must be non-empty strings in a non-empty list")
     seen_ids: set[str] = set()
     for task_id in task_ids:
         if task_id in seen_ids:
