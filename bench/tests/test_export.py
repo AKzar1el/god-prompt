@@ -177,6 +177,26 @@ def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: P
     assert redact_secrets('USER_NAME=example TOKENIZER=bert') == 'USER_NAME=example TOKENIZER=bert'
 
 
+def test_public_exports_redact_aws_access_key_identifiers(tmp_path: Path):
+    # Made-up identifiers only; an access key ID is credential material too.
+    fake_access_key_id = 'AKIASYNTHETICONLY1234'
+    export_run(
+        tmp_path,
+        {
+            'note': f'AWS_ACCESS_KEY_ID={fake_access_key_id}',
+            'aws_access_key_id': fake_access_key_id,
+            'aws_account_id': '123456789012',
+        },
+        [replace(record(), infrastructure_error=f'accessKeyId: {fake_access_key_id}')],
+        [{'events': [{'accessKeyId': fake_access_key_id}]}],
+    )
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        assert fake_access_key_id not in (tmp_path / filename).read_text(encoding='utf-8')
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['aws_access_key_id'] == '[REDACTED]'
+    assert manifest['aws_account_id'] == '123456789012'
+
+
 def test_public_exports_redact_structured_session_tokens_and_private_keys(tmp_path: Path):
     # Synthetic placeholders expose sensitive key-name gaps without using real credentials.
     fake_values = ('FAKE_SESSION_678', 'FAKE_ID_TOKEN_987', 'FAKE_PRIVATE_123', 'FAKE_AUTH_456')
