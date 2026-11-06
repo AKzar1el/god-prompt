@@ -193,6 +193,38 @@ def test_sample_record_uses_score_and_sums_provider_usage():
 
 
 @pytest.mark.parametrize('field,value', [
+    ('tool_misuse_count', True),
+    ('verification_attempts', -1),
+    ('failed_tool_calls', 1.5),
+    ('retries', '2'),
+    ('retries', float('nan')),
+    ('tool_misuse_count', float('inf')),
+])
+def test_sample_record_rejects_invalid_score_counters(field, value):
+    score = SimpleNamespace(value={field: value}, metadata={'completion_status': 'complete'})
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1, metadata={}, scores={'godprompt_bench': score},
+        model_usage=None, total_time=1.0, error=None, limit=None,
+    )
+    with pytest.raises(ValueError, match=f'invalid benchmark counter: {field}'):
+        sample_record(sample, 'baseline')
+
+
+def test_sample_record_score_counters_accept_missing_and_integral_float():
+    score = SimpleNamespace(
+        value={'retries': 2.0, 'failed_tool_calls': None},
+        metadata={'completion_status': 'complete'},
+    )
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1, metadata={}, scores={'godprompt_bench': score},
+        model_usage=None, total_time=1.0, error=None, limit=None,
+    )
+    record = sample_record(sample, 'baseline')
+    assert record.retries == 2
+    assert record.failed_tool_calls == 0
+
+
+@pytest.mark.parametrize('field,value', [
     ('input_tokens', -3),
     ('input_tokens', True),
     ('input_tokens_cache_read', '7'),

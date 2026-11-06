@@ -100,6 +100,20 @@ def _usage_totals(model_usage: Mapping[str, Any] | None) -> tuple[int | None, in
     return input_tokens, output_tokens
 
 
+def _score_count(value: Any, field: str) -> int:
+    if value is None:
+        return 0
+    if type(value) is int:
+        count = value
+    elif type(value) is float and isfinite(value) and value.is_integer():
+        count = int(value)
+    else:
+        raise ValueError(f"invalid benchmark counter: {field}")
+    if count < 0:
+        raise ValueError(f"invalid benchmark counter: {field}")
+    return count
+
+
 def sample_record(sample: Any, condition: str) -> SampleRecord:
     score = (getattr(sample, "scores", None) or {}).get("godprompt_bench")
     limit = getattr(sample, "limit", None)
@@ -134,10 +148,10 @@ def sample_record(sample: Any, condition: str) -> SampleRecord:
         completion_status=completion_status,
         false_completion=bool(values.get("false_completion", 0)),
         scope_violation=bool(values.get("scope_violation", 0)),
-        tool_misuse_count=int(values.get("tool_misuse_count", 0) or 0),
-        verification_attempts=int(values.get("verification_attempts", 0) or 0),
-        failed_tool_calls=int(values.get("failed_tool_calls", 0) or 0),
-        retries=int(values.get("retries", 0) or 0),
+        tool_misuse_count=_score_count(values.get("tool_misuse_count"), "tool_misuse_count"),
+        verification_attempts=_score_count(values.get("verification_attempts"), "verification_attempts"),
+        failed_tool_calls=_score_count(values.get("failed_tool_calls"), "failed_tool_calls"),
+        retries=_score_count(values.get("retries"), "retries"),
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         latency_seconds=getattr(sample, "total_time", None),
