@@ -172,6 +172,29 @@ def test_public_trajectory_excludes_system_and_reasoning_content():
     assert trajectory['events'][0]['event'] == 'tool'
 
 
+def test_public_trajectory_filters_privileged_mapping_messages_and_keeps_mapping_events():
+    sample = SimpleNamespace(
+        id='fixture', epoch=1,
+        messages=[
+            {'role': 'system', 'content': 'SYNTHETIC_SYSTEM_PRIVATE'},
+            {'role': 'developer', 'content': 'SYNTHETIC_DEVELOPER_PRIVATE'},
+            SimpleNamespace(role='developer', model_dump=lambda **kwargs: {
+                'role': 'developer', 'content': 'SYNTHETIC_OBJECT_PRIVATE',
+            }),
+            {'role': 'user', 'content': 'public task'},
+        ],
+        events=[
+            {'event': 'tool', 'function': 'bash', 'arguments': {'cmd': 'echo harmless'}},
+            {'event': 'approval', 'decision': 'approve'},
+            {'event': 'message', 'content': 'not a tool event'},
+        ],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert trajectory['messages'] == [{'role': 'user', 'content': 'public task'}]
+    assert [event['event'] for event in trajectory['events']] == ['tool', 'approval']
+    assert 'PRIVATE' not in json.dumps(trajectory)
+
+
 def test_execute_benchmark_reads_actual_model_from_eval_spec(monkeypatch, tmp_path):
     import inspect_ai
     import godprompt_bench.run as run_module
