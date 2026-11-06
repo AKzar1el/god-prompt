@@ -301,3 +301,32 @@ def test_shell_policy_rejects_dynamic_dollar_expansions_without_running_payloads
         r'echo "\$PATH"',
     ):
         assert classify_shell_command(command).allowed, command
+
+
+def test_shell_policy_rejects_node_inline_data_url_preloads():
+    # Classification only: the encoded URL payloads must NEVER be executed.
+    data_url = 'data:text/javascript,process%2Eexit%281%29'
+    for command in (
+        f'node --import={data_url} --test',
+        f'node --import {data_url} --test',
+        f'node --loader={data_url} --test',
+        f'node --experimental-loader {data_url} --test',
+        f'node --import=DATA:text/javascript,process%2Eexit%281%29 --test',
+    ):
+        assert classify_shell_command(command).reason == 'inline-interpreter', command
+
+    assert classify_shell_command(['node', f'--import={data_url}', '--test']).reason == 'inline-interpreter'
+    assert classify_shell_command('node --import=./test-setup.mjs --test').allowed
+    assert classify_shell_command('node --loader=./test-loader.mjs --test').allowed
+    assert classify_shell_command('node --test').allowed
+
+
+def test_shell_policy_rejects_node_options_environment_overrides():
+    # NODE_OPTIONS allows process-wide preloads invisible to the normal argv scan.
+    for command in (
+        'NODE_OPTIONS=--import=data:text/javascript,process%2Eexit%281%29 node --test',
+        'env NODE_OPTIONS=--import=./setup.mjs node --test',
+        'NODE_OPTIONS=--require=./setup.cjs node --test',
+    ):
+        assert classify_shell_command(command).reason == 'node-options-override', command
+    assert classify_shell_command('echo NODE_OPTIONS=--import=./setup.mjs').allowed
