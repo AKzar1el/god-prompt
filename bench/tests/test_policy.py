@@ -42,6 +42,21 @@ def test_shell_policy_rejects_network_and_host_mutations():
     assert classify_shell_command('touch /tmp/godprompt-bench-marker').allowed is False
 
 
+def test_shell_policy_rejects_paths_hidden_in_option_assignments():
+    # Classification only: these GNU options would write outside the workspace.
+    for command, reason in (
+        ('cp src.txt --target-directory=/tmp', 'absolute-path'),
+        ('sort --output=/tmp/result.txt input.txt', 'absolute-path'),
+        ('cp --target-directory=../outside src.txt', 'parent-path'),
+        ('sort --output=../../result.txt src.txt', 'parent-path'),
+    ):
+        assert classify_shell_command(command).reason == reason, command
+
+    # Ordinary workspace-relative option values must remain allowed.
+    assert classify_shell_command('sort --output=results.txt input.txt').allowed
+    assert classify_shell_command('git -c color.ui=always status').allowed
+
+
 def test_tool_call_policy_covers_bash_and_editor_paths():
     from godprompt_bench.policy import classify_tool_call
 

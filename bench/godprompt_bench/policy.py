@@ -34,7 +34,11 @@ def validate_workspace_path(path: str) -> bool:
 
 def _path_operand(token: str) -> str:
     # Strip common shell redirection prefixes before checking the target path.
-    return token.lstrip("0123456789<>")
+    operand = token.lstrip("0123456789<>")
+    # GNU --option=/absolute/path hides a path behind an option assignment.
+    if operand.startswith("-") and "=" in operand:
+        return operand.split("=", 1)[1]
+    return operand
 
 
 def _has_dynamic_dollar(command: str) -> bool:
