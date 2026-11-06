@@ -209,6 +209,28 @@ def test_shell_policy_rejects_python_interactive_module_entry_points():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_network_capable_python_module_entry_points():
+    # Classify only: these strings must never start a server or install packages.
+    for command in (
+        'python3 -m http.server 8000',
+        'python3.12 -I -m http.server',
+        'pypy3 -mhttp.server',
+        'env python3 -m pip install example-package',
+        'python3 -mpip download example-package',
+        'echo ok && python3 -m http.server',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+
+    assert classify_shell_command(['python3', '-m', 'http.server']).reason == 'network-command'
+    for command in (
+        'python3 -m pytest -q',
+        'python3 -m json.tool data.json',
+        'python3 test_visible.py -m http.server',
+        'echo python3 -m pip install',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_compound_commands_without_spaces():
     assert classify_shell_command('echo ok;echo done').reason == 'compound-shell-command'
     assert classify_shell_command('echo ok&&echo done').reason == 'compound-shell-command'

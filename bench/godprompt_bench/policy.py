@@ -130,6 +130,11 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                     option == "-m" and offset + 1 < len(options) and options[offset + 1] in {"timeit", "pdb", "code", "asyncio"}
                 )):
                     return PolicyDecision(False, "inline-interpreter")
+                # These modules can open a network listener or fetch/install packages.
+                if is_python and (option in {"-mhttp.server", "-mpip"} or (
+                    option == "-m" and offset + 1 < len(options) and options[offset + 1] in {"http.server", "pip"}
+                )):
+                    return PolicyDecision(False, "network-command")
                 if (
                     option in inline_flags
                     or option.startswith(("--eval=", "--execute=", "-c", "-e"))
