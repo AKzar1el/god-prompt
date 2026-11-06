@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from godprompt_bench.run import execute_benchmark, load_profile, public_trajectory, sample_record, validate_sample_coverage, fixture_fingerprints, condition_batches, build_manifest
+from godprompt_bench.run import execute_benchmark, load_profile, public_trajectory, sample_record, validate_sample_coverage, fixture_fingerprints, condition_batches, build_manifest, _usage_totals
 from godprompt_bench.models import RunProfile
 
 ROOT = Path(__file__).parents[1]
@@ -151,6 +151,33 @@ def test_sample_record_uses_score_and_sums_provider_usage():
     assert record.output_tokens == 7
     assert record.tool_misuse_count == 1
     assert record.infrastructure_error is None
+
+
+@pytest.mark.parametrize(('field', 'invalid'), (
+    ('input_tokens', 'unknown'),
+    ('input_tokens', True),
+    ('input_tokens_cache_read', float('nan')),
+    ('input_tokens_cache_write', -3),
+    ('output_tokens', '7.5'),
+    ('output_tokens', float('inf')),
+    ('output_tokens', -1),
+    ('output_tokens', True),
+))
+def test_usage_totals_never_coerce_or_count_invalid_provider_tokens(field, invalid):
+    usage = SimpleNamespace(input_tokens=10, input_tokens_cache_read=3,
+                            input_tokens_cache_write=2, output_tokens=7)
+    setattr(usage, field, invalid)
+    expected = (15, None) if field == 'output_tokens' else (None, 7)
+    assert _usage_totals({'provider': usage}) == expected
+
+
+def test_usage_totals_preserves_valid_counts_but_marks_partial_provider_usage_unknown():
+    valid = SimpleNamespace(input_tokens=10, output_tokens=4)
+    invalid = SimpleNamespace(input_tokens='invalid', output_tokens=3)
+    assert _usage_totals({'valid': valid, 'invalid': invalid}) == (None, 7)
+    assert _usage_totals({'valid': valid, 'missing': None}) == (None, None)
+    assert _usage_totals([]) == (None, None)
+    assert _usage_totals({'serialized': {'input_tokens': 4, 'output_tokens': 3}}) == (4, 3)
 
 
 def test_public_trajectory_excludes_system_and_reasoning_content():

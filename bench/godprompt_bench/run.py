@@ -66,15 +66,35 @@ def validate_sample_coverage(profile: RunProfile, records: list[SampleRecord]) -
 
 
 def _usage_totals(model_usage: Mapping[str, Any] | None) -> tuple[int | None, int | None]:
-    if not model_usage:
+    if not isinstance(model_usage, Mapping) or not model_usage:
         return None, None
-    input_tokens = 0
-    output_tokens = 0
+
+    def nonnegative_count(value: Any) -> int | None:
+        if value is None:
+            return 0
+        return value if type(value) is int and value >= 0 else None
+
+    input_tokens: int | None = 0
+    output_tokens: int | None = 0
     for usage in model_usage.values():
-        input_tokens += int(getattr(usage, "input_tokens", 0) or 0)
-        input_tokens += int(getattr(usage, "input_tokens_cache_read", 0) or 0)
-        input_tokens += int(getattr(usage, "input_tokens_cache_write", 0) or 0)
-        output_tokens += int(getattr(usage, "output_tokens", 0) or 0)
+        if usage is None:
+            return None, None
+        for field in ("input_tokens", "input_tokens_cache_read", "input_tokens_cache_write"):
+            raw = usage.get(field, 0) if isinstance(usage, Mapping) else getattr(usage, field, 0)
+            count = nonnegative_count(raw)
+            if count is None:
+                input_tokens = None
+            elif input_tokens is not None:
+                input_tokens += count
+        raw_output = (
+            usage.get("output_tokens", 0) if isinstance(usage, Mapping)
+            else getattr(usage, "output_tokens", 0)
+        )
+        count = nonnegative_count(raw_output)
+        if count is None:
+            output_tokens = None
+        elif output_tokens is not None:
+            output_tokens += count
     return input_tokens, output_tokens
 
 
