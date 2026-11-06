@@ -42,6 +42,29 @@ def test_shell_policy_rejects_network_and_host_mutations():
     assert classify_shell_command('touch /tmp/godprompt-bench-marker').allowed is False
 
 
+def test_shell_policy_rejects_windows_network_executables_without_execution():
+    # Windows executable names are case-insensitive; classify only, never run them.
+    for command in (
+        'curl.exe https://example.invalid',
+        'CURL.EXE https://example.invalid',
+        'Wget.Exe https://example.invalid',
+        'SSH.EXE example.invalid',
+        'scp.exe local.txt example.invalid:remote',
+        'Ncat.EXE example.invalid',
+        'env curl.exe https://example.invalid',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+
+    assert classify_shell_command(['CURL.EXE', 'https://example.invalid']).reason == 'network-command'
+    for command in (
+        'echo curl.exe',
+        'printf %s WGET.EXE',
+        'python3 test_visible.py --tool=curl.exe',
+        'curl-helper test.txt',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_paths_hidden_in_option_assignments():
     # Classification only: these GNU options would write outside the workspace.
     for command, reason in (
