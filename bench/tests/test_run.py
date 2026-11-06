@@ -192,6 +192,28 @@ def test_sample_record_uses_score_and_sums_provider_usage():
     assert record.infrastructure_error is None
 
 
+@pytest.mark.parametrize('latency', [
+    '1.5', True, -1.0, float('nan'), float('inf'), 10 ** 400,
+])
+def test_sample_record_rejects_invalid_latency_telemetry(latency):
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1, metadata={}, scores={}, model_usage={},
+        total_time=latency, error=None, limit=None,
+    )
+    with pytest.raises(ValueError, match='invalid sample latency'):
+        sample_record(sample, 'baseline')
+
+
+def test_sample_record_accepts_missing_and_zero_latency():
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1, metadata={}, scores={}, model_usage={},
+        total_time=None, error=None, limit=None,
+    )
+    assert sample_record(sample, 'baseline').latency_seconds is None
+    sample.total_time = 0
+    assert sample_record(sample, 'baseline').latency_seconds == 0.0
+
+
 @pytest.mark.parametrize('field,value', [
     ('input_tokens', -3),
     ('input_tokens', True),
