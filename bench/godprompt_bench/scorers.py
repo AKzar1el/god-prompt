@@ -24,13 +24,21 @@ def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def _reject_nonstandard_json_constant(value: str) -> Any:
+    raise ValueError(f"nonstandard JSON constant: {value}")
+
+
 def parse_completion_status(text: str) -> str:
     candidate = text.strip()
     match = _FENCE_RE.match(candidate)
     if match:
         candidate = match.group(1).strip()
     try:
-        payload = json.loads(candidate, object_pairs_hook=_unique_json_object)
+        payload = json.loads(
+            candidate,
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_nonstandard_json_constant,
+        )
     except (ValueError, TypeError):
         return "protocol-invalid"
     if not isinstance(payload, dict):
