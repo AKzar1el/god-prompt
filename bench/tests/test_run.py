@@ -119,6 +119,20 @@ def test_profile_rejects_duplicate_ids_before_any_evaluation(tmp_path: Path):
         load_profile(path)
 
 
+@pytest.mark.parametrize(('field', 'replacement'), (
+    ('task_ids', ['substituted-task']),
+    ('max_time_seconds', 99999),
+))
+def test_profile_rejects_duplicate_json_keys_before_evaluation(tmp_path: Path, field, replacement):
+    # A second key must not shadow the selected tasks or resource budget.
+    profile = json.loads((ROOT / 'configs' / 'smoke.json').read_text(encoding='utf-8'))
+    payload = json.dumps(profile)[:-1] + f', {json.dumps(field)}: {json.dumps(replacement)}}}'
+    path = tmp_path / 'shadowed-profile.json'
+    path.write_text(payload, encoding='utf-8')
+    with pytest.raises(ValueError, match=f'duplicate JSON key: {field}'):
+        load_profile(path)
+
+
 @pytest.mark.parametrize('invalid_root', ([], None, 'smoke', 42))
 def test_profile_rejects_nonobject_root_with_actionable_error(tmp_path: Path, invalid_root):
     path = tmp_path / 'malformed.json'

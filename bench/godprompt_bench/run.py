@@ -14,13 +14,16 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .agent import condition_prompt
+from .corpus import _reject_duplicate_json_keys
 from .eval import build_task
 from .export import export_run
 from .models import RunProfile, SampleRecord
 
 
 def load_profile(path: Path) -> RunProfile:
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = json.loads(
+        path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_json_keys
+    )
     if not isinstance(raw, dict):
         raise ValueError("profile root must be an object")
     required = {"name", "task_ids", "epochs", "max_messages", "max_time_seconds", "max_output_tokens"}
