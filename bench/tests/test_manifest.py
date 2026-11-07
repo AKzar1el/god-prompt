@@ -129,6 +129,9 @@ def test_fixture_bundle_rejects_unknown_fields(tmp_path: Path):
     r'tasks\..\private', '../outside', '/absolute', '.', '',
     'CON', 'src/NUL.txt', 'src/COM3.log', 'src/LPT9', 'src/CONOUT$',
     'src/trailing.', 'src/file ', 'src/log.txt:stream', 'src/' + chr(0) + 'bad',
+    'src/what?.py', 'src/all*.py', 'src/a"b.py', 'src/a<b.py',
+    'src/a>b.py', 'src/a|b.py', 'src/a' + chr(9) + 'b.py',
+    'src/a' + chr(31) + 'b.py',
 ])
 def test_manifest_and_fixture_reject_nonportable_or_escaping_paths(tmp_path: Path, unsafe: str):
     task = load_manifest(ROOT / 'tasks' / 'manifest.json')[0]
