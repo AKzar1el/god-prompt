@@ -301,7 +301,9 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
             options_with_values = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"}
             while offset < len(tail) and tail[offset].startswith("-"):
                 offset += 2 if tail[offset] in options_with_values else 1
-            if offset < len(tail) and tail[offset] == "config" and "--global" in tail[offset + 1 :]:
+            if offset < len(tail) and tail[offset] == "config" and any(
+                option in {"--global", "--system"} for option in tail[offset + 1 :]
+            ):
                 return PolicyDecision(False, "global-git-config")
         if executable == "find" and index + 1 < len(executable_tokens) and executable_tokens[index + 1] == "/":
             return PolicyDecision(False, "root-filesystem-search")
