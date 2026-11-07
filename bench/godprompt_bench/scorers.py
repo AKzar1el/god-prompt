@@ -43,6 +43,8 @@ def snapshot_hashes(root: Path) -> dict[str, str]:
             result[relative] = _symlink_hash(path)
         elif path.is_file():
             result[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+        elif path.is_dir():
+            result[relative] = hashlib.sha256(b"directory\0").hexdigest()
     return result
 
 
@@ -203,6 +205,8 @@ for root, dirs, files in os.walk("."):
         rel = os.path.relpath(os.path.join(root, name), ".").replace(os.sep, "/")
         if name not in ignored_parts and os.path.islink(os.path.join(root, name)):
             out[rel] = hashlib.sha256(b"symlink\0" + os.fsencode(os.readlink(os.path.join(root, name)))).hexdigest()
+        elif name not in ignored_parts:
+            out[rel] = hashlib.sha256(b"directory\0").hexdigest()
     dirs[:] = sorted(d for d in dirs if d not in ignored_parts and not os.path.islink(os.path.join(root, d)))
     for name in sorted(files):
         rel = os.path.relpath(os.path.join(root, name), ".").replace(os.sep, "/")
