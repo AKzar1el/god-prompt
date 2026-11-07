@@ -47,6 +47,29 @@ def test_manifest_rejects_duplicate_ids(tmp_path: Path):
         validate_manifest(tasks)
 
 
+def test_manifest_rejects_duplicate_json_security_field(tmp_path: Path):
+    source = json.loads((ROOT / 'tasks' / 'manifest.json').read_text(encoding='utf-8'))[0]
+    encoded = json.dumps(source)
+    duplicate = encoded[:-1] + ', "allowed_paths": ["unreviewed.py"]}'
+    manifest = tmp_path / 'manifest.json'
+    manifest.write_text('[' + duplicate + ']', encoding='utf-8')
+    with pytest.raises(ValueError, match='duplicate JSON key: allowed_paths'):
+        load_manifest(manifest)
+
+
+@pytest.mark.parametrize('duplicate', (
+    '{"files":{"src/a.py":"ok"},"hidden_verifier":"assert True",'
+    '"hidden_verifier":"assert False","starter_expected_pass":false}',
+    '{"files":{"src/a.py":"ok","src/a.py":"overwritten"},'
+    '"hidden_verifier":"assert True","starter_expected_pass":false}',
+))
+def test_fixture_rejects_duplicate_json_keys(tmp_path: Path, duplicate: str):
+    fixture = tmp_path / 'fixture.json'
+    fixture.write_text(duplicate, encoding='utf-8')
+    with pytest.raises(ValueError, match='duplicate JSON key:'):
+        load_fixture_bundle(fixture)
+
+
 @pytest.mark.parametrize('field,invalid', [
     ('id', 123), ('category', ['implementation']), ('runtime', True),
     ('fixture_dir', 42), ('user_prompt', {'text': 'run'}),
