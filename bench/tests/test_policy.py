@@ -42,6 +42,29 @@ def test_shell_policy_rejects_network_and_host_mutations():
     assert classify_shell_command('touch /tmp/godprompt-bench-marker').allowed is False
 
 
+def test_shell_policy_rejects_windows_network_executables_without_execution():
+    # Windows executable names are case-insensitive; classify only, never run them.
+    for command in (
+        'curl.exe https://example.invalid',
+        'CURL.EXE https://example.invalid',
+        'Wget.Exe https://example.invalid',
+        'SSH.EXE example.invalid',
+        'scp.exe local.txt example.invalid:remote',
+        'Ncat.EXE example.invalid',
+        'env curl.exe https://example.invalid',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+
+    assert classify_shell_command(['CURL.EXE', 'https://example.invalid']).reason == 'network-command'
+    for command in (
+        'echo curl.exe',
+        'printf %s WGET.EXE',
+        'python3 test_visible.py --tool=curl.exe',
+        'curl-helper test.txt',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_paths_hidden_in_option_assignments():
     # Classification only: these GNU options would write outside the workspace.
     for command, reason in (
@@ -356,3 +379,18 @@ def test_shell_policy_rejects_node_options_environment_overrides():
     ):
         assert classify_shell_command(command).reason == 'node-options-override', command
     assert classify_shell_command('echo NODE_OPTIONS=--import=./setup.mjs').allowed
+
+
+def test_shell_policy_rejects_case_variant_node_options_assignments():
+    # Windows environment keys are case-insensitive; classify without running a preload.
+    for command in (
+        'node_options=--import=./setup.mjs node --test',
+        'Node_Options=--require=./setup.cjs node --test',
+        'env NoDe_OpTiOnS=--import=data:text/javascript,console%2Elog%281%29 node --test',
+    ):
+        assert classify_shell_command(command).reason == 'node-options-override', command
+
+    assert classify_shell_command(['env', 'node_options=--require=./setup.cjs', 'node', '--test']).reason == 'node-options-override'
+    assert classify_shell_command('echo node_options=--import=./setup.mjs').allowed
+    assert classify_shell_command('MY_NODE_OPTIONS=plain node --test').allowed
+    assert classify_shell_command('node --test').allowed
