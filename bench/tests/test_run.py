@@ -394,6 +394,25 @@ def test_public_trajectory_redacts_provider_reasoning_field_variants():
     assert trajectory['events'][0]['output'] == {'status': 'ok'}
 
 
+@pytest.mark.parametrize('field', ('reasoning_text', 'reasoningText', 'thinking_text', 'thinkingText'))
+def test_public_trajectory_redacts_provider_reasoning_text_aliases(field):
+    # Private model reasoning must not survive under a provider's text alias.
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[{'role': 'assistant', 'content': [
+            {'type': 'text', 'text': 'public answer', field: 'SYNTHETIC_PRIVATE_NESTED'},
+            {'type': field, 'text': 'SYNTHETIC_PRIVATE_BLOCK'},
+        ]}],
+        events=[{'event': 'tool', 'output': {
+            field: 'SYNTHETIC_PRIVATE_EVENT', 'status': 'ok',
+        }}],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'][0]['content'] == [{'type': 'text', 'text': 'public answer'}]
+    assert trajectory['events'][0]['output'] == {'status': 'ok'}
+
+
 def test_public_trajectory_filters_privileged_mapping_messages_and_keeps_mapping_events():
     sample = SimpleNamespace(
         id='fixture', epoch=1,
