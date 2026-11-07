@@ -90,7 +90,7 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
 
     # NODE_OPTIONS can preload executable modules before the visible command
     # starts; a caller-controlled assignment defeats argv-only approval.
-    if any(token.startswith("NODE_OPTIONS=") for token in executable_tokens):
+    if any(token.casefold().startswith("node_options=") for token in executable_tokens):
         return PolicyDecision(False, "node-options-override")
 
     shell_names = {"sh", "bash", "dash", "ash", "zsh", "ksh", "eval", "source"}

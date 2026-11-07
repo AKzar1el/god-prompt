@@ -353,3 +353,18 @@ def test_shell_policy_rejects_node_options_environment_overrides():
     ):
         assert classify_shell_command(command).reason == 'node-options-override', command
     assert classify_shell_command('echo NODE_OPTIONS=--import=./setup.mjs').allowed
+
+
+def test_shell_policy_rejects_case_variant_node_options_assignments():
+    # Windows environment keys are case-insensitive; classify without running a preload.
+    for command in (
+        'node_options=--import=./setup.mjs node --test',
+        'Node_Options=--require=./setup.cjs node --test',
+        'env NoDe_OpTiOnS=--import=data:text/javascript,console%2Elog%281%29 node --test',
+    ):
+        assert classify_shell_command(command).reason == 'node-options-override', command
+
+    assert classify_shell_command(['env', 'node_options=--require=./setup.cjs', 'node', '--test']).reason == 'node-options-override'
+    assert classify_shell_command('echo node_options=--import=./setup.mjs').allowed
+    assert classify_shell_command('MY_NODE_OPTIONS=plain node --test').allowed
+    assert classify_shell_command('node --test').allowed
