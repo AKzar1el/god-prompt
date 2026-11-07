@@ -303,6 +303,30 @@ def test_shell_policy_rejects_compound_commands_without_spaces():
     assert classify_shell_command('echo ok > output.txt').allowed is True
 
 
+def test_shell_policy_rejects_here_string_stdin_code_without_running_it():
+    for command in (
+        "python3 - <<< 'print(1)'",
+        "python3 -<<<'print(1)'",
+        "node <<< 'console.log(1)'",
+        "cat <<< sample",
+        "env python3 - <<< 'print(1)'",
+        "echo ok && python3 -<<<'print(1)'",
+    ):
+        assert classify_shell_command(command).reason == 'dynamic-shell-syntax', command
+
+    assert classify_shell_command(['python3', '-', '<<<', 'print(1)']).reason == 'dynamic-shell-syntax'
+    assert classify_shell_command(['python3', '-', '<<<print(1)']).reason == 'dynamic-shell-syntax'
+
+    for command in (
+        'cat < input.txt',
+        'python3 test_visible.py < input.txt',
+        "echo '<<<'",
+        'printf %s "<<<"',
+        r'echo \<\<\<',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_allows_harmless_command_names_as_literal_output():
     for command in (
         'echo curl',
