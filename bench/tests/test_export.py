@@ -2,6 +2,7 @@ import csv
 import json
 from dataclasses import replace
 from pathlib import Path
+import pytest
 
 from godprompt_bench.export import export_run, redact_secrets
 from godprompt_bench.models import SampleRecord
@@ -42,6 +43,14 @@ def test_export_overwrites_only_known_files_not_arbitrary_output(tmp_path: Path)
     marker.write_text('keep')
     export_run(tmp_path, {'run_id': 'r1'}, [record()], [])
     assert marker.read_text() == 'keep'
+
+
+def test_export_rejects_unknown_conditions_without_creating_public_artifacts(tmp_path: Path):
+    output = tmp_path / 'invalid-benchmark'
+    invalid = replace(record(), condition='godpromt')
+    with pytest.raises(ValueError, match='unknown benchmark condition'):
+        export_run(output, {'run_id': 'invalid'}, [invalid], [])
+    assert not output.exists()
 
 
 def test_export_quotes_formula_like_csv_text_without_changing_numeric_fields(tmp_path: Path):
