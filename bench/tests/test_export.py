@@ -219,3 +219,24 @@ def test_public_exports_redact_structured_session_tokens_and_private_keys(tmp_pa
     for name in ('manifest.json', 'trajectories.jsonl'):
         exported = (tmp_path / name).read_text(encoding='utf-8')
         assert not any(value in exported for value in fake_values)
+
+
+def test_public_exports_redact_token_auth_schemes_and_credential_bearing_keys(tmp_path: Path):
+    # Synthetic strings only: neither header values nor dynamic JSON keys may publish credentials.
+    header_token = 'FAKE_HEADER_TOKEN_123'
+    proxy_token = 'FAKE_PROXY_TOKEN_456'
+    embedded_key = 'FAKE_KEY_VALUE_789'
+    headers = f'Authorization: Token {header_token}; Proxy-Authorization: ApiKey {proxy_token}'
+    export_run(
+        tmp_path,
+        {'note': headers, f'request token={embedded_key}': {'safe': 'public'}},
+        [replace(record(), infrastructure_error=headers)],
+        [{'events': [{f'header api_key={embedded_key}': 'public', 'output': headers}]}],
+    )
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        text = (tmp_path / filename).read_text(encoding='utf-8')
+        for secret in (header_token, proxy_token, embedded_key):
+            assert secret not in text, (filename, secret)
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['note'] == 'Authorization: [REDACTED]; Proxy-Authorization: [REDACTED]'
+    assert manifest['request token=[REDACTED]'] == {'safe': 'public'}
