@@ -334,6 +334,22 @@ def test_event_metrics_counts_inspect_bash_command_schema_and_retries():
     assert invalid['failed_tool_calls'] == 1
 
 
+def test_event_metrics_stop_counting_retries_after_successful_recovery():
+    from godprompt_bench.scorers import event_metrics
+
+    # A later independent verification is not an additional retry of a resolved failure.
+    events = [
+        {'event': 'tool', 'function': 'bash', 'arguments': {'command': 'python3 test_visible.py'}, 'failed': failed}
+        for failed in (True, False, False, True, False)
+    ]
+    assert event_metrics(events, ('python3 test_visible.py',)) == {
+        'tool_misuse_count': 0,
+        'verification_attempts': 5,
+        'failed_tool_calls': 2,
+        'retries': 2,
+    }
+
+
 def test_verification_attempts_ignore_echoed_commands_and_substrings():
     from types import SimpleNamespace
     from godprompt_bench.scorers import event_metrics
