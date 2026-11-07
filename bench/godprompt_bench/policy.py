@@ -328,7 +328,7 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
 
     for index, token in enumerate(executable_tokens):
         executable = PurePosixPath(token).name
-        if executable == "git":
+        if executable.casefold().removesuffix(".exe") == "git":
             tail = executable_tokens[index + 1 :]
             # Git aliases can launch commands hidden behind innocuous subcommands.
             for position, option in enumerate(tail):
@@ -346,6 +346,20 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
             options_with_values = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"}
             while offset < len(tail) and tail[offset].startswith("-"):
                 offset += 2 if tail[offset] in options_with_values else 1
+            if offset < len(tail):
+                git_command = tail[offset]
+                # These Git entry points can contact remotes, run configured
+                # transports or launch helpers even without curl/ssh in argv.
+                if git_command in {
+                    "clone", "fetch", "pull", "push", "ls-remote", "remote",
+                    "submodule", "send-pack", "receive-pack", "upload-pack",
+                    "upload-archive", "http-fetch", "http-push", "daemon",
+                    "instaweb", "send-email", "svn",
+                } or (git_command == "archive" and any(
+                    option == "--remote" or option.startswith("--remote=")
+                    for option in tail[offset + 1:]
+                )):
+                    return PolicyDecision(False, "network-command")
             if offset < len(tail) and tail[offset] == "config" and any(
                 option in {"--global", "--system"} for option in tail[offset + 1 :]
             ):

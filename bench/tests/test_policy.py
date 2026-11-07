@@ -55,6 +55,30 @@ def test_shell_policy_rejects_network_and_host_mutations():
     assert classify_shell_command('touch /tmp/godprompt-bench-marker').allowed is False
 
 
+def test_shell_policy_rejects_git_network_and_remote_exec_subcommands_without_execution():
+    # Git can open network connections even without invoking curl/ssh directly.
+    for command in (
+        'git fetch origin',
+        'git -C repo pull --ff-only',
+        'git push origin HEAD',
+        'git clone https://example.invalid/repo.git clone-dir',
+        'git ls-remote origin',
+        'git remote update',
+        'git submodule update --init',
+        'env git --no-pager fetch origin',
+        'git -c color.ui=always fetch origin',
+        'git -C repo -c color.ui=always push origin main',
+        'GIT.EXE fetch origin',
+        'echo ok && git fetch origin',
+        'git archive --remote=origin HEAD',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+
+    for command in ('git status', 'git -C repo diff --stat', 'git log -1',
+                    'git -c color.ui=always status'):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_windows_network_executables_without_execution():
     # Windows executable names are case-insensitive; classify only, never run them.
     for command in (
