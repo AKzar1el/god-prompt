@@ -337,6 +337,29 @@ def test_public_trajectory_excludes_system_and_reasoning_content():
     assert trajectory['events'][0]['event'] == 'tool'
 
 
+def test_public_trajectory_redacts_provider_reasoning_field_variants():
+    # Provider-specific field names can carry private reasoning in otherwise public messages.
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[{
+            'role': 'assistant',
+            'reasoning_content': 'SYNTHETIC_PRIVATE_UNDERSCORE',
+            'reasoningContent': 'SYNTHETIC_PRIVATE_CAMEL',
+            'content': [
+                {'type': 'reasoning_content', 'text': 'SYNTHETIC_PRIVATE_BLOCK'},
+                {'type': 'text', 'text': 'visible answer', 'thinkingContent': 'SYNTHETIC_PRIVATE_NESTED'},
+            ],
+        }],
+        events=[{'event': 'tool', 'output': {
+            'reasoning_details': 'SYNTHETIC_PRIVATE_EVENT', 'status': 'ok',
+        }}],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'][0]['content'] == [{'type': 'text', 'text': 'visible answer'}]
+    assert trajectory['events'][0]['output'] == {'status': 'ok'}
+
+
 def test_public_trajectory_filters_privileged_mapping_messages_and_keeps_mapping_events():
     sample = SimpleNamespace(
         id='fixture', epoch=1,
