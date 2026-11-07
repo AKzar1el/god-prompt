@@ -47,6 +47,14 @@ def test_manifest_rejects_duplicate_ids(tmp_path: Path):
         validate_manifest(tasks)
 
 
+def test_manifest_rejects_case_insensitive_duplicate_task_ids():
+    # Task IDs become workspace directory names, which alias on Windows.
+    task = load_manifest(ROOT / 'tasks' / 'manifest.json')[0]
+    tasks = [replace(task, id='Example-Task'), replace(task, id='example-task')]
+    with pytest.raises(ValueError, match='duplicate task id'):
+        validate_manifest(tasks)
+
+
 def test_manifest_rejects_duplicate_json_security_field(tmp_path: Path):
     source = json.loads((ROOT / 'tasks' / 'manifest.json').read_text(encoding='utf-8'))[0]
     encoded = json.dumps(source)

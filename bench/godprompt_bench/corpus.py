@@ -116,9 +116,11 @@ def validate_manifest(tasks: list[TaskSpec]) -> None:
         _validate_relative(task.id, "task id", task.id)
         if "/" in task.id:
             raise ValueError(f"{task.id}: task id must be a single path component")
-        if task.id in seen:
+        # Workspace directory names must remain unique on case-insensitive hosts.
+        folded_id = task.id.casefold()
+        if folded_id in seen:
             raise ValueError(f"duplicate task id: {task.id}")
-        seen.add(task.id)
+        seen.add(folded_id)
         if task.category not in CATEGORIES:
             raise ValueError(f"{task.id}: unknown category {task.category}")
         if task.runtime not in RUNTIMES:
