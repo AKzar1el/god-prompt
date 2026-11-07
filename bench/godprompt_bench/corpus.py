@@ -75,7 +75,8 @@ def _validate_relative(path: str, field: str, task_id: str) -> None:
     windows = PureWindowsPath(path)
     # Fixture paths use POSIX separators; backslashes can escape the root on Windows.
     if (
-        parsed == PurePosixPath(".")
+        "\x00" in path
+        or parsed == PurePosixPath(".")
         or parsed.is_absolute()
         or ".." in parsed.parts
         or path != parsed.as_posix()
@@ -91,6 +92,9 @@ def validate_manifest(tasks: list[TaskSpec]) -> None:
     for task in tasks:
         if not task.id.strip():
             raise ValueError("task id must not be empty")
+        _validate_relative(task.id, "task id", task.id)
+        if "/" in task.id:
+            raise ValueError(f"{task.id}: task id must be a single path component")
         if task.id in seen:
             raise ValueError(f"duplicate task id: {task.id}")
         seen.add(task.id)

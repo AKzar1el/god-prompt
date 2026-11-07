@@ -117,6 +117,19 @@ def test_manifest_and_fixture_reject_nonportable_or_escaping_paths(tmp_path: Pat
         load_fixture_bundle(fixture)
 
 
+@pytest.mark.parametrize('unsafe', (
+    '../outside', '/absolute', r'C:\private', r'..\outside',
+    'nested/task', '.', 'invalid\x00name',
+))
+def test_manifest_rejects_unsafe_task_ids(unsafe: str):
+    # Task IDs are used as workspace directory names by benchmark fixtures.
+    task = load_manifest(ROOT / 'tasks' / 'manifest.json')[0]
+    with pytest.raises(ValueError, match='task id must be'):
+        validate_manifest([replace(task, id=unsafe)])
+
+    validate_manifest([replace(task, id='valid-task_42')])
+
+
 @pytest.mark.parametrize('alias', ('src/./a.py', 'src//a.py', './src/a.py'))
 def test_fixture_rejects_paths_that_alias_after_normalization(tmp_path: Path, alias: str):
     fixture = tmp_path / 'fixture.json'
