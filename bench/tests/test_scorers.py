@@ -311,6 +311,29 @@ def test_event_metrics_count_policy_rejections_verification_failures_and_retries
     }
 
 
+def test_event_metrics_counts_inspect_bash_command_schema_and_retries():
+    from godprompt_bench.scorers import event_metrics
+
+    # Inspect AI's current bash tool emits `command`, not the legacy `cmd`.
+    events = [
+        {'event': 'tool', 'function': 'bash', 'arguments': {'command': 'python3 test_visible.py'}, 'failed': True},
+        {'event': 'tool', 'function': 'bash', 'arguments': {'command': 'python3 test_visible.py'}, 'failed': False},
+        {'event': 'tool', 'function': 'bash', 'arguments': {'command': 'echo python3 test_visible.py'}, 'failed': False},
+    ]
+    assert event_metrics(events, ('python3 test_visible.py',)) == {
+        'tool_misuse_count': 0,
+        'verification_attempts': 2,
+        'failed_tool_calls': 1,
+        'retries': 1,
+    }
+    ambiguous = [{'event': 'tool', 'function': 'bash', 'arguments': {
+        'cmd': 'python3 test_visible.py', 'command': 'python3 test_visible.py',
+    }, 'failed': True}]
+    invalid = event_metrics(ambiguous, ('python3 test_visible.py',))
+    assert invalid['verification_attempts'] == 0
+    assert invalid['failed_tool_calls'] == 1
+
+
 def test_verification_attempts_ignore_echoed_commands_and_substrings():
     from types import SimpleNamespace
     from godprompt_bench.scorers import event_metrics

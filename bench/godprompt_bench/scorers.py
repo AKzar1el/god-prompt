@@ -184,7 +184,13 @@ def event_metrics(events: Iterable[Any], expected_commands: tuple[str, ...]) -> 
 
         if function != "bash":
             continue
-        cmd = arguments.get("cmd") if isinstance(arguments, Mapping) else None
+        # Inspect bash uses `command`; older saved runs used `cmd`. The
+        # approver rejects calls with both names, so do not score ambiguity.
+        cmd = (
+            arguments.get("command", arguments.get("cmd"))
+            if isinstance(arguments, Mapping) and not {"command", "cmd"} <= arguments.keys()
+            else None
+        )
         if isinstance(cmd, (list, tuple)):
             command = " ".join(cmd) if all(isinstance(part, str) for part in cmd) else ""
         else:
