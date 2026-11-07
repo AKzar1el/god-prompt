@@ -71,6 +71,24 @@ def _has_dynamic_dollar(command: str) -> bool:
     return False
 
 
+def _has_unquoted_here_string(command: str) -> bool:
+    # Here-strings can feed unreviewed code to an interpreter via stdin.
+    quote = None
+    escaped = False
+    for index, char in enumerate(command):
+        if escaped:
+            escaped = False
+        elif char == "\\" and quote != "'":
+            escaped = True
+        elif char == "'" and quote != '"':
+            quote = None if quote == "'" else "'"
+        elif char == '"' and quote != "'":
+            quote = None if quote == '"' else '"'
+        elif quote is None and command.startswith("<<<", index):
+            return True
+    return False
+
+
 def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     try:
         if isinstance(command, list):
@@ -87,7 +105,14 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
 
     # The approver does not execute or parse nested programs. Deny mechanisms
     # that can execute an entirely different command after this check.
-    if isinstance(command, str) and (_has_dynamic_dollar(command) or "`" in command or "\n" in command):
+    if isinstance(command, str) and (
+        _has_dynamic_dollar(command)
+        or _has_unquoted_here_string(command)
+        or "`" in command
+        or "\n" in command
+    ):
+        return PolicyDecision(False, "dynamic-shell-syntax")
+    if isinstance(command, list) and any("<<<" in token for token in tokens):
         return PolicyDecision(False, "dynamic-shell-syntax")
 
     # echo/printf render arguments as data; an argument named "curl" or "bash"
@@ -166,6 +191,11 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                     option == "-m" and offset + 1 < len(options) and options[offset + 1] in {"timeit", "pdb", "code", "asyncio"}
                 )):
                     return PolicyDecision(False, "inline-interpreter")
+                # These modules can open a network listener or fetch/install packages.
+                if is_python and (option in {"-mhttp.server", "-mpip"} or (
+                    option == "-m" and offset + 1 < len(options) and options[offset + 1] in {"http.server", "pip"}
+                )):
+                    return PolicyDecision(False, "network-command")
                 if (
                     option in inline_flags
                     or option.startswith(("--eval=", "--execute=", "-c", "-e"))
@@ -194,9 +224,25 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
 
     for index, token in enumerate(executable_tokens):
         executable = PurePosixPath(token).name
-        if executable == "git" and index + 2 < len(executable_tokens):
+        if executable == "git":
             tail = executable_tokens[index + 1 :]
-            if tail and tail[0] == "config" and "--global" in tail:
+            # Git aliases can launch commands hidden behind innocuous subcommands.
+            for position, option in enumerate(tail):
+                config = None
+                if option == "-c" and position + 1 < len(tail):
+                    config = tail[position + 1]
+                elif option.startswith("-c") and len(option) > 2:
+                    config = option[2:]
+                elif option.startswith("--config-env="):
+                    config = option.split("=", 1)[1]
+                if config is not None and config.casefold().startswith("alias."):
+                    return PolicyDecision(False, "dynamic-git-alias")
+            # Git accepts global flags before the subcommand, including -C/-c.
+            offset = 0
+            options_with_values = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"}
+            while offset < len(tail) and tail[offset].startswith("-"):
+                offset += 2 if tail[offset] in options_with_values else 1
+            if offset < len(tail) and tail[offset] == "config" and "--global" in tail[offset + 1 :]:
                 return PolicyDecision(False, "global-git-config")
         if executable == "find" and index + 1 < len(executable_tokens) and executable_tokens[index + 1] == "/":
             return PolicyDecision(False, "root-filesystem-search")

@@ -93,6 +93,35 @@ def test_shell_policy_rejects_paths_hidden_in_option_assignments():
     assert classify_shell_command('git -c color.ui=always status').allowed
 
 
+def test_shell_policy_rejects_dynamic_git_aliases():
+    for command in (
+        "git -c 'alias.check=!curl https://example.invalid' check",
+        "git -calias.check='!sh -c true' check",
+        "git -C local -c 'alias.check=!python3 -c pass' check",
+        "git -c ALIAS.check=other-command check",
+        "git --config-env=alias.check=CHECK_ALIAS check",
+        "echo ok && git -c 'alias.check=!curl https://example.invalid' check",
+    ):
+        assert classify_shell_command(command).reason == "dynamic-git-alias", command
+    assert classify_shell_command(
+        ["git", "-c", "alias.check=!curl https://example.invalid", "check"]
+    ).reason == "dynamic-git-alias"
+    assert classify_shell_command("git -c color.ui=always status").allowed
+    assert classify_shell_command("echo git -c alias.check=x").allowed
+
+
+def test_shell_policy_rejects_global_git_config_after_options():
+    for command in (
+        "git -C repo config --global user.name x",
+        "git -c color.ui=always config --global user.email example@example.invalid",
+        "git --no-pager config --global user.name x",
+        "env git -C repo config --global user.name x",
+    ):
+        assert classify_shell_command(command).reason == "global-git-config", command
+    for command in ("git -C repo status", "git -C repo config --local user.name"):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_tool_call_policy_covers_bash_and_editor_paths():
     from godprompt_bench.policy import classify_tool_call
 
@@ -271,6 +300,28 @@ def test_shell_policy_rejects_python_interactive_module_entry_points():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_network_capable_python_module_entry_points():
+    # Classify only: these strings must never start a server or install packages.
+    for command in (
+        'python3 -m http.server 8000',
+        'python3.12 -I -m http.server',
+        'pypy3 -mhttp.server',
+        'env python3 -m pip install example-package',
+        'python3 -mpip download example-package',
+        'echo ok && python3 -m http.server',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+
+    assert classify_shell_command(['python3', '-m', 'http.server']).reason == 'network-command'
+    for command in (
+        'python3 -m pytest -q',
+        'python3 -m json.tool data.json',
+        'python3 test_visible.py -m http.server',
+        'echo python3 -m pip install',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_compound_commands_without_spaces():
     assert classify_shell_command('echo ok;echo done').reason == 'compound-shell-command'
     assert classify_shell_command('echo ok&&echo done').reason == 'compound-shell-command'
@@ -279,6 +330,30 @@ def test_shell_policy_rejects_compound_commands_without_spaces():
     assert classify_shell_command('python3 test_visible.py').allowed is True
     assert classify_shell_command('node --test').allowed is True
     assert classify_shell_command('echo ok > output.txt').allowed is True
+
+
+def test_shell_policy_rejects_here_string_stdin_code_without_running_it():
+    for command in (
+        "python3 - <<< 'print(1)'",
+        "python3 -<<<'print(1)'",
+        "node <<< 'console.log(1)'",
+        "cat <<< sample",
+        "env python3 - <<< 'print(1)'",
+        "echo ok && python3 -<<<'print(1)'",
+    ):
+        assert classify_shell_command(command).reason == 'dynamic-shell-syntax', command
+
+    assert classify_shell_command(['python3', '-', '<<<', 'print(1)']).reason == 'dynamic-shell-syntax'
+    assert classify_shell_command(['python3', '-', '<<<print(1)']).reason == 'dynamic-shell-syntax'
+
+    for command in (
+        'cat < input.txt',
+        'python3 test_visible.py < input.txt',
+        "echo '<<<'",
+        'printf %s "<<<"',
+        r'echo \<\<\<',
+    ):
+        assert classify_shell_command(command).allowed, command
 
 
 def test_shell_policy_allows_harmless_command_names_as_literal_output():
