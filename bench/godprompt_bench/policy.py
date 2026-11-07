@@ -89,6 +89,59 @@ def _has_unquoted_here_string(command: str) -> bool:
     return False
 
 
+def _runs_package_network_command(tokens: list[str]) -> bool:
+    # Inspect the actual launched program, not inert script arguments.
+    index = 0
+    while index < len(tokens):
+        launcher = PurePosixPath(tokens[index]).name
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", tokens[index]):
+            index += 1
+        elif launcher == "env":
+            index += 1
+            while index < len(tokens):
+                option = tokens[index]
+                if option in {"-i", "--ignore-environment", "--"} or re.fullmatch(
+                    r"[A-Za-z_][A-Za-z0-9_]*=.*", option
+                ):
+                    index += 1
+                elif option in {"-u", "--unset"} and index + 1 < len(tokens):
+                    index += 2
+                else:
+                    break
+        elif launcher == "command" and index + 1 < len(tokens):
+            index += 1
+            if tokens[index] in {"-v", "-V"}:
+                return False
+            if tokens[index] == "-p":
+                index += 1
+        else:
+            break
+    if index >= len(tokens):
+        return False
+    launcher = PurePosixPath(tokens[index]).name
+    if launcher == "npx":
+        return True
+    if re.fullmatch(r"pip(?:[23](?:\.\d+)*)?", launcher):
+        blocked = {"install", "download", "wheel", "index", "search"}
+        value_options = {"--python", "--index-url", "-i", "--extra-index-url", "--proxy"}
+    elif launcher == "npm":
+        blocked = {"install", "i", "ci", "update", "upgrade", "add", "exec", "x", "publish", "pack", "audit"}
+        value_options = {"--prefix", "-C", "--workspace", "-w", "--registry", "--cache", "--userconfig"}
+    else:
+        return False
+    skip_value = False
+    for option in tokens[index + 1:]:
+        if skip_value:
+            skip_value = False
+        elif option in value_options:
+            skip_value = True
+        elif option.startswith("-"):
+            continue
+        else:
+            return option in blocked
+    return False
+
+
 def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     try:
         if isinstance(command, list):
@@ -196,10 +249,12 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                 )):
                     return PolicyDecision(False, "inline-interpreter")
                 # These modules can open a network listener or fetch/install packages.
-                if is_python and (option in {"-mhttp.server", "-mpip"} or (
-                    option == "-m" and offset + 1 < len(options) and options[offset + 1] in {"http.server", "pip"}
-                )):
-                    return PolicyDecision(False, "network-command")
+                if is_python and (option == "-m" or option.startswith("-m")):
+                    module = options[offset + 1] if option == "-m" and offset + 1 < len(options) else option[2:]
+                    if module in {"pip", "ensurepip", "http.server"} or module.startswith(
+                        ("pip.", "ensurepip.", "http.server.")
+                    ):
+                        return PolicyDecision(False, "network-command")
                 if (
                     option in inline_flags
                     or option.startswith(("--eval=", "--execute=", "-c", "-e"))
@@ -223,7 +278,7 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
         PurePosixPath(token).name.casefold().removesuffix(".exe")
         for token in executable_tokens if token not in {"&&", "||", ";", "|"}
     }
-    if command_names & banned_network:
+    if command_names & banned_network or _runs_package_network_command(executable_tokens):
         return PolicyDecision(False, "network-command")
 
     for index, token in enumerate(executable_tokens):
