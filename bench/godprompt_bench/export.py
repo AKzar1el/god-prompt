@@ -79,12 +79,13 @@ def export_run(
     records: Iterable[SampleRecord],
     trajectories: Iterable[dict[str, Any]],
 ) -> None:
-    output_dir.mkdir(parents=True, exist_ok=True)
     records_list = list(records)
     trajectories_list = list(trajectories)
+    summary = aggregate(records_list)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     _write_json(output_dir / "manifest.json", manifest)
-    _write_json(output_dir / "summary.json", aggregate(records_list))
+    _write_json(output_dir / "summary.json", summary)
 
     fieldnames = list(SampleRecord.__dataclass_fields__.keys())
     with (output_dir / "scores.csv").open("w", newline="", encoding="utf-8") as handle:
