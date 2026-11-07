@@ -118,6 +118,11 @@ class FixtureBundle:
 
 def load_fixture_bundle(path: Path) -> FixtureBundle:
     raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("fixture root must be an object")
+    unknown = raw.keys() - {"files", "hidden_verifier", "starter_expected_pass"}
+    if unknown:
+        raise ValueError(f"fixture unknown fields: {sorted(unknown)}")
     files = raw.get("files")
     verifier = raw.get("hidden_verifier")
     expected = raw.get("starter_expected_pass")
@@ -125,6 +130,8 @@ def load_fixture_bundle(path: Path) -> FixtureBundle:
         raise ValueError("fixture files must be a non-empty string map")
     for relative in files:
         _validate_relative(relative, "fixture file", path.parent.name)
+        if any(parent.as_posix() in files for parent in PurePosixPath(relative).parents):
+            raise ValueError("fixture files contain conflicting paths")
     if not isinstance(verifier, str) or not verifier.strip():
         raise ValueError("fixture hidden_verifier must be non-empty")
     if not isinstance(expected, bool):
