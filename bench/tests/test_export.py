@@ -298,6 +298,30 @@ def test_public_exports_redact_token_auth_schemes_and_credential_bearing_keys(tm
     assert manifest['note'] == 'Authorization: [REDACTED]; Proxy-Authorization: [REDACTED]'
     assert manifest['request token=[REDACTED]'] == {'safe': 'public'}
 
+
+def test_public_exports_redact_signature_auth_headers_without_losing_peer_headers(tmp_path: Path):
+    # Credentials are synthetic; SigV4 and Hawk headers carry secrets after the scheme.
+    headers = (
+        'Authorization: AWS4-HMAC-SHA256 Credential=FAKE_AWS_KEY_123/region/service, '
+        'SignedHeaders=host, Signature=FAKE_SIG_456; '
+        'Proxy-Authorization: Hawk id="FAKE_HAWK_ID_789", mac="FAKE_HAWK_MAC_987"\n'
+        'X-Request-ID: public-id'
+    )
+    export_run(
+        tmp_path,
+        {'note': headers},
+        [replace(record(), infrastructure_error=headers)],
+        [{'output': headers}],
+    )
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        text = (tmp_path / filename).read_text(encoding='utf-8')
+        assert not any(secret in text for secret in (
+            'FAKE_AWS_KEY_123', 'FAKE_SIG_456', 'FAKE_HAWK_ID_789', 'FAKE_HAWK_MAC_987',
+        )), filename
+    note = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))['note']
+    assert note == ('Authorization: [REDACTED]; Proxy-Authorization: [REDACTED]\n'
+                    'X-Request-ID: public-id')
+
 def test_public_exports_redact_camel_case_auth_tokens_in_text_and_metadata(tmp_path: Path):
     fake_auth = 'FAKE_AUTH_TOKEN_VALUE_123'
     fake_oauth = 'FAKE_OAUTH_TOKEN_VALUE_456'
