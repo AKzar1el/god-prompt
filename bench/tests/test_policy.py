@@ -133,6 +133,19 @@ def test_tool_call_policy_covers_bash_and_editor_paths():
     assert classify_tool_call('unknown_tool', {}).reason == 'unsupported-tool'
 
 
+def test_inspect_bash_command_argument_uses_current_tool_schema():
+    from godprompt_bench.policy import classify_tool_call
+
+    # inspect-ai==0.3.260 exposes bash(command: str), not bash(cmd: str).
+    assert classify_tool_call('bash', {'command': 'python3 test_visible.py'}).allowed
+    assert classify_tool_call('bash', {'command': 'curl https://example.invalid'}).reason == 'network-command'
+    assert classify_tool_call('bash', {'command': 'bash -c true'}).reason == 'nested-shell-interpreter'
+    assert classify_tool_call('bash', {
+        'cmd': 'python3 test_visible.py',
+        'command': 'curl https://example.invalid',
+    }).reason == 'invalid-bash-command'
+
+
 def test_shell_policy_rejects_forbidden_commands_hidden_in_compound_shell():
     assert classify_shell_command('python3 test_visible.py && curl https://example.com').reason == 'network-command'
     assert classify_shell_command('echo ok > /tmp/marker').reason == 'absolute-path'
