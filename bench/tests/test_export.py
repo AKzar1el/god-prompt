@@ -134,6 +134,33 @@ def test_public_exports_redact_http_basic_authorization_payloads(tmp_path: Path)
     assert manifest['description'] == 'Basic authentication is documented'
 
 
+def test_public_exports_redact_digest_authorization_parameters(tmp_path: Path):
+    # Synthetic Digest challenge responses are credentials, not public telemetry.
+    headers = (
+        'Authorization: Digest username="FAKE_USER_123", nonce="FAKE_NONCE_456", '
+        'uri="/private", response="FAKE_RESPONSE_789"\n'
+        'Proxy-Authorization: Digest username="FAKE_PROXY_USER_234", '
+        'response="FAKE_PROXY_RESPONSE_567"'
+    )
+    export_run(
+        tmp_path,
+        {'note': headers, 'description': 'Digest authentication uses a nonce'},
+        [replace(record(), infrastructure_error=headers)],
+        [{'output': headers}],
+    )
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / filename).read_text(encoding='utf-8')
+        for secret in (
+            'FAKE_USER_123', 'FAKE_NONCE_456', 'FAKE_RESPONSE_789',
+            'FAKE_PROXY_USER_234', 'FAKE_PROXY_RESPONSE_567',
+        ):
+            assert secret not in exported, (filename, secret)
+        assert 'Authorization: [REDACTED]' in exported
+        assert 'Proxy-Authorization: [REDACTED]' in exported
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['description'] == 'Digest authentication uses a nonce'
+
+
 def test_public_exports_redact_cookie_headers_and_structured_cookie_fields(tmp_path: Path):
     # Synthetic cookie values must not become public benchmark artifacts.
     cookie = 'Cookie: sessionid=FAKE_SESSION_123; csrftoken=FAKE_CSRF_456'

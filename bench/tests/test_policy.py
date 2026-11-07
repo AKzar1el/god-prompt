@@ -31,6 +31,19 @@ def test_text_editor_paths_reject_windows_escapes_and_workspace_root():
         assert classify_tool_call('text_editor', {'path': path}).allowed, path
 
 
+def test_text_editor_rejects_windows_reserved_paths_without_accessing_files():
+    from godprompt_bench.policy import classify_tool_call
+
+    # Windows treats these names/streams as devices or aliases, not regular files.
+    for path in ('CON', 'src/NUL.txt', 'src/COM1.log', 'src/LPT9',
+                 'src/file.txt:stream', 'src/name.', 'src/name '):
+        assert not validate_workspace_path(path), path
+        assert classify_tool_call('text_editor', {'path': path}).reason == 'outside-workspace', path
+
+    for path in ('src/config.txt', 'src/compile.py', 'src/console.log'):
+        assert validate_workspace_path(path), path
+
+
 def test_shell_policy_rejects_network_and_host_mutations():
     assert classify_shell_command('python3 test_visible.py').allowed is True
     assert classify_shell_command('node --test').allowed is True
@@ -416,3 +429,21 @@ def test_shell_policy_rejects_case_variant_node_options_assignments():
     assert classify_shell_command('echo node_options=--import=./setup.mjs').allowed
     assert classify_shell_command('MY_NODE_OPTIONS=plain node --test').allowed
     assert classify_shell_command('node --test').allowed
+
+
+def test_shell_policy_rejects_interpreter_startup_environment_assignments():
+    # Classify only: these variables can load code before the visible test command.
+    for command in (
+        'LD_PRELOAD=./hook.so python -m pytest',
+        'env LD_AUDIT=./audit.so node --test',
+        'PYTHONPATH=./helpers python -m pytest',
+        'env PYTHONPATH=./helpers python -m pytest',
+        'env pythonpath=./helpers python -m pytest',
+    ):
+        assert classify_shell_command(command).reason == 'interpreter-env-override', command
+
+    assert classify_shell_command(['env', 'LD_PRELOAD=./hook.so', 'python', '-m', 'pytest']).reason == 'interpreter-env-override'
+    assert classify_shell_command('echo LD_PRELOAD=./hook.so').allowed
+    assert classify_shell_command("printf '%s' PYTHONPATH=./helpers").allowed
+    assert classify_shell_command('MY_LD_PRELOAD=plain python -m pytest').allowed
+    assert classify_shell_command('python -m pytest').allowed
