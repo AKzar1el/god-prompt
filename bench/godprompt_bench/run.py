@@ -207,7 +207,8 @@ def _dump(value: Any) -> Any:
 
 _PRIVATE_REASONING_FIELDS = {
     "reasoning", "reasoningcontent", "reasoningdetails", "redactedreasoning",
-    "thinking", "thinkingcontent", "thinkingdetails", "redactedthinking",
+    "reasoningtext", "thinking", "thinkingcontent", "thinkingdetails",
+    "thinkingtext", "redactedthinking",
     "encryptedcontent",
 }
 
