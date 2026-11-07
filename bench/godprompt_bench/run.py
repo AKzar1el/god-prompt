@@ -217,18 +217,22 @@ def _private_reasoning_field(value: Any) -> bool:
     return isinstance(value, str) and value.casefold().replace("_", "").replace("-", "") in _PRIVATE_REASONING_FIELDS
 
 
+def _private_reasoning_block(value: Any) -> bool:
+    return isinstance(value, Mapping) and _private_reasoning_field(value.get("type"))
+
+
 def _strip_reasoning(value: Any) -> Any:
     if isinstance(value, list):
         result = []
         for item in value:
-            if isinstance(item, Mapping) and _private_reasoning_field(item.get("type")):
+            if _private_reasoning_block(item):
                 continue
             result.append(_strip_reasoning(item))
         return result
     if isinstance(value, Mapping):
         return {
             key: _strip_reasoning(item) for key, item in value.items()
-            if not _private_reasoning_field(key)
+            if not _private_reasoning_field(key) and not _private_reasoning_block(item)
         }
     return value
 
@@ -245,7 +249,7 @@ def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
         if not isinstance(dumped, dict):
             continue
         roles = [role for role in (dumped.get("role"), getattr(message, "role", None)) if role is not None]
-        if not roles or not all(_is_public_message_role(role) for role in roles):
+        if not roles or not all(_is_public_message_role(role) for role in roles) or _private_reasoning_block(dumped):
             continue
         messages.append(_strip_reasoning(dumped))
 
@@ -254,7 +258,7 @@ def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
         dumped = _dump(event)
         if not isinstance(dumped, dict):
             continue
-        if dumped.get("event", getattr(event, "event", None)) not in ("tool", "approval"):
+        if dumped.get("event", getattr(event, "event", None)) not in ("tool", "approval") or _private_reasoning_block(dumped):
             continue
         events.append(_strip_reasoning(dumped))
 
