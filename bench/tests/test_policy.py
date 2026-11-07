@@ -42,6 +42,29 @@ def test_shell_policy_rejects_network_and_host_mutations():
     assert classify_shell_command('touch /tmp/godprompt-bench-marker').allowed is False
 
 
+def test_shell_policy_rejects_windows_network_executables_without_execution():
+    # Windows executable names are case-insensitive; classify only, never run them.
+    for command in (
+        'curl.exe https://example.invalid',
+        'CURL.EXE https://example.invalid',
+        'Wget.Exe https://example.invalid',
+        'SSH.EXE example.invalid',
+        'scp.exe local.txt example.invalid:remote',
+        'Ncat.EXE example.invalid',
+        'env curl.exe https://example.invalid',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+
+    assert classify_shell_command(['CURL.EXE', 'https://example.invalid']).reason == 'network-command'
+    for command in (
+        'echo curl.exe',
+        'printf %s WGET.EXE',
+        'python3 test_visible.py --tool=curl.exe',
+        'curl-helper test.txt',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_paths_hidden_in_option_assignments():
     # Classification only: these GNU options would write outside the workspace.
     for command, reason in (
@@ -84,6 +107,32 @@ def test_shell_policy_rejects_nested_interpreters_and_inline_programs():
     assert classify_shell_command("node -e 'console.log(1)'").reason == 'inline-interpreter'
     assert classify_shell_command('echo $(date)').reason == 'dynamic-shell-syntax'
     assert classify_shell_command('echo `date`').reason == 'dynamic-shell-syntax'
+
+
+def test_shell_policy_rejects_other_shell_interpreters_without_execution():
+    # Classifier inputs only; never launch a shell or execute the payload.
+    for command in (
+        'pwsh -NoProfile -Command Write-Output',
+        'powershell.exe -NoProfile -File local.ps1',
+        'PowerShell.EXE -NoProfile -Command Write-Output',
+        'cmd.exe /c local.cmd',
+        'cmd.exe local.cmd',
+        'fish -c echo-ok',
+        'csh -c echo-ok',
+        'tcsh -c echo-ok',
+        'env pwsh -NoProfile -Command Write-Output',
+    ):
+        assert classify_shell_command(command).reason == 'nested-shell-interpreter', command
+
+    assert classify_shell_command(['pwsh', '-NoProfile', '-File', 'local.ps1']).reason == 'nested-shell-interpreter'
+
+    for command in (
+        'echo pwsh',
+        'printf %s cmd.exe',
+        'python3 test_visible.py --shell=pwsh',
+        'python3 -m pytest -q',
+    ):
+        assert classify_shell_command(command).allowed, command
 
 
 def test_shell_policy_rejects_versioned_inline_interpreter_aliases():
@@ -301,3 +350,47 @@ def test_shell_policy_rejects_dynamic_dollar_expansions_without_running_payloads
         r'echo "\$PATH"',
     ):
         assert classify_shell_command(command).allowed, command
+
+
+def test_shell_policy_rejects_node_inline_data_url_preloads():
+    # Classification only: the encoded URL payloads must NEVER be executed.
+    data_url = 'data:text/javascript,process%2Eexit%281%29'
+    for command in (
+        f'node --import={data_url} --test',
+        f'node --import {data_url} --test',
+        f'node --loader={data_url} --test',
+        f'node --experimental-loader {data_url} --test',
+        f'node --import=DATA:text/javascript,process%2Eexit%281%29 --test',
+    ):
+        assert classify_shell_command(command).reason == 'inline-interpreter', command
+
+    assert classify_shell_command(['node', f'--import={data_url}', '--test']).reason == 'inline-interpreter'
+    assert classify_shell_command('node --import=./test-setup.mjs --test').allowed
+    assert classify_shell_command('node --loader=./test-loader.mjs --test').allowed
+    assert classify_shell_command('node --test').allowed
+
+
+def test_shell_policy_rejects_node_options_environment_overrides():
+    # NODE_OPTIONS allows process-wide preloads invisible to the normal argv scan.
+    for command in (
+        'NODE_OPTIONS=--import=data:text/javascript,process%2Eexit%281%29 node --test',
+        'env NODE_OPTIONS=--import=./setup.mjs node --test',
+        'NODE_OPTIONS=--require=./setup.cjs node --test',
+    ):
+        assert classify_shell_command(command).reason == 'node-options-override', command
+    assert classify_shell_command('echo NODE_OPTIONS=--import=./setup.mjs').allowed
+
+
+def test_shell_policy_rejects_case_variant_node_options_assignments():
+    # Windows environment keys are case-insensitive; classify without running a preload.
+    for command in (
+        'node_options=--import=./setup.mjs node --test',
+        'Node_Options=--require=./setup.cjs node --test',
+        'env NoDe_OpTiOnS=--import=data:text/javascript,console%2Elog%281%29 node --test',
+    ):
+        assert classify_shell_command(command).reason == 'node-options-override', command
+
+    assert classify_shell_command(['env', 'node_options=--require=./setup.cjs', 'node', '--test']).reason == 'node-options-override'
+    assert classify_shell_command('echo node_options=--import=./setup.mjs').allowed
+    assert classify_shell_command('MY_NODE_OPTIONS=plain node --test').allowed
+    assert classify_shell_command('node --test').allowed

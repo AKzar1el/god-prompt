@@ -116,6 +116,44 @@ def test_sandbox_hashes_do_not_follow_file_symlinks_outside_workspace(tmp_path: 
     assert json.loads(snapshot.stdout) == expected
 
 
+def test_sandbox_scope_hashes_detect_git_metadata_changes(tmp_path: Path):
+    from godprompt_bench.scorers import _SANDBOX_HASH_SCRIPT
+
+    # An agent can create .git/config without changing an allowed source file.
+    # This must not disappear from the post-agent scope snapshot.
+    before = snapshot_hashes(tmp_path)
+    (tmp_path / '.git').mkdir()
+    (tmp_path / '.git' / 'config').write_text('[core]\n\tbare = false\n')
+    expected = snapshot_hashes(tmp_path)
+    assert detect_scope_violation(before, expected, ('src/answer.py',))
+    sandbox_snapshot = subprocess.run(
+        [sys.executable, '-c', _SANDBOX_HASH_SCRIPT],
+        cwd=tmp_path, capture_output=True, text=True, check=True,
+    )
+    assert json.loads(sandbox_snapshot.stdout) == expected
+
+
+def test_sandbox_scope_hashes_detect_git_directory_symlink(tmp_path: Path):
+    from godprompt_bench.scorers import _SANDBOX_HASH_SCRIPT
+
+    workspace = tmp_path / 'workspace'
+    workspace.mkdir()
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (outside / 'config').write_text('safe external test data')
+    try:
+        (workspace / '.git').symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip('directory symlinks unavailable on this platform')
+    expected = snapshot_hashes(workspace)
+    assert '.git' in expected and '.git/config' not in expected
+    sandbox_snapshot = subprocess.run(
+        [sys.executable, '-c', _SANDBOX_HASH_SCRIPT],
+        cwd=workspace, capture_output=True, text=True, check=True,
+    )
+    assert json.loads(sandbox_snapshot.stdout) == expected
+
+
 def test_scope_snapshots_detect_symlink_creation_without_reading_targets(tmp_path: Path):
     from godprompt_bench.scorers import _SANDBOX_HASH_SCRIPT
 

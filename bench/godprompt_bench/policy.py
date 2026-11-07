@@ -88,8 +88,17 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     )
     executable_tokens = tokens[:1] if literal_output else tokens
 
-    shell_names = {"sh", "bash", "dash", "ash", "zsh", "ksh", "eval", "source"}
-    if any(PurePosixPath(token).name in shell_names for token in executable_tokens):
+    # NODE_OPTIONS can preload executable modules before the visible command
+    # starts; a caller-controlled assignment defeats argv-only approval.
+    if any(token.casefold().startswith("node_options=") for token in executable_tokens):
+        return PolicyDecision(False, "node-options-override")
+
+    shell_names = {
+        "sh", "bash", "dash", "ash", "zsh", "ksh", "fish", "csh", "tcsh",
+        "pwsh", "pwsh.exe", "powershell", "powershell.exe", "cmd", "cmd.exe",
+        "eval", "source",
+    }
+    if any(PurePosixPath(token).name.casefold() in shell_names for token in executable_tokens):
         return PolicyDecision(False, "nested-shell-interpreter")
 
     # GNU env -S re-tokenizes a single argument into a new command, hiding
@@ -124,6 +133,15 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                     continue
                 if option == "--":
                     break
+                if is_node and option.partition("=")[0] in {
+                    "--import", "--loader", "--experimental-loader"
+                }:
+                    _, has_equals, value = option.partition("=")
+                    preload = value if has_equals else (
+                        options[offset + 1] if offset + 1 < len(options) else ""
+                    )
+                    if preload.lower().startswith("data:"):
+                        return PolicyDecision(False, "inline-interpreter")
                 # These modules evaluate statements or expose interactive Python
                 # consoles; none requires the interpreter's own -c flag.
                 if is_python and (option in {"-mtimeit", "-mpdb", "-mcode", "-masyncio"} or (
@@ -139,7 +157,7 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                 ):
                     return PolicyDecision(False, "inline-interpreter")
                 if (
-                    option in {"-W", "-X", "--check-hash-based-pycs", "-r", "--require", "--import", "--loader", "--title"}
+                    option in {"-W", "-X", "--check-hash-based-pycs", "-r", "--require", "--import", "--loader", "--experimental-loader", "--title"}
                     or (is_php and option == "-d")
                     or ((is_perl or is_ruby) and option == "-I")
                 ):
@@ -148,7 +166,11 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                     break
 
     banned_network = {"curl", "wget", "ssh", "scp", "nc", "ncat", "telnet"}
-    command_names = {PurePosixPath(token).name for token in executable_tokens if token not in {"&&", "||", ";", "|"}}
+    # Windows resolves these network binaries case-insensitively with .exe suffixes.
+    command_names = {
+        PurePosixPath(token).name.casefold().removesuffix(".exe")
+        for token in executable_tokens if token not in {"&&", "||", ";", "|"}
+    }
     if command_names & banned_network:
         return PolicyDecision(False, "network-command")
 

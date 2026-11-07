@@ -201,9 +201,9 @@ out = {}
 for root, dirs, files in os.walk("."):
     for name in sorted(dirs):
         rel = os.path.relpath(os.path.join(root, name), ".").replace(os.sep, "/")
-        if name not in ignored_parts and name != ".git" and os.path.islink(os.path.join(root, name)):
+        if name not in ignored_parts and os.path.islink(os.path.join(root, name)):
             out[rel] = hashlib.sha256(b"symlink\0" + os.fsencode(os.readlink(os.path.join(root, name)))).hexdigest()
-    dirs[:] = sorted(d for d in dirs if d not in ignored_parts and d != ".git" and not os.path.islink(os.path.join(root, d)))
+    dirs[:] = sorted(d for d in dirs if d not in ignored_parts and not os.path.islink(os.path.join(root, d)))
     for name in sorted(files):
         rel = os.path.relpath(os.path.join(root, name), ".").replace(os.sep, "/")
         if any(part in ignored_parts for part in rel.split("/")):
