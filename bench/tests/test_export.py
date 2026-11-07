@@ -209,6 +209,40 @@ def test_public_exports_redact_url_userinfo_credentials(tmp_path: Path):
     assert redact_secrets('Contact ops@example.invalid') == 'Contact ops@example.invalid'
 
 
+def test_public_exports_redact_signed_url_query_credentials(tmp_path: Path):
+    cases = (
+        ('https://r2.example.invalid/object?X-Amz-Credential=FAKE_AWS_CRED_123'
+         '&X-Amz-Signature=FAKE_AWS_SIG_456&X-Amz-Security-Token=FAKE_AWS_SESSION_789&partNumber=1',
+         ('FAKE_AWS_CRED_123', 'FAKE_AWS_SIG_456', 'FAKE_AWS_SESSION_789'),
+         ('X-Amz-Credential', 'X-Amz-Signature', 'X-Amz-Security-Token')),
+        ('https://gcs.example.invalid/object?X-Goog-Credential=FAKE_GOOG_CRED_123'
+         '&X-Goog-Signature=FAKE_GOOG_SIG_456&partNumber=1',
+         ('FAKE_GOOG_CRED_123', 'FAKE_GOOG_SIG_456'),
+         ('X-Goog-Credential', 'X-Goog-Signature')),
+        ('https://blob.example.invalid/file?sv=2024-01-01&sig=FAKE_AZURE_SIG_123&partNumber=1',
+         ('FAKE_AZURE_SIG_123',), ('sig',)),
+    )
+    for i, (url, secrets, names) in enumerate(cases):
+        directory = tmp_path / str(i)
+        export_run(directory,
+                   {'note': url, 'public_url': 'https://public.example.invalid/obj?partNumber=1'},
+                   [replace(record(), infrastructure_error=url)],
+                   [{'events': [{'output': url}]}])
+        for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+            text = (directory / filename).read_text(encoding='utf-8')
+            assert all(secret not in text for secret in secrets), filename
+            for name in names:
+                assert f'{name}=[REDACTED]' in text, (filename, name)
+            assert 'partNumber=1' in text
+        manifest = json.loads((directory / 'manifest.json').read_text(encoding='utf-8'))
+        assert manifest['public_url'] == 'https://public.example.invalid/obj?partNumber=1'
+
+
+def test_public_exports_redact_structured_signed_url_keys():
+    fields = {'X-Amz-Signature': 'FAKE_AWS_SIG', 'X-Goog-Credential': 'FAKE_GOOG_CRED', 'sig': 'FAKE_AZURE_SIG'}
+    assert redact_secrets(fields) == {name: '[REDACTED]' for name in fields}
+
+
 def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: Path):
     # All values are made-up placeholders, not credentials; plain text must still be sanitized.
     entries = (

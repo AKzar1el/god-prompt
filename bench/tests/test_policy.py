@@ -401,6 +401,50 @@ def test_shell_policy_rejects_package_manager_config_mutations():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_denies_modern_package_manager_network_entrypoints():
+    for command in (
+        'pnpm add demo-package', 'pnpm --dir fixtures install',
+        'pnpm dlx demo-tool', 'pnpx demo-tool', 'corepack pnpm add demo-package',
+        'corepack prepare pnpm@latest', 'env -u CI pnpm add demo-package',
+        'yarn add demo-package', 'yarn --cwd fixtures install',
+        'yarn dlx demo-tool', 'yarnpkg add demo-package',
+        'command yarn add demo-package', 'corepack yarn add demo-package',
+        'bun add demo-package', 'bunx demo-tool',
+        'uv pip install demo-package', 'uv pip compile requirements.in',
+        'uv tool run demo-tool', 'uv sync', 'uvx demo-tool',
+        'pipx install demo-package', 'poetry add demo-package',
+        'poetry -C fixtures install',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+    for command in (
+        'pnpm test', 'yarn test', 'bun test', 'uv pip list',
+        'pipx list', 'poetry show', 'corepack --version',
+        'echo pnpm add demo-package',
+        'python3 test_visible.py yarn add demo-package',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
+def test_shell_policy_honors_env_chdir_when_classifying_package_commands():
+    for command in (
+        'env -C fixtures npm install demo-package',
+        'env --chdir=fixtures pip download demo-package',
+        'env --chdir fixtures npm ci',
+        'env -Cfixtures pip3 wheel demo-package',
+        'env -i -C fixtures npm exec demo-package',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+    assert classify_shell_command(['env', '-C', 'fixtures', 'npm', 'install']).reason == 'network-command'
+    for command in ('env -C fixtures npm test', 'env --chdir=fixtures pip list'):
+        assert classify_shell_command(command).allowed, command
+
+
+def test_shell_policy_denies_attached_chdir_paths_outside_workspace():
+    for command in ('env -C/ npm test', 'env -C../ npm test', 'env -C~ npm test'):
+        assert not classify_shell_command(command).allowed, command
+    assert classify_shell_command('env -Cfixtures npm test').allowed
+
+
 def test_shell_policy_rejects_compound_commands_without_spaces():
     assert classify_shell_command('echo ok;echo done').reason == 'compound-shell-command'
     assert classify_shell_command('echo ok&&echo done').reason == 'compound-shell-command'
