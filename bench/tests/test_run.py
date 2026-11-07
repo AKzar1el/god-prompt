@@ -413,6 +413,25 @@ def test_public_trajectory_redacts_provider_reasoning_text_aliases(field):
     assert trajectory['events'][0]['output'] == {'status': 'ok'}
 
 
+@pytest.mark.parametrize('field', ('chain_of_thought', 'chainOfThought', 'chain-of-thought', 'chainofthought'))
+def test_public_trajectory_redacts_chain_of_thought_aliases(field):
+    # Some providers label private reasoning as chain-of-thought rather than thinking.
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[{'role': 'assistant', 'content': [
+            {'type': 'text', 'text': 'public answer', field: 'SYNTHETIC_PRIVATE_FIELD'},
+            {'type': field, 'text': 'SYNTHETIC_PRIVATE_BLOCK'},
+        ]}],
+        events=[{'event': 'tool', 'output': {
+            field: 'SYNTHETIC_PRIVATE_EVENT', 'status': 'ok',
+        }}],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'][0]['content'] == [{'type': 'text', 'text': 'public answer'}]
+    assert trajectory['events'][0]['output'] == {'status': 'ok'}
+
+
 def test_public_trajectory_filters_privileged_mapping_messages_and_keeps_mapping_events():
     sample = SimpleNamespace(
         id='fixture', epoch=1,
