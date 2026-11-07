@@ -93,8 +93,12 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     if any(token.casefold().startswith("node_options=") for token in executable_tokens):
         return PolicyDecision(False, "node-options-override")
 
-    shell_names = {"sh", "bash", "dash", "ash", "zsh", "ksh", "eval", "source"}
-    if any(PurePosixPath(token).name in shell_names for token in executable_tokens):
+    shell_names = {
+        "sh", "bash", "dash", "ash", "zsh", "ksh", "fish", "csh", "tcsh",
+        "pwsh", "pwsh.exe", "powershell", "powershell.exe", "cmd", "cmd.exe",
+        "eval", "source",
+    }
+    if any(PurePosixPath(token).name.casefold() in shell_names for token in executable_tokens):
         return PolicyDecision(False, "nested-shell-interpreter")
 
     # GNU env -S re-tokenizes a single argument into a new command, hiding

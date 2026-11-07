@@ -109,6 +109,32 @@ def test_shell_policy_rejects_nested_interpreters_and_inline_programs():
     assert classify_shell_command('echo `date`').reason == 'dynamic-shell-syntax'
 
 
+def test_shell_policy_rejects_other_shell_interpreters_without_execution():
+    # Classifier inputs only; never launch a shell or execute the payload.
+    for command in (
+        'pwsh -NoProfile -Command Write-Output',
+        'powershell.exe -NoProfile -File local.ps1',
+        'PowerShell.EXE -NoProfile -Command Write-Output',
+        'cmd.exe /c local.cmd',
+        'cmd.exe local.cmd',
+        'fish -c echo-ok',
+        'csh -c echo-ok',
+        'tcsh -c echo-ok',
+        'env pwsh -NoProfile -Command Write-Output',
+    ):
+        assert classify_shell_command(command).reason == 'nested-shell-interpreter', command
+
+    assert classify_shell_command(['pwsh', '-NoProfile', '-File', 'local.ps1']).reason == 'nested-shell-interpreter'
+
+    for command in (
+        'echo pwsh',
+        'printf %s cmd.exe',
+        'python3 test_visible.py --shell=pwsh',
+        'python3 -m pytest -q',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_versioned_inline_interpreter_aliases():
     # Classify adversarial commands as strings; never execute the payload.
     for command in (
