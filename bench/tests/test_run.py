@@ -436,6 +436,25 @@ def test_public_trajectory_redacts_reasoning_blocks_in_mapping_positions():
     assert trajectory['events'][0]['output'] == {'result': 'public result'}
 
 
+def test_public_trajectory_redacts_private_reasoning_inside_tuple_sequences():
+    # Some tool/provider adapters use tuples; JSON export still serializes them as arrays.
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[{'role': 'assistant', 'content': (
+            {'type': 'thinking', 'thinking': 'SYNTHETIC_PRIVATE_MESSAGE'},
+            {'type': 'text', 'text': 'visible answer', 'reasoning': 'SYNTHETIC_PRIVATE_FIELD'},
+        )}],
+        events=[{'event': 'tool', 'output': (
+            {'type': 'reasoning', 'text': 'SYNTHETIC_PRIVATE_EVENT'},
+            {'result': 'public result'},
+        )}],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'][0]['content'] == [{'type': 'text', 'text': 'visible answer'}]
+    assert trajectory['events'][0]['output'] == [{'result': 'public result'}]
+
+
 @pytest.mark.parametrize('field', ('reasoning_text', 'reasoningText', 'thinking_text', 'thinkingText'))
 def test_public_trajectory_redacts_provider_reasoning_text_aliases(field):
     # Private model reasoning must not survive under a provider's text alias.

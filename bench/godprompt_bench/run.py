@@ -222,7 +222,8 @@ def _private_reasoning_block(value: Any) -> bool:
 
 
 def _strip_reasoning(value: Any) -> Any:
-    if isinstance(value, list):
+    # JSON writes tuples as arrays too, so sanitize their elements like lists.
+    if isinstance(value, (list, tuple)):
         result = []
         for item in value:
             if _private_reasoning_block(item):
