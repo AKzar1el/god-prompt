@@ -192,6 +192,19 @@ def test_sample_record_uses_score_and_sums_provider_usage():
     assert record.infrastructure_error is None
 
 
+@pytest.mark.parametrize('invalid_epoch', (0, -1, True, 1.9, '1', None, float('nan')))
+def test_sample_record_and_public_trajectory_reject_invalid_epochs(invalid_epoch):
+    # Truncating a fractional epoch can falsely satisfy expected sample coverage.
+    sample = SimpleNamespace(
+        id='synthetic', epoch=invalid_epoch, metadata={}, scores={}, model_usage={},
+        total_time=1.0, error=None, limit=None, messages=[], events=[],
+    )
+    with pytest.raises(ValueError, match='invalid sample epoch'):
+        sample_record(sample, 'baseline')
+    with pytest.raises(ValueError, match='invalid sample epoch'):
+        public_trajectory(sample, 'baseline')
+
+
 @pytest.mark.parametrize('latency', [
     '1.5', True, -1.0, float('nan'), float('inf'), 10 ** 400,
 ])
