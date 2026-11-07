@@ -31,6 +31,19 @@ def test_text_editor_paths_reject_windows_escapes_and_workspace_root():
         assert classify_tool_call('text_editor', {'path': path}).allowed, path
 
 
+def test_text_editor_rejects_windows_reserved_paths_without_accessing_files():
+    from godprompt_bench.policy import classify_tool_call
+
+    # Windows treats these names/streams as devices or aliases, not regular files.
+    for path in ('CON', 'src/NUL.txt', 'src/COM1.log', 'src/LPT9',
+                 'src/file.txt:stream', 'src/name.', 'src/name '):
+        assert not validate_workspace_path(path), path
+        assert classify_tool_call('text_editor', {'path': path}).reason == 'outside-workspace', path
+
+    for path in ('src/config.txt', 'src/compile.py', 'src/console.log'):
+        assert validate_workspace_path(path), path
+
+
 def test_shell_policy_rejects_network_and_host_mutations():
     assert classify_shell_command('python3 test_visible.py').allowed is True
     assert classify_shell_command('node --test').allowed is True

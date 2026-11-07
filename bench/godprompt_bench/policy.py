@@ -14,16 +14,27 @@ class PolicyDecision:
     reason: str
 
 
+_WINDOWS_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
+    f"{prefix}{number}" for prefix in ("COM", "LPT") for number in range(1, 10)
+}
+
+
 def validate_workspace_path(path: str) -> bool:
     if not path or "\x00" in path or path.startswith("~") or "$HOME" in path:
         return False
     parsed = PurePosixPath(path)
     windows = PureWindowsPath(path)
     # An editor can interpret backslashes and drive-relative paths on Windows.
+    nonportable_component = any(
+        part.endswith((".", " ")) or part.split(".", 1)[0].rstrip(" ").upper() in _WINDOWS_DEVICE_NAMES
+        for part in parsed.parts
+    )
     if (
         parsed == PurePosixPath(".")
         or parsed.is_absolute()
         or ".." in parsed.parts
+        or ":" in path
+        or nonportable_component
         or "\\" in path
         or windows.drive
         or windows.root
