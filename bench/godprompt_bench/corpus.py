@@ -16,6 +16,9 @@ CATEGORIES = {
     "tool-discipline",
 }
 RUNTIMES = {"python", "javascript"}
+_WINDOWS_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
+    f"{prefix}{number}" for prefix in ("COM", "LPT") for number in range(1, 10)
+}
 
 
 def _tuple(value: object, field: str) -> tuple[str, ...]:
@@ -38,12 +41,16 @@ def load_manifest(path: Path) -> list[TaskSpec]:
         "verifier_command",
         "allowed_paths",
     }
+    allowed = required | {"forbidden_paths", "expected_verification_commands"}
     for index, item in enumerate(raw):
         if not isinstance(item, dict):
             raise ValueError(f"task {index} must be an object")
         missing = required - item.keys()
         if missing:
             raise ValueError(f"task {index} missing fields: {sorted(missing)}")
+        unknown = item.keys() - allowed
+        if unknown:
+            raise ValueError(f"task {index} unknown fields: {sorted(unknown)}")
         for field in ("id", "category", "runtime", "fixture_dir", "user_prompt"):
             if not isinstance(item[field], str):
                 raise ValueError(f"task {index}: {field} must be a string")
@@ -70,11 +77,20 @@ def _validate_relative(path: str, field: str, task_id: str) -> None:
     parsed = PurePosixPath(path)
     windows = PureWindowsPath(path)
     # Fixture paths use POSIX separators; backslashes can escape the root on Windows.
+    # Windows device names, alternate streams and trailing dots/spaces can alias
+    # paths that look distinct to POSIX tooling or fail during fixture setup.
+    nonportable_component = any(
+        part.endswith((".", " ")) or part.split(".", 1)[0].rstrip(" ").upper() in _WINDOWS_DEVICE_NAMES
+        for part in parsed.parts
+    )
     if (
         parsed == PurePosixPath(".")
         or parsed.is_absolute()
         or ".." in parsed.parts
         or path != parsed.as_posix()
+        or "\x00" in path
+        or ":" in path
+        or nonportable_component
         or "\\" in path
         or windows.drive
         or windows.root
@@ -114,6 +130,11 @@ class FixtureBundle:
 
 def load_fixture_bundle(path: Path) -> FixtureBundle:
     raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("fixture root must be an object")
+    unknown = raw.keys() - {"files", "hidden_verifier", "starter_expected_pass"}
+    if unknown:
+        raise ValueError(f"fixture unknown fields: {sorted(unknown)}")
     files = raw.get("files")
     verifier = raw.get("hidden_verifier")
     expected = raw.get("starter_expected_pass")
@@ -121,6 +142,8 @@ def load_fixture_bundle(path: Path) -> FixtureBundle:
         raise ValueError("fixture files must be a non-empty string map")
     for relative in files:
         _validate_relative(relative, "fixture file", path.parent.name)
+        if any(parent.as_posix() in files for parent in PurePosixPath(relative).parents):
+            raise ValueError("fixture files contain conflicting paths")
     if not isinstance(verifier, str) or not verifier.strip():
         raise ValueError("fixture hidden_verifier must be non-empty")
     if not isinstance(expected, bool):

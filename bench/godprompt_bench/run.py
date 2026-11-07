@@ -9,6 +9,7 @@ import uuid
 from collections import Counter
 from datetime import datetime, timezone
 from importlib.metadata import version
+from math import isfinite
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -20,13 +21,20 @@ from .models import RunProfile, SampleRecord
 
 def load_profile(path: Path) -> RunProfile:
     raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("profile root must be an object")
     required = {"name", "task_ids", "epochs", "max_messages", "max_time_seconds", "max_output_tokens"}
     missing = required - raw.keys()
     if missing:
         raise ValueError(f"profile missing fields: {sorted(missing)}")
+    unknown = raw.keys() - required
+    if unknown:
+        raise ValueError(f"unknown profile fields: {sorted(unknown)}")
+    if not isinstance(raw["name"], str) or not raw["name"].strip():
+        raise ValueError("profile name must be a non-empty string")
     task_ids = raw["task_ids"]
-    if not isinstance(task_ids, list) or not task_ids or not all(isinstance(v, str) for v in task_ids):
-        raise ValueError("profile task_ids must be a non-empty list of strings")
+    if not isinstance(task_ids, list) or not task_ids or not all(isinstance(v, str) and v.strip() for v in task_ids):
+        raise ValueError("profile task_ids must be non-empty strings in a non-empty list")
     seen_ids: set[str] = set()
     for task_id in task_ids:
         if task_id in seen_ids:
@@ -36,7 +44,7 @@ def load_profile(path: Path) -> RunProfile:
     if any(type(raw[field]) is not int or raw[field] <= 0 for field in limit_fields):
         raise ValueError("profile numeric limits must be positive integers")
     profile = RunProfile(
-        name=str(raw["name"]),
+        name=raw["name"],
         task_ids=tuple(task_ids),
         epochs=raw["epochs"],
         max_messages=raw["max_messages"],
@@ -65,17 +73,59 @@ def validate_sample_coverage(profile: RunProfile, records: list[SampleRecord]) -
         )
 
 
+def _token_count(value: Any, field: str) -> int:
+    if value is None:
+        return 0
+    if type(value) is int:
+        count = value
+    elif type(value) is float and isfinite(value) and value.is_integer():
+        count = int(value)
+    else:
+        raise ValueError(f"invalid model usage token count: {field}")
+    if count < 0:
+        raise ValueError(f"invalid model usage token count: {field}")
+    return count
+
+
 def _usage_totals(model_usage: Mapping[str, Any] | None) -> tuple[int | None, int | None]:
     if not model_usage:
         return None, None
     input_tokens = 0
     output_tokens = 0
     for usage in model_usage.values():
-        input_tokens += int(getattr(usage, "input_tokens", 0) or 0)
-        input_tokens += int(getattr(usage, "input_tokens_cache_read", 0) or 0)
-        input_tokens += int(getattr(usage, "input_tokens_cache_write", 0) or 0)
-        output_tokens += int(getattr(usage, "output_tokens", 0) or 0)
+        input_tokens += _token_count(getattr(usage, "input_tokens", None), "input_tokens")
+        input_tokens += _token_count(getattr(usage, "input_tokens_cache_read", None), "input_tokens_cache_read")
+        input_tokens += _token_count(getattr(usage, "input_tokens_cache_write", None), "input_tokens_cache_write")
+        output_tokens += _token_count(getattr(usage, "output_tokens", None), "output_tokens")
     return input_tokens, output_tokens
+
+
+def _score_count(value: Any, field: str) -> int:
+    if value is None:
+        return 0
+    if type(value) is int:
+        count = value
+    elif type(value) is float and isfinite(value) and value.is_integer():
+        count = int(value)
+    else:
+        raise ValueError(f"invalid benchmark counter: {field}")
+    if count < 0:
+        raise ValueError(f"invalid benchmark counter: {field}")
+    return count
+
+
+def _score_flag(value: Any, field: str) -> bool:
+    # Inspect's binary scorer values may arrive as bool, int or integral float.
+    # Generic bool(...) coercion turns "false", -1 and NaN into false successes.
+    if value is None:
+        return False
+    if type(value) is bool:
+        return value
+    if type(value) is int and value in (0, 1):
+        return bool(value)
+    if type(value) is float and isfinite(value) and value in (0.0, 1.0):
+        return bool(value)
+    raise ValueError(f"invalid benchmark score flag: {field}")
 
 
 def sample_record(sample: Any, condition: str) -> SampleRecord:
@@ -108,14 +158,14 @@ def sample_record(sample: Any, condition: str) -> SampleRecord:
         category=str(metadata.get("category", "unknown")),
         condition=condition,
         epoch=int(sample.epoch),
-        passed=bool(values.get("passed", 0)),
+        passed=_score_flag(values.get("passed"), "passed"),
         completion_status=completion_status,
-        false_completion=bool(values.get("false_completion", 0)),
-        scope_violation=bool(values.get("scope_violation", 0)),
-        tool_misuse_count=int(values.get("tool_misuse_count", 0) or 0),
-        verification_attempts=int(values.get("verification_attempts", 0) or 0),
-        failed_tool_calls=int(values.get("failed_tool_calls", 0) or 0),
-        retries=int(values.get("retries", 0) or 0),
+        false_completion=_score_flag(values.get("false_completion"), "false_completion"),
+        scope_violation=_score_flag(values.get("scope_violation"), "scope_violation"),
+        tool_misuse_count=_score_count(values.get("tool_misuse_count"), "tool_misuse_count"),
+        verification_attempts=_score_count(values.get("verification_attempts"), "verification_attempts"),
+        failed_tool_calls=_score_count(values.get("failed_tool_calls"), "failed_tool_calls"),
+        retries=_score_count(values.get("retries"), "retries"),
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         latency_seconds=getattr(sample, "total_time", None),
@@ -149,13 +199,19 @@ def _strip_reasoning(value: Any) -> Any:
     return value
 
 
+def _is_public_message_role(role: Any) -> bool:
+    value = getattr(role, "value", role)
+    return isinstance(value, str) and value in {"user", "assistant", "tool"}
+
+
 def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
     messages: list[dict[str, Any]] = []
     for message in getattr(sample, "messages", []) or []:
         dumped = _dump(message)
         if not isinstance(dumped, dict):
             continue
-        if dumped.get("role", getattr(message, "role", None)) in ("system", "developer"):
+        roles = [role for role in (dumped.get("role"), getattr(message, "role", None)) if role is not None]
+        if not roles or not all(_is_public_message_role(role) for role in roles):
             continue
         messages.append(_strip_reasoning(dumped))
 
