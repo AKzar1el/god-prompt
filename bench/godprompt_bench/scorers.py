@@ -15,14 +15,23 @@ _FENCE_RE = re.compile(r"^```(?:json)?\s*(\{.*\})\s*```$", re.DOTALL | re.IGNORE
 _IGNORED_SCOPE_PARTS = {"__pycache__", ".pytest_cache"}
 
 
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
 def parse_completion_status(text: str) -> str:
     candidate = text.strip()
     match = _FENCE_RE.match(candidate)
     if match:
         candidate = match.group(1).strip()
     try:
-        payload = json.loads(candidate)
-    except (json.JSONDecodeError, TypeError):
+        payload = json.loads(candidate, object_pairs_hook=_unique_json_object)
+    except (ValueError, TypeError):
         return "protocol-invalid"
     if not isinstance(payload, dict):
         return "protocol-invalid"

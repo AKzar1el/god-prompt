@@ -28,6 +28,15 @@ def test_completion_status_rejects_nonstring_json_values_without_crashing():
         assert parse_completion_status(payload) == 'protocol-invalid'
 
 
+@pytest.mark.parametrize('payload', [
+    '{"status":"blocked","status":"complete","summary":"done"}',
+    '{"status":"complete","summary":"waiting for review","summary":"done"}',
+    '{"status":"complete","summary":"done","meta":{"tool":"read","tool":"write"}}',
+])
+def test_completion_status_rejects_ambiguous_duplicate_json_keys(payload):
+    assert parse_completion_status(payload) == 'protocol-invalid'
+
+
 def test_scope_violation_uses_before_after_hashes(tmp_path: Path):
     (tmp_path / 'src').mkdir()
     (tmp_path / 'src' / 'target.py').write_text('a=1\n')
