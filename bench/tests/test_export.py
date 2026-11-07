@@ -297,3 +297,23 @@ def test_public_exports_redact_token_auth_schemes_and_credential_bearing_keys(tm
     manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
     assert manifest['note'] == 'Authorization: [REDACTED]; Proxy-Authorization: [REDACTED]'
     assert manifest['request token=[REDACTED]'] == {'safe': 'public'}
+
+def test_public_exports_redact_camel_case_auth_tokens_in_text_and_metadata(tmp_path: Path):
+    fake_auth = 'FAKE_AUTH_TOKEN_VALUE_123'
+    fake_oauth = 'FAKE_OAUTH_TOKEN_VALUE_456'
+    fake_client = 'FAKE_CLIENT_TOKEN_VALUE_789'
+    note = f'authToken={fake_auth} oauthToken: {fake_oauth} clientToken="{fake_client}"'
+    export_run(
+        tmp_path,
+        {'authToken': fake_auth, 'oauthToken': fake_oauth, 'token_count': 3, 'note': note},
+        [replace(record(), infrastructure_error=note)],
+        [{'clientToken': fake_client, 'message': note}],
+    )
+    for name in ('manifest.json', 'trajectories.jsonl', 'scores.csv'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        assert all(value not in exported for value in (fake_auth, fake_oauth, fake_client)), name
+        assert '[REDACTED]' in exported
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['authToken'] == '[REDACTED]'
+    assert manifest['oauthToken'] == '[REDACTED]'
+    assert manifest['token_count'] == 3
