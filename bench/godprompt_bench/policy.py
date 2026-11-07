@@ -49,6 +49,9 @@ def _path_operand(token: str) -> str:
     # GNU --option=/absolute/path hides a path behind an option assignment.
     if operand.startswith("-") and "=" in operand:
         return operand.split("=", 1)[1]
+    # env/git -C/path accepts a directory without a space after the flag.
+    if operand.startswith("-C") and len(operand) > 2:
+        return operand[2:]
     return operand
 
 
@@ -103,6 +106,10 @@ def _runs_package_network_command(tokens: list[str]) -> bool:
                 if option in {"-i", "--ignore-environment", "--"} or re.fullmatch(
                     r"[A-Za-z_][A-Za-z0-9_]*=.*", option
                 ):
+                    index += 1
+                elif option in {"-C", "--chdir"} and index + 1 < len(tokens):
+                    index += 2
+                elif option.startswith("--chdir=") or (option.startswith("-C") and len(option) > 2):
                     index += 1
                 elif option in {"-u", "--unset"} and index + 1 < len(tokens):
                     index += 2

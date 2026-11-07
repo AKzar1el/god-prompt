@@ -360,6 +360,27 @@ def test_shell_policy_rejects_package_manager_network_commands():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_unwraps_env_chdir_before_network_package_commands():
+    # Classifier-only examples: no package manager or network command is executed.
+    for command in (
+        'env -C fixtures npm install demo-package',
+        'env --chdir=fixtures pip download demo-package',
+        'env --chdir fixtures npm ci',
+        'env -Cfixtures pip3 wheel demo-package',
+        'env -i -C fixtures npm exec demo-package',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+    assert classify_shell_command(['env', '-C', 'fixtures', 'npm', 'install']).reason == 'network-command'
+    for command in ('env -C fixtures npm test', 'env --chdir=fixtures pip list'):
+        assert classify_shell_command(command).allowed, command
+
+
+def test_shell_policy_rejects_attached_chdir_paths_outside_workspace():
+    for command in ('env -C/ npm test', 'env -C../ npm test', 'env -C~ npm test'):
+        assert not classify_shell_command(command).allowed, command
+    assert classify_shell_command('env -Cfixtures npm test').allowed
+
+
 def test_shell_policy_rejects_compound_commands_without_spaces():
     assert classify_shell_command('echo ok;echo done').reason == 'compound-shell-command'
     assert classify_shell_command('echo ok&&echo done').reason == 'compound-shell-command'
