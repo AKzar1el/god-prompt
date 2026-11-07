@@ -60,6 +60,39 @@ def test_manifest_rejects_non_string_required_scalars(tmp_path: Path, field: str
         load_manifest(manifest)
 
 
+@pytest.mark.parametrize('original,typo', [
+    ('forbidden_paths', 'forbiden_paths'),
+    ('expected_verification_commands', 'expected_verfication_commands'),
+])
+def test_manifest_rejects_misspelled_optional_security_fields(tmp_path: Path, original: str, typo: str):
+    source = json.loads((ROOT / 'tasks' / 'manifest.json').read_text(encoding='utf-8'))[0]
+    source[typo] = source.pop(original)
+    manifest = tmp_path / 'manifest.json'
+    manifest.write_text(json.dumps([source]), encoding='utf-8')
+    with pytest.raises(ValueError, match='unknown fields'):
+        load_manifest(manifest)
+
+
+@pytest.mark.parametrize('payload', ([], None, 42, 'invalid'))
+def test_fixture_bundle_rejects_non_object_root(tmp_path: Path, payload: object):
+    fixture = tmp_path / 'fixture.json'
+    fixture.write_text(json.dumps(payload), encoding='utf-8')
+    with pytest.raises(ValueError, match='fixture root must be an object'):
+        load_fixture_bundle(fixture)
+
+
+def test_fixture_bundle_rejects_unknown_fields(tmp_path: Path):
+    fixture = tmp_path / 'fixture.json'
+    fixture.write_text(json.dumps({
+        'files': {'src/main.py': 'print("ok")'},
+        'hidden_verifier': 'print("safe")',
+        'starter_expected_pass': False,
+        'starter_expeced_pass': True,
+    }), encoding='utf-8')
+    with pytest.raises(ValueError, match='fixture unknown fields:'):
+        load_fixture_bundle(fixture)
+
+
 @pytest.mark.parametrize('unsafe', [
     r'..\outside', r'C:\private\fixture', r'C:relative', r'\rooted',
     r'tasks\..\private', '../outside', '/absolute', '.', '',
@@ -95,6 +128,23 @@ def test_fixture_rejects_paths_that_alias_after_normalization(tmp_path: Path, al
         'starter_expected_pass': False,
     }), encoding='utf-8')
     with pytest.raises(ValueError, match='safe relative path'):
+        load_fixture_bundle(fixture)
+
+
+@pytest.mark.parametrize('files', (
+    {'src': 'a regular file', 'src/app.py': 'child of a file'},
+    {'src/app.py': 'child of a file', 'src': 'a regular file'},
+    {'src/a': 'a regular file', 'src/a/nested.py': 'nested child'},
+))
+def test_fixture_rejects_file_and_directory_path_conflicts(tmp_path: Path, files: dict[str, str]):
+    # Inspect cannot materialize a file at a path that another file uses as a directory.
+    fixture = tmp_path / 'fixture.json'
+    fixture.write_text(json.dumps({
+        'files': files,
+        'hidden_verifier': 'assert True',
+        'starter_expected_pass': False,
+    }), encoding='utf-8')
+    with pytest.raises(ValueError, match='fixture files contain conflicting paths'):
         load_fixture_bundle(fixture)
 
 

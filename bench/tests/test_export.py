@@ -105,6 +105,53 @@ def test_public_exports_redact_short_bearer_credentials(tmp_path: Path):
         assert 'Bearer [REDACTED]' in exported, name
 
 
+def test_public_exports_redact_http_basic_authorization_payloads(tmp_path: Path):
+    # Base64 payloads are synthetic test values, never live credentials.
+    encoded_user = 'dXNlcjp0ZXN0LW9ubHk='
+    encoded_proxy = 'cHJveHk6dGVzdC1vbmx5'
+    headers = f'Authorization: Basic {encoded_user}; Proxy-Authorization=basic {encoded_proxy}'
+    export_run(
+        tmp_path,
+        {'note': headers, 'description': 'Basic authentication is documented'},
+        [replace(record(), infrastructure_error=headers)],
+        [{'events': [{'output': headers}]}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        assert encoded_user not in exported, name
+        assert encoded_proxy not in exported, name
+        assert '[REDACTED]' in exported, name
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['description'] == 'Basic authentication is documented'
+
+
+def test_public_exports_redact_cookie_headers_and_structured_cookie_fields(tmp_path: Path):
+    # Synthetic cookie values must not become public benchmark artifacts.
+    cookie = 'Cookie: sessionid=FAKE_SESSION_123; csrftoken=FAKE_CSRF_456'
+    set_cookie = 'Set-Cookie: sid=FAKE_SET_COOKIE_789; HttpOnly; Secure'
+    headers = f'request headers:\n{cookie}\n{set_cookie}\nstatus: 200'
+    export_run(
+        tmp_path,
+        {'note': headers, 'Cookie': 'sid=FAKE_STRUCTURED_987', 'cookie_enabled': True},
+        [replace(record(), infrastructure_error=headers)],
+        [{'events': [{'output': headers, 'set-cookie': 'sid=FAKE_EVENT_654'}]}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        for secret in (
+            'FAKE_SESSION_123', 'FAKE_CSRF_456', 'FAKE_SET_COOKIE_789',
+            'FAKE_STRUCTURED_987', 'FAKE_EVENT_654',
+        ):
+            assert secret not in exported, (name, secret)
+        assert 'status: 200' in exported
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['Cookie'] == '[REDACTED]'
+    assert manifest['cookie_enabled'] is True
+    assert 'Cookie: [REDACTED]' in manifest['note']
+    assert 'Set-Cookie: [REDACTED]' in manifest['note']
+    assert redact_secrets('Cookie recipes are popular') == 'Cookie recipes are popular'
+
+
 def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: Path):
     # All values are made-up placeholders, not credentials; plain text must still be sanitized.
     entries = (
@@ -130,6 +177,26 @@ def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: P
     assert redact_secrets('USER_NAME=example TOKENIZER=bert') == 'USER_NAME=example TOKENIZER=bert'
 
 
+def test_public_exports_redact_aws_access_key_identifiers(tmp_path: Path):
+    # Made-up identifiers only; an access key ID is credential material too.
+    fake_access_key_id = 'AKIASYNTHETICONLY1234'
+    export_run(
+        tmp_path,
+        {
+            'note': f'AWS_ACCESS_KEY_ID={fake_access_key_id}',
+            'aws_access_key_id': fake_access_key_id,
+            'aws_account_id': '123456789012',
+        },
+        [replace(record(), infrastructure_error=f'accessKeyId: {fake_access_key_id}')],
+        [{'events': [{'accessKeyId': fake_access_key_id}]}],
+    )
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        assert fake_access_key_id not in (tmp_path / filename).read_text(encoding='utf-8')
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['aws_access_key_id'] == '[REDACTED]'
+    assert manifest['aws_account_id'] == '123456789012'
+
+
 def test_public_exports_redact_structured_session_tokens_and_private_keys(tmp_path: Path):
     # Synthetic placeholders expose sensitive key-name gaps without using real credentials.
     fake_values = ('FAKE_SESSION_678', 'FAKE_ID_TOKEN_987', 'FAKE_PRIVATE_123', 'FAKE_AUTH_456')
@@ -152,3 +219,24 @@ def test_public_exports_redact_structured_session_tokens_and_private_keys(tmp_pa
     for name in ('manifest.json', 'trajectories.jsonl'):
         exported = (tmp_path / name).read_text(encoding='utf-8')
         assert not any(value in exported for value in fake_values)
+
+
+def test_public_exports_redact_token_auth_schemes_and_credential_bearing_keys(tmp_path: Path):
+    # Synthetic strings only: neither header values nor dynamic JSON keys may publish credentials.
+    header_token = 'FAKE_HEADER_TOKEN_123'
+    proxy_token = 'FAKE_PROXY_TOKEN_456'
+    embedded_key = 'FAKE_KEY_VALUE_789'
+    headers = f'Authorization: Token {header_token}; Proxy-Authorization: ApiKey {proxy_token}'
+    export_run(
+        tmp_path,
+        {'note': headers, f'request token={embedded_key}': {'safe': 'public'}},
+        [replace(record(), infrastructure_error=headers)],
+        [{'events': [{f'header api_key={embedded_key}': 'public', 'output': headers}]}],
+    )
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        text = (tmp_path / filename).read_text(encoding='utf-8')
+        for secret in (header_token, proxy_token, embedded_key):
+            assert secret not in text, (filename, secret)
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['note'] == 'Authorization: [REDACTED]; Proxy-Authorization: [REDACTED]'
+    assert manifest['request token=[REDACTED]'] == {'safe': 'public'}

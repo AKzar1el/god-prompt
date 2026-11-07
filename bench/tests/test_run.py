@@ -119,6 +119,45 @@ def test_profile_rejects_duplicate_ids_before_any_evaluation(tmp_path: Path):
         load_profile(path)
 
 
+@pytest.mark.parametrize('invalid_root', ([], None, 'smoke', 42))
+def test_profile_rejects_nonobject_root_with_actionable_error(tmp_path: Path, invalid_root):
+    path = tmp_path / 'malformed.json'
+    path.write_text(json.dumps(invalid_root), encoding='utf-8')
+    with pytest.raises(ValueError, match='profile root must be an object'):
+        load_profile(path)
+
+
+@pytest.mark.parametrize('invalid_id', ('', '  \t'))
+def test_profile_rejects_blank_task_ids_before_evaluation(tmp_path: Path, invalid_id):
+    profile = json.loads((ROOT / 'configs' / 'smoke.json').read_text(encoding='utf-8'))
+    profile['task_ids'][0] = invalid_id
+    path = tmp_path / 'blank-id.json'
+    path.write_text(json.dumps(profile), encoding='utf-8')
+    with pytest.raises(ValueError, match='profile task_ids must be non-empty strings'):
+        load_profile(path)
+
+
+def test_profile_rejects_unknown_resource_limit_fields(tmp_path: Path):
+    # A misspelled budget key must not silently leave the default cap in effect.
+    profile = json.loads((ROOT / 'configs' / 'smoke.json').read_text(encoding='utf-8'))
+    profile['max_output_token'] = 100
+    path = tmp_path / 'misspelled-budget.json'
+    path.write_text(json.dumps(profile), encoding='utf-8')
+    with pytest.raises(ValueError, match='unknown profile fields.*max_output_token'):
+        load_profile(path)
+
+
+@pytest.mark.parametrize('invalid_name', (None, 12, {}, [], '', '  \t '))
+def test_profile_requires_nonempty_string_name(tmp_path: Path, invalid_name):
+    # Do not mislabel exported benchmark results using str(None) or repr(dict).
+    profile = json.loads((ROOT / 'configs' / 'smoke.json').read_text(encoding='utf-8'))
+    profile['name'] = invalid_name
+    path = tmp_path / 'invalid-name.json'
+    path.write_text(json.dumps(profile), encoding='utf-8')
+    with pytest.raises(ValueError, match='profile name must be a non-empty string'):
+        load_profile(path)
+
+
 @pytest.mark.parametrize(('field', 'invalid'), (
     ('epochs', True),
     ('epochs', 1.5),
@@ -153,12 +192,106 @@ def test_sample_record_uses_score_and_sums_provider_usage():
     assert record.infrastructure_error is None
 
 
+@pytest.mark.parametrize('field,value', [
+    ('passed', 'false'),
+    ('passed', -1),
+    ('passed', 2),
+    ('false_completion', '0'),
+    ('false_completion', float('nan')),
+    ('scope_violation', 0.5),
+    ('scope_violation', []),
+])
+def test_sample_record_rejects_invalid_binary_score_flags(field, value):
+    score = SimpleNamespace(value={field: value}, metadata={'completion_status': 'complete'})
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1, metadata={}, scores={'godprompt_bench': score},
+        model_usage=None, total_time=1.0, error=None, limit=None,
+    )
+    with pytest.raises(ValueError, match=f'invalid benchmark score flag: {field}'):
+        sample_record(sample, 'baseline')
+
+
+def test_sample_record_accepts_boolean_and_binary_numeric_score_flags():
+    score = SimpleNamespace(
+        value={'passed': True, 'false_completion': 0.0, 'scope_violation': 1.0},
+        metadata={'completion_status': 'complete'},
+    )
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1, metadata={}, scores={'godprompt_bench': score},
+        model_usage=None, total_time=1.0, error=None, limit=None,
+    )
+    record = sample_record(sample, 'godprompt')
+    assert (record.passed, record.false_completion, record.scope_violation) == (True, False, True)
+
+
+@pytest.mark.parametrize('field,value', [
+    ('tool_misuse_count', True),
+    ('verification_attempts', -1),
+    ('failed_tool_calls', 1.5),
+    ('retries', '2'),
+    ('retries', float('nan')),
+    ('tool_misuse_count', float('inf')),
+])
+def test_sample_record_rejects_invalid_score_counters(field, value):
+    score = SimpleNamespace(value={field: value}, metadata={'completion_status': 'complete'})
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1, metadata={}, scores={'godprompt_bench': score},
+        model_usage=None, total_time=1.0, error=None, limit=None,
+    )
+    with pytest.raises(ValueError, match=f'invalid benchmark counter: {field}'):
+        sample_record(sample, 'baseline')
+
+
+def test_sample_record_score_counters_accept_missing_and_integral_float():
+    score = SimpleNamespace(
+        value={'retries': 2.0, 'failed_tool_calls': None},
+        metadata={'completion_status': 'complete'},
+    )
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1, metadata={}, scores={'godprompt_bench': score},
+        model_usage=None, total_time=1.0, error=None, limit=None,
+    )
+    record = sample_record(sample, 'baseline')
+    assert record.retries == 2
+    assert record.failed_tool_calls == 0
+
+
+@pytest.mark.parametrize('field,value', [
+    ('input_tokens', -3),
+    ('input_tokens', True),
+    ('input_tokens_cache_read', '7'),
+    ('input_tokens_cache_write', 2.5),
+    ('output_tokens', float('nan')),
+    ('output_tokens', float('inf')),
+])
+def test_usage_totals_rejects_invalid_token_telemetry(field, value):
+    from godprompt_bench.run import _usage_totals
+
+    usage = SimpleNamespace(
+        input_tokens=10, input_tokens_cache_read=2, input_tokens_cache_write=1,
+        output_tokens=5,
+    )
+    setattr(usage, field, value)
+    with pytest.raises(ValueError, match='invalid model usage token count'):
+        _usage_totals({'synthetic-model': usage})
+
+
+def test_usage_totals_accepts_integral_floats_and_missing_optional_counts():
+    from godprompt_bench.run import _usage_totals
+
+    usage = SimpleNamespace(input_tokens=5.0, input_tokens_cache_read=None, output_tokens=3.0)
+    assert _usage_totals({'synthetic-model': usage}) == (5, 3)
+
+
 def test_public_trajectory_excludes_system_and_reasoning_content():
     messages = [
         SimpleNamespace(role='system', model_dump=lambda **kwargs: {'role': 'system', 'content': 'secret prompt'}),
         SimpleNamespace(role='user', model_dump=lambda **kwargs: {'role': 'user', 'content': 'task'}),
         SimpleNamespace(role='assistant', model_dump=lambda **kwargs: {'role': 'assistant', 'content': [
-            {'type': 'reasoning', 'reasoning': 'private'}, {'type': 'text', 'text': 'public'}
+            {'type': 'reasoning', 'reasoning': 'private'},
+            {'type': 'thinking', 'thinking': 'synthetic private thought'},
+            {'type': 'redacted_thinking', 'data': 'synthetic opaque block'},
+            {'type': 'text', 'text': 'public', 'thinking': 'synthetic private field'},
         ]}),
     ]
     event = SimpleNamespace(event='tool', model_dump=lambda **kwargs: {'event': 'tool', 'function': 'bash', 'arguments': {'cmd': 'python test.py'}, 'result': 'ok'})
@@ -167,6 +300,52 @@ def test_public_trajectory_excludes_system_and_reasoning_content():
     assert [m['role'] for m in trajectory['messages']] == ['user', 'assistant']
     assert trajectory['messages'][1]['content'] == [{'type': 'text', 'text': 'public'}]
     assert trajectory['events'][0]['event'] == 'tool'
+
+
+def test_public_trajectory_filters_privileged_mapping_messages_and_keeps_mapping_events():
+    sample = SimpleNamespace(
+        id='fixture', epoch=1,
+        messages=[
+            {'role': 'system', 'content': 'SYNTHETIC_SYSTEM_PRIVATE'},
+            {'role': 'developer', 'content': 'SYNTHETIC_DEVELOPER_PRIVATE'},
+            SimpleNamespace(role='developer', model_dump=lambda **kwargs: {
+                'role': 'developer', 'content': 'SYNTHETIC_OBJECT_PRIVATE',
+            }),
+            {'role': 'user', 'content': 'public task'},
+        ],
+        events=[
+            {'event': 'tool', 'function': 'bash', 'arguments': {'cmd': 'echo harmless'}},
+            {'event': 'approval', 'decision': 'approve'},
+            {'event': 'message', 'content': 'not a tool event'},
+        ],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert trajectory['messages'] == [{'role': 'user', 'content': 'public task'}]
+    assert [event['event'] for event in trajectory['events']] == ['tool', 'approval']
+    assert 'PRIVATE' not in json.dumps(trajectory)
+
+
+def test_public_trajectory_fails_closed_on_conflicting_or_unknown_message_roles():
+    sample = SimpleNamespace(
+        id='fixture', epoch=1,
+        messages=[
+            {'role': 'SYSTEM', 'content': 'SYNTHETIC_UPPERCASE_PRIVATE'},
+            {'role': 'admin', 'content': 'SYNTHETIC_UNKNOWN_PRIVATE'},
+            SimpleNamespace(role='developer', model_dump=lambda **kwargs: {
+                'role': 'user', 'content': 'SYNTHETIC_DISGUISED_PRIVATE',
+            }),
+            SimpleNamespace(role='system', model_dump=lambda **kwargs: {
+                'role': None, 'content': 'SYNTHETIC_NULL_PRIVATE',
+            }),
+            {'role': 'user', 'content': 'public task'},
+            {'role': 'assistant', 'content': 'public answer'},
+            {'role': 'tool', 'content': 'public tool response'},
+        ],
+        events=[],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert [message['role'] for message in trajectory['messages']] == ['user', 'assistant', 'tool']
+    assert 'PRIVATE' not in json.dumps(trajectory)
 
 
 def test_execute_benchmark_reads_actual_model_from_eval_spec(monkeypatch, tmp_path):
