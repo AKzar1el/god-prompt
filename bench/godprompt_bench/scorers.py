@@ -201,6 +201,9 @@ def event_metrics(events: Iterable[Any], expected_commands: tuple[str, ...]) -> 
             retries += 1
         if failed and command:
             failed_commands.add(command)
+        elif command:
+            # Once recovered, later independent runs are not retries of that failure.
+            failed_commands.discard(command)
 
     return {
         "tool_misuse_count": tool_misuse_count,
