@@ -317,3 +317,27 @@ def test_public_exports_redact_camel_case_auth_tokens_in_text_and_metadata(tmp_p
     assert manifest['authToken'] == '[REDACTED]'
     assert manifest['oauthToken'] == '[REDACTED]'
     assert manifest['token_count'] == 3
+
+
+def test_public_exports_redact_custom_and_signed_authorization_headers(tmp_path: Path):
+    headers = (
+        'Authorization: AWS4-HMAC-SHA256 Credential=FAKE_AWS_ID_123, '
+        'SignedHeaders=host, Signature=FAKE_AWS_SIGNATURE_456\n'
+        'Proxy-Authorization: Hawk id="FAKE_HAWK_ID_789", mac="FAKE_HAWK_MAC_012"\n'
+        'status: 200'
+    )
+    export_run(
+        tmp_path,
+        {'note': headers, 'description': 'Custom authorization schemes exist'},
+        [replace(record(), infrastructure_error=headers)],
+        [{'output': headers}],
+    )
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / filename).read_text(encoding='utf-8')
+        for secret in ('FAKE_AWS_ID_123', 'FAKE_AWS_SIGNATURE_456', 'FAKE_HAWK_ID_789', 'FAKE_HAWK_MAC_012'):
+            assert secret not in exported, (filename, secret)
+        assert 'Authorization: [REDACTED]' in exported
+        assert 'Proxy-Authorization: [REDACTED]' in exported
+        assert 'status: 200' in exported
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['description'] == 'Custom authorization schemes exist'
