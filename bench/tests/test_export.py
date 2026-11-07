@@ -385,3 +385,34 @@ def test_public_exports_redact_camel_case_auth_tokens_in_text_and_metadata(tmp_p
     assert manifest['authToken'] == '[REDACTED]'
     assert manifest['oauthToken'] == '[REDACTED]'
     assert manifest['token_count'] == 3
+
+
+def test_public_exports_normalize_nonfinite_numbers_to_valid_json(tmp_path: Path):
+    # Provider metrics can be missing/non-finite; public JSON must stay RFC 8259-compatible.
+    export_run(
+        tmp_path,
+        {'run_id': 'nonfinite', 'latency': float('nan'), 'limits': [float('inf'), -float('inf')]},
+        [replace(record(), latency_seconds=float('nan'))],
+        [{'measurements': {'duration': float('inf'), 'score': -float('inf'), 'valid': 1.5}}],
+    )
+
+    def reject_nonstandard_number(value: str):
+        raise ValueError(f'nonstandard JSON constant: {value}')
+
+    manifest = json.loads(
+        (tmp_path / 'manifest.json').read_text(encoding='utf-8'),
+        parse_constant=reject_nonstandard_number,
+    )
+    trajectory = json.loads(
+        (tmp_path / 'trajectories.jsonl').read_text(encoding='utf-8'),
+        parse_constant=reject_nonstandard_number,
+    )
+    assert manifest['latency'] is None
+    assert manifest['limits'] == [None, None]
+    assert trajectory['measurements'] == {'duration': None, 'score': None, 'valid': 1.5}
+    assert json.loads(
+        (tmp_path / 'summary.json').read_text(encoding='utf-8'),
+        parse_constant=reject_nonstandard_number,
+    )['baseline']['median_latency_seconds'] is None
+    with (tmp_path / 'scores.csv').open(newline='', encoding='utf-8') as handle:
+        assert next(csv.DictReader(handle))['latency_seconds'] == ''
