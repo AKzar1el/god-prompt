@@ -12,14 +12,14 @@ from .models import SampleRecord
 
 _SECRET_KEY = re.compile(
     r"(?:api[_-]?key|authorization|access[_-]?key[_-]?id|access[_-]?token|refresh[_-]?token|"
-    r"session[_-]?token|id[_-]?token|private[_-]?key|secret|password|^token$|"
+    r"session[_-]?token|id[_-]?token|(?:auth|oauth|client)[_-]?token|private[_-]?key|secret|password|^token$|"
     r"^(?:cookie|set[_-]?cookie)$)",
     re.IGNORECASE,
 )
 _INLINE_CREDENTIAL = re.compile(
     r"(?i)(\b(?:[a-z][a-z0-9]*[_-])*(?:api[_-]?key|authorization|"
     r"access[_-]?key[_-]?id|access[_-]?token|refresh[_-]?token|secret[_-]access[_-]?key|"
-    r"secret[_-]?key|github[_-]?token|token|secret|password)\s*[:=]\s*)"
+    r"secret[_-]?key|github[_-]?token|(?:auth|oauth|client)[_-]?token|token|secret|password)\s*[:=]\s*)"
     r"(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;]+)"
 )
 _BEARER_TOKEN = re.compile(r"(?i)(\bBearer\s+)[a-z0-9._~+/=-]+")
@@ -35,10 +35,12 @@ _HTTP_NAMED_TOKEN = re.compile(
 )
 _COOKIE_HEADER = re.compile(r"(?i)(\b(?:set-cookie|cookie)[ \t]*:[ \t]*)(?=[^\r\n]*=)[^\r\n]+")
 _KNOWN_TOKEN = re.compile(r"\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9_]{12,}|github_pat_[A-Za-z0-9_]{12,})\b")
+_URL_USERINFO = re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://)[^\s/?#@]+@")
 
 
 def _redact_text(text: str) -> str:
     """Redact credential-shaped substrings even inside otherwise public text."""
+    text = _URL_USERINFO.sub(lambda match: f"{match.group(1)}[REDACTED]@", text)
     # Digest credentials are comma-separated; masking only the scheme leaks its
     # username, nonce and response hash into the exported trace.
     text = _HTTP_DIGEST_HEADER.sub(lambda match: f"{match.group(1)}[REDACTED]", text)
