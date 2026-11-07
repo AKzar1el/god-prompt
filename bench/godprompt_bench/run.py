@@ -156,7 +156,9 @@ def sample_record(sample: Any, condition: str) -> SampleRecord:
     values: Mapping[str, Any] = {}
     score_metadata: Mapping[str, Any] = {}
     if score is not None:
-        values = score.value if isinstance(score.value, Mapping) else {}
+        if not isinstance(score.value, Mapping):
+            raise ValueError("invalid benchmark score value: expected mapping")
+        values = score.value
         score_metadata = score.metadata or {}
 
     if score is not None:
