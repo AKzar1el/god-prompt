@@ -293,12 +293,13 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                     option == "-m" and offset + 1 < len(options) and options[offset + 1] in {"timeit", "pdb", "code", "asyncio"}
                 )):
                     return PolicyDecision(False, "inline-interpreter")
-                # These modules can open a network listener or fetch/install packages.
+                # Module entry points can bypass checks for their standalone
+                # package-manager binaries. Treat them like python -m pip.
                 if is_python and (option == "-m" or option.startswith("-m")):
                     module = options[offset + 1] if option == "-m" and offset + 1 < len(options) else option[2:]
-                    if module in {"pip", "ensurepip", "http.server"} or module.startswith(
-                        ("pip.", "ensurepip.", "http.server.")
-                    ):
+                    if module.split(".", 1)[0] in {
+                        "pip", "ensurepip", "uv", "pipx", "poetry", "pdm", "hatch", "build",
+                    } or module == "http.server" or module.startswith("http.server."):
                         return PolicyDecision(False, "network-command")
                 if (
                     option in inline_flags

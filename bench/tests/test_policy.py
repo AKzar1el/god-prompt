@@ -372,6 +372,25 @@ def test_shell_policy_rejects_network_capable_python_module_entry_points():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_module_package_managers_without_running_them():
+    # Python -m can launch installers that are already blocked as standalone binaries.
+    for command in (
+        'python3 -m uv pip install demo-package',
+        'python3.12 -I -m poetry add demo-package',
+        'pypy3 -mpipx install demo-package',
+        'env python3 -m pdm add demo-package',
+        'python -m hatch env create',
+        'python -m build',
+        'python -m poetry.console add demo-package',
+        'echo ok && python3 -m uv pip install demo-package',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+    assert classify_shell_command(['python3', '-m', 'uv', 'pip', 'install']).reason == 'network-command'
+    for command in ('python3 -m pytest -q', 'python -m json.tool data.json',
+                    'python3 local_script.py -m poetry'):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_package_manager_network_commands():
     for command in (
         'pip install demo-package',
