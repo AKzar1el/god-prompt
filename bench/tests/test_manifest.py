@@ -184,6 +184,23 @@ def test_fixture_rejects_file_and_directory_path_conflicts(tmp_path: Path, files
         load_fixture_bundle(fixture)
 
 
+@pytest.mark.parametrize('files', (
+    {'src/Readme.md': 'first', 'src/README.md': 'second'},
+    {'SRC/app.py': 'first', 'src/app.py': 'second'},
+    {'src': 'a regular file', 'SRC/app.py': 'child of that file'},
+))
+def test_fixture_rejects_case_insensitive_path_collisions(tmp_path: Path, files: dict[str, str]):
+    # Windows aliases these paths even when the Linux sandbox keeps them distinct.
+    fixture = tmp_path / 'fixture.json'
+    fixture.write_text(json.dumps({
+        'files': files,
+        'hidden_verifier': 'assert True',
+        'starter_expected_pass': False,
+    }), encoding='utf-8')
+    with pytest.raises(ValueError, match='fixture files contain conflicting paths'):
+        load_fixture_bundle(fixture)
+
+
 def test_all_fixture_directories_exist_and_are_safe():
     tasks = load_manifest(ROOT / 'tasks' / 'manifest.json')
     for task in tasks:

@@ -155,8 +155,12 @@ def load_fixture_bundle(path: Path) -> FixtureBundle:
         raise ValueError("fixture files must be a non-empty string map")
     for relative in files:
         _validate_relative(relative, "fixture file", path.parent.name)
-        if any(parent.as_posix() in files for parent in PurePosixPath(relative).parents):
-            raise ValueError("fixture files contain conflicting paths")
+    folded_paths = {relative.casefold() for relative in files}
+    if len(folded_paths) != len(files) or any(
+        parent.as_posix().casefold() in folded_paths
+        for relative in files for parent in PurePosixPath(relative).parents
+    ):
+        raise ValueError("fixture files contain conflicting paths")
     if not isinstance(verifier, str) or not verifier.strip():
         raise ValueError("fixture hidden_verifier must be non-empty")
     if not isinstance(expected, bool):
