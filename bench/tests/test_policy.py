@@ -93,6 +93,35 @@ def test_shell_policy_rejects_paths_hidden_in_option_assignments():
     assert classify_shell_command('git -c color.ui=always status').allowed
 
 
+def test_shell_policy_rejects_dynamic_git_aliases():
+    for command in (
+        "git -c 'alias.check=!curl https://example.invalid' check",
+        "git -calias.check='!sh -c true' check",
+        "git -C local -c 'alias.check=!python3 -c pass' check",
+        "git -c ALIAS.check=other-command check",
+        "git --config-env=alias.check=CHECK_ALIAS check",
+        "echo ok && git -c 'alias.check=!curl https://example.invalid' check",
+    ):
+        assert classify_shell_command(command).reason == "dynamic-git-alias", command
+    assert classify_shell_command(
+        ["git", "-c", "alias.check=!curl https://example.invalid", "check"]
+    ).reason == "dynamic-git-alias"
+    assert classify_shell_command("git -c color.ui=always status").allowed
+    assert classify_shell_command("echo git -c alias.check=x").allowed
+
+
+def test_shell_policy_rejects_global_git_config_after_options():
+    for command in (
+        "git -C repo config --global user.name x",
+        "git -c color.ui=always config --global user.email example@example.invalid",
+        "git --no-pager config --global user.name x",
+        "env git -C repo config --global user.name x",
+    ):
+        assert classify_shell_command(command).reason == "global-git-config", command
+    for command in ("git -C repo status", "git -C repo config --local user.name"):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_tool_call_policy_covers_bash_and_editor_paths():
     from godprompt_bench.policy import classify_tool_call
 
