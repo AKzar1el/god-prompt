@@ -292,6 +292,52 @@ def test_hidden_verifier_does_not_overwrite_agent_reserved_filename(monkeypatch)
     assert executed[1][-1] == written[0]
 
 
+def test_hidden_verifier_cleanup_failure_cannot_report_success(monkeypatch):
+    import godprompt_bench.scorers as scorer_module
+
+    async def snapshot():
+        return {}
+
+    class FakeSandbox:
+        async def write_file(self, name, content):
+            pass
+
+        async def exec(self, args, **kwargs):
+            return SimpleNamespace(success=args[0] != 'rm')
+
+    monkeypatch.setattr(scorer_module, 'sandbox_hashes', snapshot)
+    with pytest.raises(RuntimeError, match='hidden verifier cleanup failed'):
+        asyncio.run(scorer_module.run_hidden_verifier(
+            FakeSandbox(), 'private verifier', ('python3', '.godprompt_verifier.py')))
+
+
+def test_hidden_verifier_cleans_up_after_partial_write_failure(monkeypatch):
+    import godprompt_bench.scorers as scorer_module
+
+    files = {}
+    cleanup_attempted = []
+
+    async def snapshot():
+        return {}
+
+    class FakeSandbox:
+        async def write_file(self, name, content):
+            files[name] = content
+            raise ValueError('partial write')
+
+        async def exec(self, args, **kwargs):
+            cleanup_attempted.append(args)
+            files.pop(args[-1], None)
+            return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(scorer_module, 'sandbox_hashes', snapshot)
+    with pytest.raises(ValueError, match='partial write'):
+        asyncio.run(scorer_module.run_hidden_verifier(
+            FakeSandbox(), 'private verifier', ('python3', '.godprompt_verifier.py')))
+    assert len(cleanup_attempted) == 1 and cleanup_attempted[0][:3] == ['rm', '-f', '--']
+    assert not files
+
+
 def test_event_metrics_count_policy_rejections_verification_failures_and_retries():
     from types import SimpleNamespace
     from godprompt_bench.scorers import event_metrics
