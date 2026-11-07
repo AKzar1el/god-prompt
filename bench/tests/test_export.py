@@ -209,6 +209,55 @@ def test_public_exports_redact_url_userinfo_credentials(tmp_path: Path):
     assert redact_secrets('Contact ops@example.invalid') == 'Contact ops@example.invalid'
 
 
+@pytest.mark.parametrize(
+    ('url', 'secret_values', 'parameter_names'),
+    [
+        (
+            'https://r2.example.invalid/object?X-Amz-Credential=FAKE_AWS_CRED_123'
+            '&X-Amz-Signature=FAKE_AWS_SIG_456'
+            '&X-Amz-Security-Token=FAKE_AWS_SESSION_789&partNumber=1',
+            ('FAKE_AWS_CRED_123', 'FAKE_AWS_SIG_456', 'FAKE_AWS_SESSION_789'),
+            ('X-Amz-Credential', 'X-Amz-Signature', 'X-Amz-Security-Token'),
+        ),
+        (
+            'https://gcs.example.invalid/object?X-Goog-Credential=FAKE_GOOG_CRED_123'
+            '&X-Goog-Signature=FAKE_GOOG_SIG_456&partNumber=1',
+            ('FAKE_GOOG_CRED_123', 'FAKE_GOOG_SIG_456'),
+            ('X-Goog-Credential', 'X-Goog-Signature'),
+        ),
+        (
+            'https://blob.example.invalid/container/file?sv=2024-01-01'
+            '&sig=FAKE_AZURE_SIG_123&partNumber=1',
+            ('FAKE_AZURE_SIG_123',),
+            ('sig',),
+        ),
+    ],
+)
+def test_public_exports_redact_signed_url_query_credentials(
+    tmp_path: Path, url: str, secret_values: tuple[str, ...], parameter_names: tuple[str, ...],
+):
+    export_run(
+        tmp_path,
+        {'note': url, 'public_url': 'https://public.example.invalid/object?partNumber=1'},
+        [replace(record(), infrastructure_error=url)],
+        [{'events': [{'output': url}]}],
+    )
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / filename).read_text(encoding='utf-8')
+        assert all(secret not in exported for secret in secret_values), filename
+        for name in parameter_names:
+            assert f'{name}=[REDACTED]' in exported, (filename, name)
+        assert 'partNumber=1' in exported
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['public_url'] == 'https://public.example.invalid/object?partNumber=1'
+
+
+def test_public_exports_redact_structured_signed_url_credentials():
+    values = {'X-Amz-Signature': 'FAKE_AWS_SIG', 'X-Goog-Credential': 'FAKE_GOOG_CRED', 'sig': 'FAKE_AZURE_SIG'}
+    redacted = redact_secrets(values)
+    assert redacted == {key: '[REDACTED]' for key in values}
+
+
 def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: Path):
     # All values are made-up placeholders, not credentials; plain text must still be sanitized.
     entries = (
