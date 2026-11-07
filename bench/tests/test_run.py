@@ -71,6 +71,17 @@ def test_fixture_fingerprints_cover_selected_bundles_and_hidden_verifiers(tmp_pa
         fixture_fingerprints(tmp_path, ('task-unknown',))
 
 
+def test_fixture_fingerprints_reject_duplicate_manifest_keys(tmp_path: Path):
+    tasks = tmp_path / 'tasks'
+    tasks.mkdir()
+    (tasks / 'manifest.json').write_text(
+        '[{"id":"task-a","fixture_dir":"tasks/a","fixture_dir":"tasks/b"}]',
+        encoding='utf-8',
+    )
+    with pytest.raises(ValueError, match='duplicate JSON key: fixture_dir'):
+        fixture_fingerprints(tmp_path, ('task-a',))
+
+
 def test_sample_coverage_rejects_missing_duplicate_and_extra_samples():
     profile = RunProfile(name='tiny', task_ids=('task-a', 'task-b'), epochs=2,
                          max_messages=10, max_time_seconds=30, max_output_tokens=1000)
@@ -116,6 +127,17 @@ def test_profile_rejects_duplicate_ids_before_any_evaluation(tmp_path: Path):
     path = tmp_path / 'duplicate.json'
     path.write_text(json.dumps(profile), encoding='utf-8')
     with pytest.raises(ValueError, match='duplicate task id.*impl-py-slugify'):
+        load_profile(path)
+
+
+def test_profile_rejects_duplicate_json_budget_keys(tmp_path: Path):
+    path = tmp_path / 'duplicate-budget.json'
+    path.write_text(
+        '{"name":"test","task_ids":["task-a"],"epochs":1,"epochs":2,'
+        '"max_messages":10,"max_time_seconds":30,"max_output_tokens":1000}',
+        encoding='utf-8',
+    )
+    with pytest.raises(ValueError, match='duplicate JSON key: epochs'):
         load_profile(path)
 
 
