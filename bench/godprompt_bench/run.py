@@ -14,13 +14,14 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .agent import condition_prompt
+from .corpus import _unique_json_object
 from .eval import build_task
 from .export import export_run
 from .models import RunProfile, SampleRecord
 
 
 def load_profile(path: Path) -> RunProfile:
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_json_object)
     if not isinstance(raw, dict):
         raise ValueError("profile root must be an object")
     required = {"name", "task_ids", "epochs", "max_messages", "max_time_seconds", "max_output_tokens"}
@@ -276,7 +277,10 @@ def _sha256(path: Path) -> str:
 
 def fixture_fingerprints(bench_root: Path, task_ids: tuple[str, ...]) -> dict[str, Any]:
     """Fingerprint selected fixture files, including their hidden verifier content."""
-    manifest = json.loads((bench_root / "tasks" / "manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads(
+        (bench_root / "tasks" / "manifest.json").read_text(encoding="utf-8"),
+        object_pairs_hook=_unique_json_object,
+    )
     fixture_dirs = {item["id"]: item["fixture_dir"] for item in manifest}
     hashes: dict[str, str] = {}
     for task_id in sorted(task_ids):

@@ -47,6 +47,24 @@ def test_manifest_rejects_duplicate_ids(tmp_path: Path):
         validate_manifest(tasks)
 
 
+def test_manifest_rejects_duplicate_json_keys(tmp_path: Path):
+    manifest = tmp_path / 'manifest.json'
+    manifest.write_text('[{"id":"first","id":"shadow"}]', encoding='utf-8')
+    with pytest.raises(ValueError, match='duplicate JSON key: id'):
+        load_manifest(manifest)
+
+
+def test_fixture_rejects_duplicate_nested_file_keys(tmp_path: Path):
+    fixture = tmp_path / 'fixture.json'
+    fixture.write_text(
+        '{"files":{"src/main.py":"first","src/main.py":"shadow"},'
+        '"hidden_verifier":"assert True","starter_expected_pass":false}',
+        encoding='utf-8',
+    )
+    with pytest.raises(ValueError, match='duplicate JSON key: src/main.py'):
+        load_fixture_bundle(fixture)
+
+
 @pytest.mark.parametrize('field,invalid', [
     ('id', 123), ('category', ['implementation']), ('runtime', True),
     ('fixture_dir', 42), ('user_prompt', {'text': 'run'}),

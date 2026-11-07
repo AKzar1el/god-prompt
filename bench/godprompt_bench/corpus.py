@@ -21,6 +21,16 @@ _WINDOWS_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
 }
 
 
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Reject ambiguous configuration keys before validation or fingerprinting."""
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
 def _tuple(value: object, field: str) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ValueError(f"{field} must be a list of strings")
@@ -28,7 +38,7 @@ def _tuple(value: object, field: str) -> tuple[str, ...]:
 
 
 def load_manifest(path: Path) -> list[TaskSpec]:
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_json_object)
     if not isinstance(raw, list):
         raise ValueError("manifest root must be a list")
     tasks: list[TaskSpec] = []
@@ -133,7 +143,7 @@ class FixtureBundle:
 
 
 def load_fixture_bundle(path: Path) -> FixtureBundle:
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_json_object)
     if not isinstance(raw, dict):
         raise ValueError("fixture root must be an object")
     unknown = raw.keys() - {"files", "hidden_verifier", "starter_expected_pass"}
