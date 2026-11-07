@@ -192,6 +192,18 @@ def test_sample_record_uses_score_and_sums_provider_usage():
     assert record.infrastructure_error is None
 
 
+@pytest.mark.parametrize('invalid_score', (None, 1, 0.0, True, 'passed', []))
+def test_sample_record_rejects_non_mapping_scorer_payload(invalid_score):
+    # An invalid score must not silently become a valid-looking failed sample.
+    score = SimpleNamespace(value=invalid_score, metadata={'completion_status': 'complete'})
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1, metadata={}, scores={'godprompt_bench': score},
+        model_usage=None, total_time=1.0, error=None, limit=None,
+    )
+    with pytest.raises(ValueError, match='invalid benchmark score value'):
+        sample_record(sample, 'baseline')
+
+
 @pytest.mark.parametrize('invalid_epoch', (0, -1, True, 1.9, '1', None, float('nan')))
 def test_sample_record_and_public_trajectory_reject_invalid_epochs(invalid_epoch):
     # Truncating a fractional epoch can falsely satisfy expected sample coverage.
