@@ -37,6 +37,21 @@ def test_completion_status_rejects_ambiguous_duplicate_json_keys(payload):
     assert parse_completion_status(payload) == 'protocol-invalid'
 
 
+@pytest.mark.parametrize('payload', [
+    '{"status":"complete","summary":"done","meta":NaN}',
+    '{"status":"complete","summary":"done","meta":Infinity}',
+    '{"status":"complete","summary":"done","meta":{"value":-Infinity}}',
+])
+def test_completion_status_rejects_nonstandard_json_constants(payload):
+    assert parse_completion_status(payload) == 'protocol-invalid'
+
+
+def test_completion_status_allows_standard_json_null_metadata():
+    assert parse_completion_status(
+        '{"status":"complete","summary":"done","meta":null}'
+    ) == 'complete'
+
+
 def test_scope_violation_uses_before_after_hashes(tmp_path: Path):
     (tmp_path / 'src').mkdir()
     (tmp_path / 'src' / 'target.py').write_text('a=1\n')
