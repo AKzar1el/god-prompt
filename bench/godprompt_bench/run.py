@@ -353,13 +353,19 @@ def build_manifest(
 def _condition_for_log(log: Any) -> str:
     metadata = getattr(log, "metadata", None) or {}
     condition = metadata.get("condition")
-    if condition in {"baseline", "godprompt"}:
-        return condition
     task_name = str(getattr(getattr(log, "eval", None), "task", ""))
-    if "godprompt_bench_godprompt" in task_name:
-        return "godprompt"
-    if "godprompt_bench_baseline" in task_name:
-        return "baseline"
+    task_condition = {
+        "godprompt_bench_baseline": "baseline",
+        "godprompt_bench_godprompt": "godprompt",
+    }.get(task_name)
+    if condition is not None and condition not in {"baseline", "godprompt"}:
+        raise RuntimeError("invalid benchmark condition in Inspect log metadata")
+    if condition is not None and task_condition is not None and condition != task_condition:
+        raise RuntimeError("Inspect log condition conflicts with task identity")
+    if condition is not None:
+        return condition
+    if task_condition is not None:
+        return task_condition
     raise RuntimeError("could not determine benchmark condition from Inspect log")
 
 
