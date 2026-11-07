@@ -202,20 +202,29 @@ def _dump(value: Any) -> Any:
     return value
 
 
+_PRIVATE_REASONING_FIELDS = {
+    "reasoning", "reasoningcontent", "reasoningdetails", "redactedreasoning",
+    "thinking", "thinkingcontent", "thinkingdetails", "redactedthinking",
+    "encryptedcontent",
+}
+
+
+def _private_reasoning_field(value: Any) -> bool:
+    return isinstance(value, str) and value.casefold().replace("_", "").replace("-", "") in _PRIVATE_REASONING_FIELDS
+
+
 def _strip_reasoning(value: Any) -> Any:
     if isinstance(value, list):
         result = []
         for item in value:
-            if isinstance(item, Mapping) and str(item.get("type", "")).lower() in {
-                "reasoning", "redacted_reasoning", "thinking", "redacted_thinking"
-            }:
+            if isinstance(item, Mapping) and _private_reasoning_field(item.get("type")):
                 continue
             result.append(_strip_reasoning(item))
         return result
     if isinstance(value, Mapping):
         return {
             key: _strip_reasoning(item) for key, item in value.items()
-            if key not in {"reasoning", "thinking", "redacted_thinking", "encrypted_content"}
+            if not _private_reasoning_field(key)
         }
     return value
 
