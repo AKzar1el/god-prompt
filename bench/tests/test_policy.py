@@ -386,6 +386,21 @@ def test_shell_policy_rejects_package_manager_network_commands():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_package_manager_config_mutations():
+    # Classification only: these otherwise write user or system config files.
+    for command in (
+        'pip config set global.index-url https://example.invalid',
+        'pip3 config --user unset global.index-url',
+        'npm config set registry https://example.invalid',
+        'npm config --global delete proxy',
+        'npm set registry https://example.invalid',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+
+    for command in ('pip config list', 'pip config get global.index-url', 'npm config get registry'):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_compound_commands_without_spaces():
     assert classify_shell_command('echo ok;echo done').reason == 'compound-shell-command'
     assert classify_shell_command('echo ok&&echo done').reason == 'compound-shell-command'

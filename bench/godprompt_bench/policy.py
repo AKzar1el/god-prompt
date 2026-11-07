@@ -123,9 +123,11 @@ def _runs_package_network_command(tokens: list[str]) -> bool:
         return True
     if re.fullmatch(r"pip(?:[23](?:\.\d+)*)?", launcher):
         blocked = {"install", "download", "wheel", "index", "search"}
+        config_mutations = {"set", "unset", "edit"}
         value_options = {"--python", "--index-url", "-i", "--extra-index-url", "--proxy"}
     elif launcher == "npm":
-        blocked = {"install", "i", "ci", "update", "upgrade", "add", "exec", "x", "publish", "pack", "audit"}
+        blocked = {"install", "i", "ci", "update", "upgrade", "add", "exec", "x", "publish", "pack", "audit", "set", "delete"}
+        config_mutations = {"set", "delete", "rm", "edit", "fix"}
         value_options = {"--prefix", "-C", "--workspace", "-w", "--registry", "--cache", "--userconfig"}
     else:
         return False
@@ -137,6 +139,9 @@ def _runs_package_network_command(tokens: list[str]) -> bool:
             skip_value = True
         elif option.startswith("-"):
             continue
+        elif option == "config":
+            # Config mutators can write to user/system files outside the repo.
+            return any(value in config_mutations for value in tokens[index + 1 :])
         else:
             return option in blocked
     return False

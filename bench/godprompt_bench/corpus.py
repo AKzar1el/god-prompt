@@ -27,8 +27,17 @@ def _tuple(value: object, field: str) -> tuple[str, ...]:
     return tuple(value)
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
 def load_manifest(path: Path) -> list[TaskSpec]:
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
     if not isinstance(raw, list):
         raise ValueError("manifest root must be a list")
     tasks: list[TaskSpec] = []
@@ -133,7 +142,7 @@ class FixtureBundle:
 
 
 def load_fixture_bundle(path: Path) -> FixtureBundle:
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
     if not isinstance(raw, dict):
         raise ValueError("fixture root must be an object")
     unknown = raw.keys() - {"files", "hidden_verifier", "starter_expected_pass"}
