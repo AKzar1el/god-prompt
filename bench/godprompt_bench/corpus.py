@@ -93,12 +93,11 @@ def _validate_relative(path: str, field: str, task_id: str) -> None:
         for part in parsed.parts
     )
     if (
-        "\x00" in path
+        any(ord(char) < 32 or char in '*?"<>|' for char in path)
         or parsed == PurePosixPath(".")
         or parsed.is_absolute()
         or ".." in parsed.parts
         or path != parsed.as_posix()
-        or "\x00" in path
         or ":" in path
         or nonportable_component
         or "\\" in path
