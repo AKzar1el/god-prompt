@@ -122,6 +122,19 @@ def test_shell_policy_rejects_global_git_config_after_options():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_system_git_config_outside_workspace():
+    # Only classify these commands: --system writes outside the sandbox repo.
+    for command in (
+        "git config --system user.name x",
+        "git -C repo config --system user.email example@example.invalid",
+        "git --no-pager config --system core.hooksPath hooks",
+        "env git config --system user.name x",
+    ):
+        assert classify_shell_command(command).reason == "global-git-config", command
+
+    assert classify_shell_command("git config --local user.name x").allowed
+
+
 def test_tool_call_policy_covers_bash_and_editor_paths():
     from godprompt_bench.policy import classify_tool_call
 
