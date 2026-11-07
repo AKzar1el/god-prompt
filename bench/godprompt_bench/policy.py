@@ -71,6 +71,24 @@ def _has_dynamic_dollar(command: str) -> bool:
     return False
 
 
+def _has_unquoted_here_string(command: str) -> bool:
+    # Here-strings can feed unreviewed code to an interpreter via stdin.
+    quote = None
+    escaped = False
+    for index, char in enumerate(command):
+        if escaped:
+            escaped = False
+        elif char == "\\" and quote != "'":
+            escaped = True
+        elif char == "'" and quote != '"':
+            quote = None if quote == "'" else "'"
+        elif char == '"' and quote != "'":
+            quote = None if quote == '"' else '"'
+        elif quote is None and command.startswith("<<<", index):
+            return True
+    return False
+
+
 def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     try:
         if isinstance(command, list):
@@ -87,7 +105,14 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
 
     # The approver does not execute or parse nested programs. Deny mechanisms
     # that can execute an entirely different command after this check.
-    if isinstance(command, str) and (_has_dynamic_dollar(command) or "`" in command or "\n" in command):
+    if isinstance(command, str) and (
+        _has_dynamic_dollar(command)
+        or _has_unquoted_here_string(command)
+        or "`" in command
+        or "\n" in command
+    ):
+        return PolicyDecision(False, "dynamic-shell-syntax")
+    if isinstance(command, list) and any("<<<" in token for token in tokens):
         return PolicyDecision(False, "dynamic-shell-syntax")
 
     # echo/printf render arguments as data; an argument named "curl" or "bash"
@@ -166,6 +191,11 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                     option == "-m" and offset + 1 < len(options) and options[offset + 1] in {"timeit", "pdb", "code", "asyncio"}
                 )):
                     return PolicyDecision(False, "inline-interpreter")
+                # These modules can open a network listener or fetch/install packages.
+                if is_python and (option in {"-mhttp.server", "-mpip"} or (
+                    option == "-m" and offset + 1 < len(options) and options[offset + 1] in {"http.server", "pip"}
+                )):
+                    return PolicyDecision(False, "network-command")
                 if (
                     option in inline_flags
                     or option.startswith(("--eval=", "--execute=", "-c", "-e"))
