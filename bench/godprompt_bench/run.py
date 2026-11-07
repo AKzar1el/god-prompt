@@ -128,6 +128,20 @@ def _score_flag(value: Any, field: str) -> bool:
     raise ValueError(f"invalid benchmark score flag: {field}")
 
 
+def _sample_latency_seconds(value: Any) -> float | None:
+    if value is None:
+        return None
+    if type(value) not in (int, float) or value < 0:
+        raise ValueError("invalid sample latency: expected finite nonnegative seconds")
+    try:
+        seconds = float(value)
+    except OverflowError as exc:
+        raise ValueError("invalid sample latency: expected finite nonnegative seconds") from exc
+    if not isfinite(seconds):
+        raise ValueError("invalid sample latency: expected finite nonnegative seconds")
+    return seconds
+
+
 def sample_record(sample: Any, condition: str) -> SampleRecord:
     score = (getattr(sample, "scores", None) or {}).get("godprompt_bench")
     limit = getattr(sample, "limit", None)
@@ -168,7 +182,7 @@ def sample_record(sample: Any, condition: str) -> SampleRecord:
         retries=_score_count(values.get("retries"), "retries"),
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        latency_seconds=getattr(sample, "total_time", None),
+        latency_seconds=_sample_latency_seconds(getattr(sample, "total_time", None)),
         infrastructure_error=infrastructure_error,
     )
 

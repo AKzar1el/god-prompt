@@ -407,3 +407,21 @@ def test_shell_policy_rejects_case_variant_node_options_assignments():
     assert classify_shell_command('echo node_options=--import=./setup.mjs').allowed
     assert classify_shell_command('MY_NODE_OPTIONS=plain node --test').allowed
     assert classify_shell_command('node --test').allowed
+
+
+def test_shell_policy_rejects_interpreter_startup_environment_assignments():
+    # Classify only: these variables can load code before the visible test command.
+    for command in (
+        'LD_PRELOAD=./hook.so python -m pytest',
+        'env LD_AUDIT=./audit.so node --test',
+        'PYTHONPATH=./helpers python -m pytest',
+        'env PYTHONPATH=./helpers python -m pytest',
+        'env pythonpath=./helpers python -m pytest',
+    ):
+        assert classify_shell_command(command).reason == 'interpreter-env-override', command
+
+    assert classify_shell_command(['env', 'LD_PRELOAD=./hook.so', 'python', '-m', 'pytest']).reason == 'interpreter-env-override'
+    assert classify_shell_command('echo LD_PRELOAD=./hook.so').allowed
+    assert classify_shell_command("printf '%s' PYTHONPATH=./helpers").allowed
+    assert classify_shell_command('MY_LD_PRELOAD=plain python -m pytest').allowed
+    assert classify_shell_command('python -m pytest').allowed
