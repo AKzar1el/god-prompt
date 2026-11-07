@@ -13,7 +13,8 @@ from .models import SampleRecord
 _SECRET_KEY = re.compile(
     r"(?:api[_-]?key|authorization|access[_-]?key[_-]?id|access[_-]?token|refresh[_-]?token|"
     r"session[_-]?token|id[_-]?token|(?:auth|oauth|client)[_-]?token|private[_-]?key|secret|password|^token$|"
-    r"^(?:cookie|set[_-]?cookie|sig|x-amz-(?:signature|credential|security-token)|"
+    r"^(?:cookie|set[_-]?cookie|sig|signature|awsaccesskeyid|googleaccessid|"
+    r"x-amz-(?:signature|credential|security-token)|"
     r"x-goog-(?:signature|credential))$)",
     re.IGNORECASE,
 )
@@ -43,7 +44,8 @@ _KNOWN_TOKEN = re.compile(r"\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-
 _URL_USERINFO = re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://)[^\s/?#@]+@")
 _SIGNED_URL_QUERY = re.compile(
     r"(?i)([?&](?:x-amz-(?:credential|signature|security-token)|"
-    r"x-goog-(?:credential|signature)|sig)=)[^\s&#\"'<>]+"
+    r"x-goog-(?:credential|signature)|awsaccesskeyid|googleaccessid|signature|sig)=)"
+    r"[^\s&#\"'<>]+"
 )
 
 

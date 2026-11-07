@@ -221,6 +221,12 @@ def test_public_exports_redact_signed_url_query_credentials(tmp_path: Path):
          ('X-Goog-Credential', 'X-Goog-Signature')),
         ('https://blob.example.invalid/file?sv=2024-01-01&sig=FAKE_AZURE_SIG_123&partNumber=1',
          ('FAKE_AZURE_SIG_123',), ('sig',)),
+        ('https://s3.example.invalid/object?AWSAccessKeyId=FAKE_AWS_V2_KEY_123'
+         '&Signature=FAKE_AWS_V2_SIG_456&partNumber=1',
+         ('FAKE_AWS_V2_KEY_123', 'FAKE_AWS_V2_SIG_456'), ('AWSAccessKeyId', 'Signature')),
+        ('https://storage.example.invalid/object?GoogleAccessId=FAKE_GCS_V2_ID_123'
+         '&Signature=FAKE_GCS_V2_SIG_456&partNumber=1',
+         ('FAKE_GCS_V2_ID_123', 'FAKE_GCS_V2_SIG_456'), ('GoogleAccessId', 'Signature')),
     )
     for i, (url, secrets, names) in enumerate(cases):
         directory = tmp_path / str(i)
@@ -239,7 +245,11 @@ def test_public_exports_redact_signed_url_query_credentials(tmp_path: Path):
 
 
 def test_public_exports_redact_structured_signed_url_keys():
-    fields = {'X-Amz-Signature': 'FAKE_AWS_SIG', 'X-Goog-Credential': 'FAKE_GOOG_CRED', 'sig': 'FAKE_AZURE_SIG'}
+    fields = {
+        'X-Amz-Signature': 'FAKE_AWS_SIG', 'X-Goog-Credential': 'FAKE_GOOG_CRED',
+        'sig': 'FAKE_AZURE_SIG', 'AWSAccessKeyId': 'FAKE_AWS_V2_ID',
+        'GoogleAccessId': 'FAKE_GCS_V2_ID', 'Signature': 'FAKE_V2_SIG',
+    }
     assert redact_secrets(fields) == {name: '[REDACTED]' for name in fields}
 
 
