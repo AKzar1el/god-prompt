@@ -1,3 +1,5 @@
+import pytest
+
 from godprompt_bench.policy import classify_shell_command, validate_workspace_path
 
 
@@ -358,6 +360,46 @@ def test_shell_policy_rejects_package_manager_network_commands():
         'echo npm install', 'printf %s npx'
     ):
         assert classify_shell_command(command).allowed, command
+
+
+@pytest.mark.parametrize('command', (
+    'pnpm add demo-package',
+    'pnpm --dir fixtures install',
+    'pnpm dlx demo-tool',
+    'pnpx demo-tool',
+    'corepack pnpm add demo-package',
+    'corepack prepare pnpm@latest',
+    'env -u CI pnpm add demo-package',
+    'yarn add demo-package',
+    'yarn --cwd fixtures install',
+    'yarn dlx demo-tool',
+    'yarnpkg add demo-package',
+    'command yarn add demo-package',
+    'corepack yarn add demo-package',
+    'bun add demo-package',
+    'bunx demo-tool',
+    'uv pip install demo-package',
+    'uv pip compile requirements.in',
+    'uv tool run demo-tool',
+    'uv sync',
+    'uvx demo-tool',
+    'pipx install demo-package',
+    'poetry add demo-package',
+    'poetry -C fixtures install',
+))
+def test_shell_policy_rejects_modern_package_manager_network_commands(command):
+    # Classification only: no installer or package network call is executed.
+    assert classify_shell_command(command).reason == 'network-command', command
+
+
+@pytest.mark.parametrize('command', (
+    'pnpm test', 'yarn test', 'bun test', 'uv pip list',
+    'pipx list', 'poetry show', 'corepack --version',
+    'echo pnpm add demo-package',
+    'python3 test_visible.py yarn add demo-package',
+))
+def test_shell_policy_allows_nonfetching_package_manager_commands(command):
+    assert classify_shell_command(command).allowed, command
 
 
 def test_shell_policy_rejects_compound_commands_without_spaces():

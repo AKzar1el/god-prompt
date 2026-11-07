@@ -114,12 +114,18 @@ def _runs_package_network_command(tokens: list[str]) -> bool:
                 return False
             if tokens[index] == "-p":
                 index += 1
+        elif launcher == "corepack":
+            index += 1
+            if index < len(tokens) and tokens[index] in {
+                "prepare", "install", "use", "up", "pack", "hydrate",
+            }:
+                return True
         else:
             break
     if index >= len(tokens):
         return False
     launcher = PurePosixPath(tokens[index]).name
-    if launcher == "npx":
+    if launcher in {"npx", "pnpx", "bunx", "uvx"}:
         return True
     if re.fullmatch(r"pip(?:[23](?:\.\d+)*)?", launcher):
         blocked = {"install", "download", "wheel", "index", "search"}
@@ -127,9 +133,28 @@ def _runs_package_network_command(tokens: list[str]) -> bool:
     elif launcher == "npm":
         blocked = {"install", "i", "ci", "update", "upgrade", "add", "exec", "x", "publish", "pack", "audit"}
         value_options = {"--prefix", "-C", "--workspace", "-w", "--registry", "--cache", "--userconfig"}
+    elif launcher == "pnpm":
+        blocked = {"add", "install", "i", "update", "up", "upgrade", "dlx", "exec", "fetch", "publish", "audit"}
+        value_options = {"-C", "--dir", "--prefix", "--filter", "-F", "--registry", "--store-dir"}
+    elif launcher in {"yarn", "yarnpkg"}:
+        blocked = {"add", "install", "up", "upgrade", "dlx", "exec", "publish", "audit", "npm", "global"}
+        value_options = {"--cwd", "--modules-folder", "--cache-folder", "--registry"}
+    elif launcher == "bun":
+        blocked = {"add", "install", "i", "update", "upgrade", "x", "publish", "pm"}
+        value_options = {"--cwd", "--registry"}
+    elif launcher == "uv":
+        blocked = {"add", "sync", "lock", "run", "build", "publish", "self"}
+        value_options = {"--directory", "--project", "--config-file", "--python", "--index-url"}
+    elif launcher == "pipx":
+        blocked = {"install", "run", "runpip", "inject", "upgrade", "upgrade-all"}
+        value_options = {"--python", "--pip-args", "--index-url"}
+    elif launcher == "poetry":
+        blocked = {"add", "install", "update", "lock", "sync", "publish", "build", "self"}
+        value_options = {"-C", "--directory", "--project", "--config"}
     else:
         return False
     skip_value = False
+    uv_group = None
     for option in tokens[index + 1:]:
         if skip_value:
             skip_value = False
@@ -138,6 +163,13 @@ def _runs_package_network_command(tokens: list[str]) -> bool:
         elif option.startswith("-"):
             continue
         else:
+            if launcher == "uv" and uv_group is None and option in {"pip", "tool"}:
+                uv_group = option
+                continue
+            if uv_group == "pip":
+                return option in {"install", "compile", "sync"}
+            if uv_group == "tool":
+                return option in {"install", "run", "upgrade", "upgrade-all"}
             return option in blocked
     return False
 
