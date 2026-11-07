@@ -425,3 +425,22 @@ def test_shell_policy_rejects_interpreter_startup_environment_assignments():
     assert classify_shell_command("printf '%s' PYTHONPATH=./helpers").allowed
     assert classify_shell_command('MY_LD_PRELOAD=plain python -m pytest').allowed
     assert classify_shell_command('python -m pytest').allowed
+
+
+def test_shell_policy_rejects_other_language_startup_hooks():
+    # These inputs are only classified; no startup hooks or interpreters run.
+    for command in (
+        'RUBYOPT=-r./preload.rb ruby test.rb',
+        'env RuByLiB=./alternate ruby test.rb',
+        'PERL5OPT=-MTest::Preload perl test.pl',
+        'env PERL5LIB=./alternate perl test.pl',
+        'PYTHONSTARTUP=./bootstrap.py python3',
+        'env PYTHONHOME=./alternate python3 -m pytest',
+        'LD_LIBRARY_PATH=./alternate python3 test_visible.py',
+    ):
+        assert classify_shell_command(command).reason == 'interpreter-env-override', command
+
+    assert classify_shell_command(['env', 'RUBYOPT=-r./preload.rb', 'ruby', 'test.rb']).reason == 'interpreter-env-override'
+    assert classify_shell_command('echo PERL5OPT=-MTest::Preload').allowed
+    assert classify_shell_command('MY_RUBYOPT=plain ruby test.rb').allowed
+    assert classify_shell_command('ruby test.rb').allowed

@@ -104,9 +104,13 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     if any(token.casefold().startswith("node_options=") for token in executable_tokens):
         return PolicyDecision(False, "node-options-override")
 
-    # These assignments can load libraries or Python startup modules that are
-    # invisible to the command's argument scan.
-    startup_variables = {"ld_preload", "ld_audit", "pythonpath"}
+    # Language runtimes and native loaders can execute modules from these
+    # overrides before the visible script or test command is evaluated.
+    startup_variables = {
+        "ld_preload", "ld_audit", "ld_library_path",
+        "pythonpath", "pythonstartup", "pythonhome",
+        "perl5opt", "perl5lib", "rubyopt", "rubylib",
+    }
     if any("=" in token and token.split("=", 1)[0].casefold() in startup_variables
            for token in executable_tokens):
         return PolicyDecision(False, "interpreter-env-override")
