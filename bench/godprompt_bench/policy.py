@@ -326,7 +326,11 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
 
 def classify_tool_call(function: str, arguments: dict[str, Any]) -> PolicyDecision:
     if function == "bash":
-        command = arguments.get("cmd")
+        # Inspect AI's bash tool exposes `command`; keep the legacy `cmd`
+        # spelling for older callers, but never guess when both are supplied.
+        if "command" in arguments and "cmd" in arguments:
+            return PolicyDecision(False, "invalid-bash-command")
+        command = arguments.get("command", arguments.get("cmd"))
         if not isinstance(command, (str, list)):
             return PolicyDecision(False, "invalid-bash-command")
         if isinstance(command, list) and not all(isinstance(item, str) for item in command):
