@@ -16,6 +16,9 @@ CATEGORIES = {
     "tool-discipline",
 }
 RUNTIMES = {"python", "javascript"}
+_WINDOWS_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
+    f"{prefix}{number}" for prefix in ("COM", "LPT") for number in range(1, 10)
+}
 
 
 def _tuple(value: object, field: str) -> tuple[str, ...]:
@@ -74,12 +77,21 @@ def _validate_relative(path: str, field: str, task_id: str) -> None:
     parsed = PurePosixPath(path)
     windows = PureWindowsPath(path)
     # Fixture paths use POSIX separators; backslashes can escape the root on Windows.
+    # Windows device names, alternate streams and trailing dots/spaces can alias
+    # paths that look distinct to POSIX tooling or fail during fixture setup.
+    nonportable_component = any(
+        part.endswith((".", " ")) or part.split(".", 1)[0].rstrip(" ").upper() in _WINDOWS_DEVICE_NAMES
+        for part in parsed.parts
+    )
     if (
         "\x00" in path
         or parsed == PurePosixPath(".")
         or parsed.is_absolute()
         or ".." in parsed.parts
         or path != parsed.as_posix()
+        or "\x00" in path
+        or ":" in path
+        or nonportable_component
         or "\\" in path
         or windows.drive
         or windows.root

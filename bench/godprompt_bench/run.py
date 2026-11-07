@@ -114,6 +114,20 @@ def _score_count(value: Any, field: str) -> int:
     return count
 
 
+def _score_flag(value: Any, field: str) -> bool:
+    # Inspect's binary scorer values may arrive as bool, int or integral float.
+    # Generic bool(...) coercion turns "false", -1 and NaN into false successes.
+    if value is None:
+        return False
+    if type(value) is bool:
+        return value
+    if type(value) is int and value in (0, 1):
+        return bool(value)
+    if type(value) is float and isfinite(value) and value in (0.0, 1.0):
+        return bool(value)
+    raise ValueError(f"invalid benchmark score flag: {field}")
+
+
 def sample_record(sample: Any, condition: str) -> SampleRecord:
     score = (getattr(sample, "scores", None) or {}).get("godprompt_bench")
     limit = getattr(sample, "limit", None)
@@ -144,10 +158,10 @@ def sample_record(sample: Any, condition: str) -> SampleRecord:
         category=str(metadata.get("category", "unknown")),
         condition=condition,
         epoch=int(sample.epoch),
-        passed=bool(values.get("passed", 0)),
+        passed=_score_flag(values.get("passed"), "passed"),
         completion_status=completion_status,
-        false_completion=bool(values.get("false_completion", 0)),
-        scope_violation=bool(values.get("scope_violation", 0)),
+        false_completion=_score_flag(values.get("false_completion"), "false_completion"),
+        scope_violation=_score_flag(values.get("scope_violation"), "scope_violation"),
         tool_misuse_count=_score_count(values.get("tool_misuse_count"), "tool_misuse_count"),
         verification_attempts=_score_count(values.get("verification_attempts"), "verification_attempts"),
         failed_tool_calls=_score_count(values.get("failed_tool_calls"), "failed_tool_calls"),

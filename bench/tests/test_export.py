@@ -2,6 +2,7 @@ import csv
 import json
 from dataclasses import replace
 from pathlib import Path
+import pytest
 
 from godprompt_bench.export import export_run, redact_secrets
 from godprompt_bench.models import SampleRecord
@@ -42,6 +43,14 @@ def test_export_overwrites_only_known_files_not_arbitrary_output(tmp_path: Path)
     marker.write_text('keep')
     export_run(tmp_path, {'run_id': 'r1'}, [record()], [])
     assert marker.read_text() == 'keep'
+
+
+def test_export_rejects_unknown_conditions_without_creating_public_artifacts(tmp_path: Path):
+    output = tmp_path / 'invalid-benchmark'
+    invalid = replace(record(), condition='godpromt')
+    with pytest.raises(ValueError, match='unknown benchmark condition'):
+        export_run(output, {'run_id': 'invalid'}, [invalid], [])
+    assert not output.exists()
 
 
 def test_export_quotes_formula_like_csv_text_without_changing_numeric_fields(tmp_path: Path):
@@ -219,3 +228,24 @@ def test_public_exports_redact_structured_session_tokens_and_private_keys(tmp_pa
     for name in ('manifest.json', 'trajectories.jsonl'):
         exported = (tmp_path / name).read_text(encoding='utf-8')
         assert not any(value in exported for value in fake_values)
+
+
+def test_public_exports_redact_token_auth_schemes_and_credential_bearing_keys(tmp_path: Path):
+    # Synthetic strings only: neither header values nor dynamic JSON keys may publish credentials.
+    header_token = 'FAKE_HEADER_TOKEN_123'
+    proxy_token = 'FAKE_PROXY_TOKEN_456'
+    embedded_key = 'FAKE_KEY_VALUE_789'
+    headers = f'Authorization: Token {header_token}; Proxy-Authorization: ApiKey {proxy_token}'
+    export_run(
+        tmp_path,
+        {'note': headers, f'request token={embedded_key}': {'safe': 'public'}},
+        [replace(record(), infrastructure_error=headers)],
+        [{'events': [{f'header api_key={embedded_key}': 'public', 'output': headers}]}],
+    )
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        text = (tmp_path / filename).read_text(encoding='utf-8')
+        for secret in (header_token, proxy_token, embedded_key):
+            assert secret not in text, (filename, secret)
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['note'] == 'Authorization: [REDACTED]; Proxy-Authorization: [REDACTED]'
+    assert manifest['request token=[REDACTED]'] == {'safe': 'public'}

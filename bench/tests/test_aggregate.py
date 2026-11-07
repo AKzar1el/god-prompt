@@ -1,5 +1,6 @@
 from dataclasses import replace
 import json
+import pytest
 
 from godprompt_bench.aggregate import aggregate
 from godprompt_bench.models import SampleRecord
@@ -39,6 +40,13 @@ def test_aggregate_never_emits_weighted_composite_score():
     summary = aggregate([rec('baseline', True), rec('godprompt', True)])
     assert 'score' not in summary
     assert 'composite' not in summary
+
+
+@pytest.mark.parametrize('condition', ['godpromt', '', 'baseline ', None, 123])
+def test_aggregate_rejects_unknown_conditions_instead_of_dropping_samples(condition):
+    records = [rec('baseline', True), rec(condition, True)]
+    with pytest.raises(ValueError, match='unknown benchmark condition'):
+        aggregate(records)
 
 
 def test_scope_violations_never_count_as_passes_even_in_previous_score_records():
