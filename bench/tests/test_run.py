@@ -474,6 +474,25 @@ def test_execute_benchmark_reads_actual_model_from_eval_spec(monkeypatch, tmp_pa
     assert result == tmp_path / 'test-run'
 
 
+@pytest.mark.parametrize('temperature', (float('nan'), float('inf'), float('-inf')))
+def test_execute_benchmark_rejects_nonfinite_temperature_before_eval(monkeypatch, tmp_path, temperature):
+    import inspect_ai
+    import godprompt_bench.run as run_module
+
+    def reject_evaluation(*args, **kwargs):
+        raise AssertionError('model evaluation must not start with invalid temperature')
+
+    monkeypatch.setattr(run_module, '_git', lambda *args: 'abc123')
+    monkeypatch.setattr(run_module, 'build_task', lambda *args, **kwargs: object())
+    monkeypatch.setattr(inspect_ai, 'eval', reject_evaluation)
+
+    with pytest.raises(ValueError, match='temperature must be finite'):
+        execute_benchmark(
+            ROOT.parent, ROOT, load_profile(ROOT / 'configs' / 'smoke.json'),
+            model='mockllm/model', output_dir=tmp_path, temperature=temperature,
+        )
+
+
 def test_execute_benchmark_captures_git_state_before_eval(monkeypatch, tmp_path):
     import inspect_ai
     import godprompt_bench.run as run_module
