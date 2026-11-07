@@ -5,10 +5,25 @@ from types import SimpleNamespace
 
 import pytest
 
-from godprompt_bench.run import execute_benchmark, load_profile, public_trajectory, sample_record, validate_sample_coverage, fixture_fingerprints, condition_batches, build_manifest
+from godprompt_bench.run import execute_benchmark, load_profile, public_trajectory, sample_record, validate_sample_coverage, fixture_fingerprints, condition_batches, build_manifest, _condition_for_log
 from godprompt_bench.models import RunProfile
 
 ROOT = Path(__file__).parents[1]
+
+
+def test_inspect_log_condition_rejects_conflicting_or_ambiguous_identity():
+    # Synthetic log metadata must not silently swap baseline and treatment samples.
+    def log(task, metadata):
+        return SimpleNamespace(eval=SimpleNamespace(task=task), metadata=metadata)
+
+    assert _condition_for_log(log('godprompt_bench_baseline', {'condition': 'baseline'})) == 'baseline'
+    assert _condition_for_log(log('godprompt_bench_godprompt', {})) == 'godprompt'
+    with pytest.raises(RuntimeError, match='condition.*conflict'):
+        _condition_for_log(log('godprompt_bench_godprompt', {'condition': 'baseline'}))
+    with pytest.raises(RuntimeError, match='condition'):
+        _condition_for_log(log('godprompt_bench_baseline', {'condition': 'unexpected'}))
+    with pytest.raises(RuntimeError, match='condition'):
+        _condition_for_log(log('prefix_godprompt_bench_godprompt_suffix', {}))
 
 
 def test_run_manifest_fingerprints_actual_compose_isolation_configuration():
