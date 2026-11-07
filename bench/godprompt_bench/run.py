@@ -385,6 +385,9 @@ def execute_benchmark(
     reasoning_effort: str | None = None,
     reasoning_mode: str | None = None,
 ) -> Path:
+    if temperature is not None and not isfinite(temperature):
+        raise ValueError("temperature must be finite")
+
     from inspect_ai import eval as inspect_eval
 
     benchmark_commit_sha = _git(repo_root, "rev-parse", "HEAD")
