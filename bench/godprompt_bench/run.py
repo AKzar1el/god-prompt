@@ -142,6 +142,13 @@ def _sample_latency_seconds(value: Any) -> float | None:
     return seconds
 
 
+def _sample_epoch(value: Any) -> int:
+    # int(...) silently truncates fractional epochs and accepts bool/string IDs.
+    if type(value) is not int or value <= 0:
+        raise ValueError("invalid sample epoch: expected positive integer")
+    return value
+
+
 def sample_record(sample: Any, condition: str) -> SampleRecord:
     score = (getattr(sample, "scores", None) or {}).get("godprompt_bench")
     limit = getattr(sample, "limit", None)
@@ -171,7 +178,7 @@ def sample_record(sample: Any, condition: str) -> SampleRecord:
         task_id=str(sample.id),
         category=str(metadata.get("category", "unknown")),
         condition=condition,
-        epoch=int(sample.epoch),
+        epoch=_sample_epoch(sample.epoch),
         passed=_score_flag(values.get("passed"), "passed"),
         completion_status=completion_status,
         false_completion=_score_flag(values.get("false_completion"), "false_completion"),
@@ -240,7 +247,7 @@ def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
 
     return {
         "task_id": str(sample.id),
-        "epoch": int(sample.epoch),
+        "epoch": _sample_epoch(sample.epoch),
         "condition": condition,
         "messages": messages,
         "events": events,
