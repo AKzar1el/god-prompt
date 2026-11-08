@@ -1,5 +1,6 @@
 import csv
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 import pytest
@@ -43,6 +44,26 @@ def test_export_overwrites_only_known_files_not_arbitrary_output(tmp_path: Path)
     marker.write_text('keep')
     export_run(tmp_path, {'run_id': 'r1'}, [record()], [])
     assert marker.read_text() == 'keep'
+
+
+@pytest.mark.parametrize('filename', ('manifest.json', 'summary.json', 'scores.csv', 'trajectories.jsonl'))
+def test_export_refuses_existing_hardlinked_artifact_before_any_write(tmp_path: Path, filename: str):
+    output = tmp_path / 'public'
+    output.mkdir()
+    protected = tmp_path / 'protected.txt'
+    protected.write_text('preserve original', encoding='utf-8')
+    os.link(protected, output / filename)
+
+    with pytest.raises(ValueError, match='linked public artifact'):
+        export_run(output, {'run_id': 'unsafe'}, [record()], [])
+    assert protected.read_text(encoding='utf-8') == 'preserve original'
+    assert {path.name for path in output.iterdir()} == {filename}
+
+
+def test_export_allows_replacing_ordinary_unlinked_artifacts(tmp_path: Path):
+    export_run(tmp_path, {'run_id': 'old'}, [record()], [])
+    export_run(tmp_path, {'run_id': 'new'}, [record()], [])
+    assert json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))['run_id'] == 'new'
 
 
 def test_export_rejects_unknown_conditions_without_creating_public_artifacts(tmp_path: Path):

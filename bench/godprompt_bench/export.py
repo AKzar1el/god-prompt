@@ -108,6 +108,13 @@ def export_run(
     summary = aggregate(records_list)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Refuse pre-existing links before writing any public artifact. Otherwise
+    # a linked output filename can overwrite a file outside the export folder.
+    for name in ("manifest.json", "summary.json", "scores.csv", "trajectories.jsonl"):
+        target = output_dir / name
+        if target.is_symlink() or (target.exists() and target.stat().st_nlink > 1):
+            raise ValueError(f"refusing linked public artifact: {name}")
+
     _write_json(output_dir / "manifest.json", manifest)
     _write_json(output_dir / "summary.json", summary)
 
