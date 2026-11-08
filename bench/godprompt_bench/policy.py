@@ -231,6 +231,11 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     )
     executable_tokens = tokens[:1] if literal_output else tokens
 
+    # Windows drive-rooted and UNC launchers bypass PurePosixPath name checks.
+    # Preserve inert echo/printf arguments as data, including escaped dollars.
+    if any(PureWindowsPath(token).drive or token.startswith("\\") for token in executable_tokens):
+        return PolicyDecision(False, "absolute-path")
+
     # NODE_OPTIONS can preload executable modules before the visible command
     # starts; a caller-controlled assignment defeats argv-only approval.
     if any(token.casefold().startswith("node_options=") for token in executable_tokens):
