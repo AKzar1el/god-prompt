@@ -44,6 +44,18 @@ def test_text_editor_rejects_windows_reserved_paths_without_accessing_files():
         assert validate_workspace_path(path), path
 
 
+def test_text_editor_rejects_control_characters_and_filename_metacharacters():
+    from godprompt_bench.policy import classify_tool_call
+
+    # Classify inert names only: never invoke the editor or create these paths.
+    for character in ('\n', '\r', '\t', '\x1b', '*', '?', '"', '<', '>', '|'):
+        path = f'src/unsafe{character}name.txt'
+        assert not validate_workspace_path(path), repr(path)
+        assert classify_tool_call('text_editor', {'path': path}).reason == 'outside-workspace'
+
+    assert validate_workspace_path('src/safe-name_2.txt')
+
+
 def test_shell_policy_rejects_network_and_host_mutations():
     assert classify_shell_command('python3 test_visible.py').allowed is True
     assert classify_shell_command('node --test').allowed is True

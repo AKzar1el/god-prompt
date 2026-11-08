@@ -20,7 +20,8 @@ _WINDOWS_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
 
 
 def validate_workspace_path(path: str) -> bool:
-    if not path or "\x00" in path or path.startswith("~") or "$HOME" in path:
+    if (not path or any(ord(char) < 32 or char in '*?"<>|' for char in path)
+            or path.startswith("~") or "$HOME" in path):
         return False
     parsed = PurePosixPath(path)
     windows = PureWindowsPath(path)
