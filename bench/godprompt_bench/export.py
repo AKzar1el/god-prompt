@@ -106,6 +106,11 @@ def export_run(
     records_list = list(records)
     trajectories_list = list(trajectories)
     summary = aggregate(records_list)
+    # A linked directory (including an ancestor) can redirect all four public
+    # writes outside the requested export tree before per-file checks run.
+    for directory in (output_dir, *output_dir.parents):
+        if directory.is_symlink() or (hasattr(directory, "is_junction") and directory.is_junction()):
+            raise ValueError("refusing linked public export directory")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Refuse pre-existing links before writing any public artifact. Otherwise

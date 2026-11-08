@@ -60,6 +60,22 @@ def test_export_refuses_existing_hardlinked_artifact_before_any_write(tmp_path: 
     assert {path.name for path in output.iterdir()} == {filename}
 
 
+@pytest.mark.parametrize('linked_parent', (False, True))
+def test_export_refuses_symlinked_output_directory_before_any_write(tmp_path: Path, linked_parent: bool):
+    outside = tmp_path / 'elsewhere'
+    outside.mkdir()
+    link = tmp_path / 'linked'
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f'directory symlink unavailable: {error}')
+
+    output = link / 'run' if linked_parent else link
+    with pytest.raises(ValueError, match='linked public export directory'):
+        export_run(output, {'run_id': 'unsafe'}, [record()], [])
+    assert list(outside.iterdir()) == []
+
+
 def test_export_allows_replacing_ordinary_unlinked_artifacts(tmp_path: Path):
     export_run(tmp_path, {'run_id': 'old'}, [record()], [])
     export_run(tmp_path, {'run_id': 'new'}, [record()], [])
