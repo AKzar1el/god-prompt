@@ -503,6 +503,26 @@ def test_public_trajectory_excludes_private_analysis_channel_messages_and_blocks
     assert trajectory['events'][0]['output'] == [{'channel': 'final', 'text': 'public result'}]
 
 
+def test_public_trajectory_redacts_analysis_fields_and_typed_blocks():
+    # Reasoning may be serialized as an analysis field, type, or channel alias.
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[{'role': 'assistant', 'analysis': 'SYNTHETIC_PRIVATE_FIELD', 'content': [
+            {'type': 'analysis', 'text': 'SYNTHETIC_PRIVATE_BLOCK'},
+            {'type': 'analysis_text', 'text': 'SYNTHETIC_PRIVATE_ALIAS'},
+            {'type': 'text', 'text': 'visible answer'},
+        ]}],
+        events=[{'event': 'tool', 'output': [
+            {'channel': 'analysis_text', 'text': 'SYNTHETIC_PRIVATE_EVENT'},
+            {'status': 'ok'},
+        ]}],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'][0]['content'] == [{'type': 'text', 'text': 'visible answer'}]
+    assert trajectory['events'][0]['output'] == [{'status': 'ok'}]
+
+
 def test_public_trajectory_redacts_provider_reasoning_field_variants():
     # Provider-specific field names can carry private reasoning in otherwise public messages.
     sample = SimpleNamespace(
