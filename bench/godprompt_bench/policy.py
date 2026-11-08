@@ -227,6 +227,18 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     if any(token.casefold().startswith("node_options=") for token in executable_tokens):
         return PolicyDecision(False, "node-options-override")
 
+    # Git accepts environment-supplied aliases, config files and helper paths
+    # that can change what a harmless-looking `git check` actually executes.
+    # Reject assignment-shaped tokens conservatively, including `env` prefixes.
+    if any(
+        "=" in token and (
+            token.split("=", 1)[0].casefold().startswith("git_config_")
+            or token.split("=", 1)[0].casefold() in {"git_exec_path", "git_template_dir"}
+        )
+        for token in executable_tokens
+    ):
+        return PolicyDecision(False, "git-environment-override")
+
     # Language runtimes and native loaders can execute modules from these
     # overrides before the visible script or test command is evaluated.
     startup_variables = {
