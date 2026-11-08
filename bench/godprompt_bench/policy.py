@@ -399,6 +399,11 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
         if executable == "find" and index + 1 < len(executable_tokens) and executable_tokens[index + 1] == "/":
             return PolicyDecision(False, "root-filesystem-search")
 
+    # Preserve more specific policy reasons for known launchers before rejecting
+    # unreviewed absolute POSIX executables outside the workspace.
+    if PurePosixPath(tokens[0]).is_absolute():
+        return PolicyDecision(False, "absolute-path")
+
     for token in tokens[1:]:
         operand = _path_operand(token)
         if not operand or operand in {"&&", "||", ";", "|"}:
