@@ -4,6 +4,8 @@ import argparse
 import hashlib
 import json
 import platform
+import re
+import stat
 import subprocess
 import uuid
 from collections import Counter
@@ -220,6 +222,7 @@ def _dump(value: Any) -> Any:
 
 
 _PRIVATE_REASONING_FIELDS = {
+    "chainofthought",
     "reasoning", "reasoningcontent", "reasoningdetails", "redactedreasoning",
     "reasoningtext", "thinking", "thinkingcontent", "thinkingdetails",
     "thinkingtext", "redactedthinking",
@@ -228,11 +231,16 @@ _PRIVATE_REASONING_FIELDS = {
 
 
 def _private_reasoning_field(value: Any) -> bool:
-    return isinstance(value, str) and value.casefold().replace("_", "").replace("-", "") in _PRIVATE_REASONING_FIELDS
+    return isinstance(value, str) and re.sub(r"[\s_.-]+", "", value.casefold()) in _PRIVATE_REASONING_FIELDS
 
 
 def _private_reasoning_block(value: Any) -> bool:
-    return isinstance(value, Mapping) and _private_reasoning_field(value.get("type"))
+    if not isinstance(value, Mapping):
+        return False
+    channel = value.get("channel")
+    return _private_reasoning_field(value.get("type")) or (
+        isinstance(channel, str) and channel.strip().casefold() in {"analysis", "reasoning", "thinking"}
+    )
 
 
 def _strip_reasoning(value: Any) -> Any:
@@ -295,6 +303,21 @@ def _git(repo_root: Path, *args: str) -> str:
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _create_raw_log_directory(raw_log_dir: Path) -> None:
+    # Inspect writes unsanitized evaluation logs before the public exporter runs.
+    # A linked parent must not redirect those private logs to another location.
+    for candidate in (raw_log_dir, *raw_log_dir.parents):
+        try:
+            entry = candidate.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(entry.st_mode) or (
+            getattr(entry, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        ):
+            raise ValueError(f"refusing linked raw log directory: {candidate}")
+    raw_log_dir.mkdir(parents=True, exist_ok=True)
 
 
 def fixture_fingerprints(bench_root: Path, task_ids: tuple[str, ...]) -> dict[str, Any]:
@@ -448,7 +471,7 @@ def execute_benchmark(
         for condition, batch_ids in condition_batches(profile.task_ids)
     ]
     raw_log_dir = output_dir / "inspect-logs"
-    raw_log_dir.mkdir(parents=True, exist_ok=True)
+    _create_raw_log_directory(raw_log_dir)
     kwargs: dict[str, Any] = {
         "model": model,
         "log_dir": str(raw_log_dir),

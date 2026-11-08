@@ -17,6 +17,7 @@ class PolicyDecision:
 _WINDOWS_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
     f"{prefix}{number}" for prefix in ("COM", "LPT") for number in range(1, 10)
 }
+_WINDOWS_DEVICE_DIGITS = str.maketrans("\u00b9\u00b2\u00b3", "123")
 
 
 def validate_workspace_path(path: str) -> bool:
@@ -26,7 +27,9 @@ def validate_workspace_path(path: str) -> bool:
     windows = PureWindowsPath(path)
     # An editor can interpret backslashes and drive-relative paths on Windows.
     nonportable_component = any(
-        part.endswith((".", " ")) or part.split(".", 1)[0].rstrip(" ").upper() in _WINDOWS_DEVICE_NAMES
+        part.endswith((".", " ")) or part.split(".", 1)[0].rstrip(" ").upper().translate(
+            _WINDOWS_DEVICE_DIGITS
+        ) in _WINDOWS_DEVICE_NAMES
         for part in parsed.parts
     )
     if (
@@ -92,11 +95,20 @@ def _has_unquoted_here_string(command: str) -> bool:
     return False
 
 
+def _package_executable_name(token: str) -> str:
+    # Windows package managers commonly launch through PATHEXT shims.
+    name = PurePosixPath(token.replace("\\", "/")).name.casefold()
+    for suffix in (".exe", ".cmd", ".bat", ".com"):
+        if name.endswith(suffix):
+            return name[:-len(suffix)]
+    return name
+
+
 def _runs_package_network_command(tokens: list[str]) -> bool:
     # Inspect the actual launched program, not inert script arguments.
     index = 0
     while index < len(tokens):
-        launcher = PurePosixPath(tokens[index]).name
+        launcher = _package_executable_name(tokens[index])
         if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", tokens[index]):
             index += 1
         elif launcher == "env":
@@ -131,7 +143,7 @@ def _runs_package_network_command(tokens: list[str]) -> bool:
             break
     if index >= len(tokens):
         return False
-    launcher = PurePosixPath(tokens[index]).name
+    launcher = _package_executable_name(tokens[index])
     config_mutations: set[str] = set()
     if launcher in {"npx", "pnpx", "bunx", "uvx"}:
         return True
@@ -222,10 +234,27 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     )
     executable_tokens = tokens[:1] if literal_output else tokens
 
+    # Windows drive-rooted and UNC launchers bypass PurePosixPath name checks.
+    # Preserve inert echo/printf arguments as data, including escaped dollars.
+    if any(PureWindowsPath(token).drive or token.startswith("\\") for token in executable_tokens):
+        return PolicyDecision(False, "absolute-path")
+
     # NODE_OPTIONS can preload executable modules before the visible command
     # starts; a caller-controlled assignment defeats argv-only approval.
     if any(token.casefold().startswith("node_options=") for token in executable_tokens):
         return PolicyDecision(False, "node-options-override")
+
+    # Git accepts environment-supplied aliases, config files and helper paths
+    # that can change what a harmless-looking `git check` actually executes.
+    # Reject assignment-shaped tokens conservatively, including `env` prefixes.
+    if any(
+        "=" in token and (
+            token.split("=", 1)[0].casefold().startswith("git_config_")
+            or token.split("=", 1)[0].casefold() in {"git_exec_path", "git_template_dir"}
+        )
+        for token in executable_tokens
+    ):
+        return PolicyDecision(False, "git-environment-override")
 
     # Language runtimes and native loaders can execute modules from these
     # overrides before the visible script or test command is evaluated.
@@ -298,8 +327,8 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                 # These modules can open a network listener or fetch/install packages.
                 if is_python and (option == "-m" or option.startswith("-m")):
                     module = options[offset + 1] if option == "-m" and offset + 1 < len(options) else option[2:]
-                    if module in {"pip", "ensurepip", "http.server"} or module.startswith(
-                        ("pip.", "ensurepip.", "http.server.")
+                    if module in {"pip", "pipx", "poetry", "uv", "ensurepip", "http.server"} or module.startswith(
+                        ("pip.", "pipx.", "poetry.", "uv.", "ensurepip.", "http.server.")
                     ):
                         return PolicyDecision(False, "network-command")
                 if (
