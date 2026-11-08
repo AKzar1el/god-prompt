@@ -222,7 +222,7 @@ def _dump(value: Any) -> Any:
 _PRIVATE_REASONING_FIELDS = {
     "reasoning", "reasoningcontent", "reasoningdetails", "redactedreasoning",
     "reasoningtext", "thinking", "thinkingcontent", "thinkingdetails",
-    "thinkingtext", "redactedthinking",
+    "thinkingtext", "redactedthinking", "chainofthought",
     "encryptedcontent",
 }
 
@@ -236,7 +236,9 @@ def _private_reasoning_block(value: Any) -> bool:
         return False
     channel = value.get("channel")
     return _private_reasoning_field(value.get("type")) or (
-        isinstance(channel, str) and channel.casefold() in {"analysis", "reasoning", "thinking"}
+        isinstance(channel, str) and (
+            channel.casefold() == "analysis" or _private_reasoning_field(channel)
+        )
     )
 
 

@@ -486,6 +486,25 @@ def test_public_trajectory_redacts_provider_reasoning_field_variants():
     assert trajectory['events'][0]['output'] == {'status': 'ok'}
 
 
+@pytest.mark.parametrize('label', ('chain_of_thought', 'chainOfThought'))
+def test_public_trajectory_redacts_chain_of_thought_metadata_and_channels(label):
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[
+            {'role': 'assistant', 'channel': label, 'content': 'SYNTHETIC_PRIVATE_CHANNEL'},
+            {'role': 'assistant', label: 'SYNTHETIC_PRIVATE_FIELD', 'content': [
+                {'type': label, 'text': 'SYNTHETIC_PRIVATE_BLOCK'},
+                {'type': 'text', 'text': 'visible answer', label: 'SYNTHETIC_PRIVATE_NESTED'},
+            ]},
+        ],
+        events=[{'event': 'tool', 'output': {label: 'SYNTHETIC_PRIVATE_EVENT', 'status': 'ok'}}],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'] == [{'role': 'assistant', 'content': [{'type': 'text', 'text': 'visible answer'}]}]
+    assert trajectory['events'][0]['output'] == {'status': 'ok'}
+
+
 def test_public_trajectory_redacts_reasoning_blocks_in_mapping_positions():
     sample = SimpleNamespace(
         id='synthetic', epoch=1,
