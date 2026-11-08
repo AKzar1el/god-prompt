@@ -83,6 +83,22 @@ def test_export_refuses_existing_hardlinked_artifact_before_any_write(tmp_path: 
     assert {path.name for path in output.iterdir()} == {filename}
 
 
+@pytest.mark.parametrize('nested', (False, True))
+def test_export_refuses_symlinked_output_directory_or_parent_before_any_write(tmp_path: Path, nested: bool):
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    link = tmp_path / 'linked-output'
+    try:
+        os.symlink(outside, link, target_is_directory=True)
+    except OSError:
+        pytest.skip('directory symlink creation unavailable on this host')
+
+    output = link / 'public' if nested else link
+    with pytest.raises(ValueError, match='linked output directory'):
+        export_run(output, {'run_id': 'synthetic-only'}, [record()], [])
+    assert list(outside.iterdir()) == []
+
+
 def test_export_allows_replacing_ordinary_unlinked_artifacts(tmp_path: Path):
     export_run(tmp_path, {'run_id': 'old'}, [record()], [])
     export_run(tmp_path, {'run_id': 'new'}, [record()], [])
