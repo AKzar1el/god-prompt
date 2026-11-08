@@ -118,6 +118,19 @@ def test_shell_policy_rejects_windows_absolute_launchers_without_execution():
     assert classify_shell_command(['python3', 'test_visible.py', r'fixtures\visible.txt']).allowed
 
 
+def test_shell_policy_rejects_posix_absolute_launchers_without_execution():
+    for command in (
+        '/usr/local/bin/custom-helper --version',
+        ['/tmp/unreviewed-program', '--flag'],
+        'echo ok && /tmp/helper --flag',
+    ):
+        assert classify_shell_command(command).reason == 'absolute-path', command
+
+    assert classify_shell_command('echo hello').allowed
+    assert classify_shell_command('echo /tmp/blocked').reason == 'absolute-path'
+    assert classify_shell_command(['python3', 'test_visible.py']).allowed
+
+
 def test_shell_policy_rejects_paths_hidden_in_option_assignments():
     # Classification only: these GNU options would write outside the workspace.
     for command, reason in (
