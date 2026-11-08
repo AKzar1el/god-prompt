@@ -437,6 +437,32 @@ def test_public_trajectory_excludes_system_and_reasoning_content():
     assert trajectory['events'][0]['event'] == 'tool'
 
 
+def test_public_trajectory_excludes_private_analysis_channel_messages_and_blocks():
+    # Some adapters tag reasoning by channel rather than by content block type.
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[
+            {'role': 'assistant', 'channel': 'analysis', 'content': 'SYNTHETIC_PRIVATE_MESSAGE'},
+            {'role': 'assistant', 'channel': 'final', 'content': 'public answer'},
+            {'role': 'assistant', 'content': [
+                {'channel': 'reasoning', 'text': 'SYNTHETIC_PRIVATE_BLOCK'},
+                {'type': 'text', 'text': 'public text'},
+            ]},
+        ],
+        events=[{'event': 'tool', 'output': [
+            {'channel': 'thinking', 'text': 'SYNTHETIC_PRIVATE_EVENT'},
+            {'channel': 'final', 'text': 'public result'},
+        ]}],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'] == [
+        {'role': 'assistant', 'channel': 'final', 'content': 'public answer'},
+        {'role': 'assistant', 'content': [{'type': 'text', 'text': 'public text'}]},
+    ]
+    assert trajectory['events'][0]['output'] == [{'channel': 'final', 'text': 'public result'}]
+
+
 def test_public_trajectory_redacts_provider_reasoning_field_variants():
     # Provider-specific field names can carry private reasoning in otherwise public messages.
     sample = SimpleNamespace(

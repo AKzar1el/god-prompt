@@ -232,7 +232,12 @@ def _private_reasoning_field(value: Any) -> bool:
 
 
 def _private_reasoning_block(value: Any) -> bool:
-    return isinstance(value, Mapping) and _private_reasoning_field(value.get("type"))
+    if not isinstance(value, Mapping):
+        return False
+    channel = value.get("channel")
+    return _private_reasoning_field(value.get("type")) or (
+        isinstance(channel, str) and channel.casefold() in {"analysis", "reasoning", "thinking"}
+    )
 
 
 def _strip_reasoning(value: Any) -> Any:
