@@ -285,7 +285,9 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     inline_interpreters = {"python", "python3", "node", "nodejs", "perl", "ruby", "php"}
     inline_flags = {"-c", "-e", "--eval", "--execute"}
     for index, token in enumerate(executable_tokens):
-        executable_name = PurePosixPath(token).name
+        # Windows can launch the same language runtime with a case-insensitive
+        # .exe suffix; normalize it before examining inline execution flags.
+        executable_name = PurePosixPath(token).name.casefold().removesuffix(".exe")
         # Common version-suffixed interpreter binaries can run the same inline
         # payloads as their unversioned names (e.g. python3.12 -c).
         if executable_name in inline_interpreters or re.fullmatch(
