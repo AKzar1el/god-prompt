@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -9,6 +10,25 @@ from godprompt_bench.run import execute_benchmark, load_profile, public_trajecto
 from godprompt_bench.models import RunProfile
 
 ROOT = Path(__file__).parents[1]
+
+
+@pytest.mark.parametrize('nested', (False, True))
+def test_inspect_raw_log_directory_rejects_symlinked_roots_before_writing(tmp_path: Path, nested: bool):
+    # Only a disposable temp directory is involved; no provider or Inspect eval runs.
+    from godprompt_bench.run import _create_raw_log_directory
+
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    link = tmp_path / 'linked-results'
+    try:
+        os.symlink(outside, link, target_is_directory=True)
+    except OSError:
+        pytest.skip('directory symlink creation unavailable on this host')
+
+    raw_dir = (link / 'batch' if nested else link) / 'inspect-logs'
+    with pytest.raises(ValueError, match='linked raw log directory'):
+        _create_raw_log_directory(raw_dir)
+    assert list(outside.iterdir()) == []
 
 
 def test_inspect_log_condition_rejects_conflicting_or_ambiguous_identity():
@@ -484,6 +504,37 @@ def test_public_trajectory_redacts_provider_reasoning_field_variants():
     assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
     assert trajectory['messages'][0]['content'] == [{'type': 'text', 'text': 'visible answer'}]
     assert trajectory['events'][0]['output'] == {'status': 'ok'}
+
+
+def test_public_trajectory_redacts_delimited_reasoning_and_padded_channels():
+    # Provider serializers may use spaced/dotted aliases or padded channel labels.
+    # Never export the private content merely because the delimiter differs.
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[
+            {'role': 'assistant', 'reasoning content': 'SYNTHETIC_PRIVATE_FIELD',
+             'content': [
+                 {'type': 'reasoning.details', 'text': 'SYNTHETIC_PRIVATE_BLOCK'},
+                 {'type': 'text', 'text': 'visible answer'},
+             ]},
+            {'role': 'assistant', 'channel': ' analysis ', 'content': 'SYNTHETIC_PRIVATE_MESSAGE'},
+            {'role': 'assistant', 'channel': 'final', 'content': 'public answer'},
+        ],
+        events=[{'event': 'tool', 'output': [
+            {'channel': ' Thinking ', 'text': 'SYNTHETIC_PRIVATE_EVENT'},
+            {'reasoning.details': 'SYNTHETIC_PRIVATE_NESTED', 'status': 'ok'},
+            {'channel': 'final', 'text': 'public result'},
+        ]}],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'] == [
+        {'role': 'assistant', 'content': [{'type': 'text', 'text': 'visible answer'}]},
+        {'role': 'assistant', 'channel': 'final', 'content': 'public answer'},
+    ]
+    assert trajectory['events'][0]['output'] == [
+        {'status': 'ok'}, {'channel': 'final', 'text': 'public result'},
+    ]
 
 
 def test_public_trajectory_redacts_reasoning_blocks_in_mapping_positions():
