@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import re
+import stat
 from dataclasses import asdict
 from math import isfinite
 from pathlib import Path
@@ -112,6 +113,17 @@ def export_run(
     records_list = list(records)
     trajectories_list = list(trajectories)
     summary = aggregate(records_list)
+    # Check each existing component before mkdir: a symlinked parent can
+    # redirect every public artifact outside the chosen output directory.
+    for candidate in (output_dir, *output_dir.parents):
+        try:
+            entry = candidate.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(entry.st_mode) or (
+            getattr(entry, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        ):
+            raise ValueError(f"refusing linked output directory: {candidate}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Refuse pre-existing links before writing any public artifact. Otherwise
