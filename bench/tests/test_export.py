@@ -177,6 +177,24 @@ def test_public_artifacts_redact_credentials_embedded_in_text_values(tmp_path: P
     assert 'failed with token=' in (tmp_path / 'scores.csv').read_text(encoding='utf-8')
 
 
+def test_public_exports_redact_credentials_in_json_encoded_diagnostics(tmp_path: Path):
+    # Diagnostics often contain JSON as text, sometimes escaped one layer deeper.
+    secret = 'SYNTHETIC_JSON_SECRET_EXAMPLE_12345'
+    diagnostic = json.dumps({'api_key': secret, 'detail': 'safe'})
+    escaped = json.dumps(diagnostic)
+    export_run(
+        tmp_path,
+        {'diagnostic': diagnostic, 'escaped': escaped},
+        [replace(record(), infrastructure_error=diagnostic)],
+        [{'output': escaped}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        assert secret not in (tmp_path / name).read_text(encoding='utf-8'), name
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert json.loads(manifest['diagnostic']) == {'api_key': '[REDACTED]', 'detail': 'safe'}
+    assert json.loads(json.loads(manifest['escaped'])) == {'api_key': '[REDACTED]', 'detail': 'safe'}
+
+
 def test_public_exports_redact_short_bearer_credentials(tmp_path: Path):
     # Bearer tokens need not be eight characters long to be credentials.
     synthetic_token = 'abc123'
