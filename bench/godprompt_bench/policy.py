@@ -21,7 +21,8 @@ _WINDOWS_DEVICE_DIGITS = str.maketrans("\u00b9\u00b2\u00b3", "123")
 
 
 def validate_workspace_path(path: str) -> bool:
-    if not path or "\x00" in path or path.startswith("~") or "$HOME" in path:
+    if (not path or any(ord(char) < 32 or char in '*?"<>|' for char in path)
+            or path.startswith("~") or "$HOME" in path):
         return False
     parsed = PurePosixPath(path)
     windows = PureWindowsPath(path)
@@ -327,9 +328,9 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                 # These modules can open a network listener or fetch/install packages.
                 if is_python and (option == "-m" or option.startswith("-m")):
                     module = options[offset + 1] if option == "-m" and offset + 1 < len(options) else option[2:]
-                    if module in {"pip", "pipx", "poetry", "uv", "ensurepip", "http.server"} or module.startswith(
-                        ("pip.", "pipx.", "poetry.", "uv.", "ensurepip.", "http.server.")
-                    ):
+                    if (module.split(".", 1)[0] in {
+                        "pip", "pipx", "poetry", "uv", "ensurepip", "pdm", "hatch", "build"
+                    } or module == "http.server" or module.startswith("http.server.")):
                         return PolicyDecision(False, "network-command")
                 if (
                     option in inline_flags
