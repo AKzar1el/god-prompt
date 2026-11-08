@@ -94,10 +94,14 @@ def _usage_totals(model_usage: Mapping[str, Any] | None) -> tuple[int | None, in
     input_tokens = 0
     output_tokens = 0
     for usage in model_usage.values():
-        input_tokens += _token_count(getattr(usage, "input_tokens", None), "input_tokens")
-        input_tokens += _token_count(getattr(usage, "input_tokens_cache_read", None), "input_tokens_cache_read")
-        input_tokens += _token_count(getattr(usage, "input_tokens_cache_write", None), "input_tokens_cache_write")
-        output_tokens += _token_count(getattr(usage, "output_tokens", None), "output_tokens")
+        def count(field: str) -> int:
+            value = usage.get(field) if isinstance(usage, Mapping) else getattr(usage, field, None)
+            return _token_count(value, field)
+
+        input_tokens += count("input_tokens")
+        input_tokens += count("input_tokens_cache_read")
+        input_tokens += count("input_tokens_cache_write")
+        output_tokens += count("output_tokens")
     return input_tokens, output_tokens
 
 

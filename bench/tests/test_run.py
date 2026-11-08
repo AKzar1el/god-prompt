@@ -367,6 +367,17 @@ def test_usage_totals_accepts_integral_floats_and_missing_optional_counts():
     assert _usage_totals({'synthetic-model': usage}) == (5, 3)
 
 
+def test_usage_totals_counts_serialized_model_usage_and_rejects_invalid_values():
+    from godprompt_bench.run import _usage_totals
+
+    usage = {'input_tokens': 8, 'input_tokens_cache_read': 4,
+             'input_tokens_cache_write': 2, 'output_tokens': 3}
+    assert _usage_totals({'serialized-model': usage}) == (14, 3)
+    usage['output_tokens'] = -1
+    with pytest.raises(ValueError, match='invalid model usage token count: output_tokens'):
+        _usage_totals({'serialized-model': usage})
+
+
 def test_public_trajectory_excludes_system_and_reasoning_content():
     messages = [
         SimpleNamespace(role='system', model_dump=lambda **kwargs: {'role': 'system', 'content': 'secret prompt'}),
