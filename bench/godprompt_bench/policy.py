@@ -296,8 +296,8 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                 # These modules can open a network listener or fetch/install packages.
                 if is_python and (option == "-m" or option.startswith("-m")):
                     module = options[offset + 1] if option == "-m" and offset + 1 < len(options) else option[2:]
-                    if module in {"pip", "ensurepip", "http.server"} or module.startswith(
-                        ("pip.", "ensurepip.", "http.server.")
+                    if module in {"pip", "pipx", "poetry", "uv", "ensurepip", "http.server"} or module.startswith(
+                        ("pip.", "pipx.", "poetry.", "uv.", "ensurepip.", "http.server.")
                     ):
                         return PolicyDecision(False, "network-command")
                 if (
