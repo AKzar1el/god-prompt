@@ -174,6 +174,28 @@ def test_public_exports_redact_short_bearer_credentials(tmp_path: Path):
         assert 'Bearer [REDACTED]' in exported, name
 
 
+def test_public_exports_redact_api_token_key_variants_and_inline_assignment(tmp_path: Path):
+    # These are synthetic values, not credentials. Both structured telemetry
+    # keys and free-text diagnostics can use common apiToken spelling.
+    tokens = {
+        'apiToken': 'syntheticApiValueAlpha42',
+        'api_token': 'syntheticApiValueBeta42',
+        'api-token': 'syntheticApiValueGamma42',
+    }
+    diagnostic = 'apiToken=syntheticInlineApiValue42'
+    export_run(
+        tmp_path,
+        {'config': tokens, 'note': diagnostic},
+        [replace(record(), infrastructure_error=diagnostic)],
+        [{'telemetry': tokens, 'detail': diagnostic}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        for secret in (*tokens.values(), 'syntheticInlineApiValue42'):
+            assert secret not in exported, (name, secret)
+    assert '[REDACTED]' in (tmp_path / 'manifest.json').read_text(encoding='utf-8')
+
+
 def test_public_exports_redact_http_basic_authorization_payloads(tmp_path: Path):
     # Base64 payloads are synthetic test values, never live credentials.
     encoded_user = 'dXNlcjp0ZXN0LW9ubHk='
