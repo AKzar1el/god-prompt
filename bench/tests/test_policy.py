@@ -163,6 +163,23 @@ def test_shell_policy_rejects_dynamic_git_aliases():
     assert classify_shell_command("echo git -c alias.check=x").allowed
 
 
+def test_shell_policy_rejects_git_environment_config_injection_without_execution():
+    # Git reads these overrides before resolving a seemingly harmless subcommand.
+    for command in (
+        "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.check GIT_CONFIG_VALUE_0='!curl example.invalid' git check",
+        "env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.check GIT_CONFIG_VALUE_0='!sh -c true' git check",
+        "GIT_CONFIG_PARAMETERS='alias.check=!curl' git check",
+        "GIT_CONFIG_SYSTEM=/tmp/untrusted-config git status",
+        "GIT_EXEC_PATH=/tmp/untrusted-helpers git status",
+        "echo ok && GIT_CONFIG_COUNT=1 git status",
+    ):
+        assert classify_shell_command(command).reason == 'git-environment-override', command
+
+    assert classify_shell_command('git status').allowed
+    assert classify_shell_command('git -c color.ui=always status').allowed
+    assert classify_shell_command('echo GIT_CONFIG_COUNT=1').allowed
+
+
 def test_shell_policy_rejects_global_git_config_after_options():
     for command in (
         "git -C repo config --global user.name x",
