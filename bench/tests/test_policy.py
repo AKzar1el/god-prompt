@@ -44,6 +44,19 @@ def test_text_editor_rejects_windows_reserved_paths_without_accessing_files():
         assert validate_workspace_path(path), path
 
 
+def test_text_editor_rejects_windows_superscript_device_digits():
+    from godprompt_bench.policy import classify_tool_call
+
+    # Windows reserves COM/LPT 1-3 with superscript digits as well as ASCII.
+    # Classification only: no device paths are opened or written.
+    for path in ('COM\u00b9', 'src/COM\u00b2.txt', 'src/LPT\u00b3.log'):
+        assert not validate_workspace_path(path), path
+        assert classify_tool_call('text_editor', {'path': path}).reason == 'outside-workspace', path
+
+    assert validate_workspace_path('src/COMP\u00b9.txt')
+    assert validate_workspace_path('src/LPT\u00b2value.txt')
+
+
 def test_shell_policy_rejects_network_and_host_mutations():
     assert classify_shell_command('python3 test_visible.py').allowed is True
     assert classify_shell_command('node --test').allowed is True
