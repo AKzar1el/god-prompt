@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .agent import condition_prompt
-from .corpus import _reject_duplicate_json_keys
+from .corpus import _reject_duplicate_json_keys, load_manifest, validate_manifest
 from .eval import build_task
 from .export import export_run
 from .models import RunProfile, SampleRecord
@@ -55,8 +55,13 @@ def load_profile(path: Path) -> RunProfile:
     return profile
 
 
-def validate_sample_coverage(profile: RunProfile, records: list[SampleRecord]) -> None:
-    """Reject partial or duplicated Inspect results before publishing pass rates."""
+def validate_sample_coverage(
+    profile: RunProfile, records: list[SampleRecord], task_categories: Mapping[str, str]
+) -> None:
+    """Reject incomplete or misattributed Inspect results before publishing rates."""
+    missing_categories = sorted(set(profile.task_ids) - task_categories.keys())
+    if missing_categories:
+        raise ValueError(f"missing canonical benchmark categories: {missing_categories}")
     expected = Counter(
         (condition, task_id, epoch)
         for condition in ("baseline", "godprompt")
@@ -67,10 +72,15 @@ def validate_sample_coverage(profile: RunProfile, records: list[SampleRecord]) -
     duplicates = sorted(key for key, count in actual.items() if count > 1)
     missing = sorted(expected.keys() - actual.keys())
     unexpected = sorted(actual.keys() - expected.keys())
-    if duplicates or missing or unexpected:
+    wrong_categories = sorted(
+        (record.condition, record.task_id, record.epoch, task_categories[record.task_id], record.category)
+        for record in records
+        if record.task_id in task_categories and record.category != task_categories[record.task_id]
+    )
+    if duplicates or missing or unexpected or wrong_categories:
         raise ValueError(
             f"invalid benchmark sample coverage: duplicate={duplicates[:5]}; "
-            f"missing={missing[:5]}; unexpected={unexpected[:5]}"
+            f"missing={missing[:5]}; unexpected={unexpected[:5]}; category={wrong_categories[:5]}"
         )
 
 
@@ -420,6 +430,10 @@ def execute_benchmark(
     )
     working_tree_dirty = bool(_git(repo_root, "status", "--porcelain"))
 
+    canonical_tasks = load_manifest(bench_root / "tasks" / "manifest.json")
+    validate_manifest(canonical_tasks)
+    task_categories = {task.id: task.category for task in canonical_tasks}
+
     tasks = [
         build_task(
             condition,
@@ -472,7 +486,7 @@ def execute_benchmark(
             records.append(sample_record(sample, condition))
             trajectories.append(public_trajectory(sample, condition))
 
-    validate_sample_coverage(profile, records)
+    validate_sample_coverage(profile, records, task_categories)
 
     manifest = build_manifest(
         repo_root,
