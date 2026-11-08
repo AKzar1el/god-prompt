@@ -128,6 +128,7 @@ def test_fixture_bundle_rejects_unknown_fields(tmp_path: Path):
     r'..\outside', r'C:\private\fixture', r'C:relative', r'\rooted',
     r'tasks\..\private', '../outside', '/absolute', '.', '',
     'CON', 'src/NUL.txt', 'src/COM3.log', 'src/LPT9', 'src/CONOUT$',
+    'src/COM\u00b9.log', 'src/LPT\u00b2.txt', 'src/COM\u00b3',
     'src/trailing.', 'src/file ', 'src/log.txt:stream', 'src/' + chr(0) + 'bad',
     'src/what?.py', 'src/all*.py', 'src/a"b.py', 'src/a<b.py',
     'src/a>b.py', 'src/a|b.py', 'src/a' + chr(9) + 'b.py',
@@ -155,7 +156,7 @@ def test_manifest_and_fixture_reject_nonportable_or_escaping_paths(tmp_path: Pat
 
 @pytest.mark.parametrize('unsafe', (
     '../outside', '/absolute', r'C:\private', r'..\outside',
-    'nested/task', '.', 'invalid\x00name',
+    'nested/task', '.', 'invalid\x00name', 'COM\u00b9', 'LPT\u00b2',
 ))
 def test_manifest_rejects_unsafe_task_ids(unsafe: str):
     # Task IDs are used as workspace directory names by benchmark fixtures.

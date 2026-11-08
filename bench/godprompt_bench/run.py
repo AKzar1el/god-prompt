@@ -4,6 +4,8 @@ import argparse
 import hashlib
 import json
 import platform
+import re
+import stat
 import subprocess
 import uuid
 from collections import Counter
@@ -14,7 +16,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .agent import condition_prompt
-from .corpus import _reject_duplicate_json_keys
+from .corpus import _reject_duplicate_json_keys, load_manifest, validate_manifest
 from .eval import build_task
 from .export import export_run
 from .models import RunProfile, SampleRecord
@@ -55,8 +57,13 @@ def load_profile(path: Path) -> RunProfile:
     return profile
 
 
-def validate_sample_coverage(profile: RunProfile, records: list[SampleRecord]) -> None:
-    """Reject partial or duplicated Inspect results before publishing pass rates."""
+def validate_sample_coverage(
+    profile: RunProfile, records: list[SampleRecord], task_categories: Mapping[str, str]
+) -> None:
+    """Reject incomplete or misattributed Inspect results before publishing rates."""
+    missing_categories = sorted(set(profile.task_ids) - task_categories.keys())
+    if missing_categories:
+        raise ValueError(f"missing canonical benchmark categories: {missing_categories}")
     expected = Counter(
         (condition, task_id, epoch)
         for condition in ("baseline", "godprompt")
@@ -67,10 +74,15 @@ def validate_sample_coverage(profile: RunProfile, records: list[SampleRecord]) -
     duplicates = sorted(key for key, count in actual.items() if count > 1)
     missing = sorted(expected.keys() - actual.keys())
     unexpected = sorted(actual.keys() - expected.keys())
-    if duplicates or missing or unexpected:
+    wrong_categories = sorted(
+        (record.condition, record.task_id, record.epoch, task_categories[record.task_id], record.category)
+        for record in records
+        if record.task_id in task_categories and record.category != task_categories[record.task_id]
+    )
+    if duplicates or missing or unexpected or wrong_categories:
         raise ValueError(
             f"invalid benchmark sample coverage: duplicate={duplicates[:5]}; "
-            f"missing={missing[:5]}; unexpected={unexpected[:5]}"
+            f"missing={missing[:5]}; unexpected={unexpected[:5]}; category={wrong_categories[:5]}"
         )
 
 
@@ -94,10 +106,14 @@ def _usage_totals(model_usage: Mapping[str, Any] | None) -> tuple[int | None, in
     input_tokens = 0
     output_tokens = 0
     for usage in model_usage.values():
-        input_tokens += _token_count(getattr(usage, "input_tokens", None), "input_tokens")
-        input_tokens += _token_count(getattr(usage, "input_tokens_cache_read", None), "input_tokens_cache_read")
-        input_tokens += _token_count(getattr(usage, "input_tokens_cache_write", None), "input_tokens_cache_write")
-        output_tokens += _token_count(getattr(usage, "output_tokens", None), "output_tokens")
+        def count(field: str) -> int:
+            value = usage.get(field) if isinstance(usage, Mapping) else getattr(usage, field, None)
+            return _token_count(value, field)
+
+        input_tokens += count("input_tokens")
+        input_tokens += count("input_tokens_cache_read")
+        input_tokens += count("input_tokens_cache_write")
+        output_tokens += count("output_tokens")
     return input_tokens, output_tokens
 
 
@@ -206,6 +222,7 @@ def _dump(value: Any) -> Any:
 
 
 _PRIVATE_REASONING_FIELDS = {
+    "chainofthought",
     "reasoning", "reasoningcontent", "reasoningdetails", "redactedreasoning",
     "reasoningtext", "thinking", "thinkingcontent", "thinkingdetails",
     "thinkingtext", "redactedthinking",
@@ -214,21 +231,31 @@ _PRIVATE_REASONING_FIELDS = {
 
 
 def _private_reasoning_field(value: Any) -> bool:
-    return isinstance(value, str) and value.casefold().replace("_", "").replace("-", "") in _PRIVATE_REASONING_FIELDS
+    return isinstance(value, str) and re.sub(r"[\s_.-]+", "", value.casefold()) in _PRIVATE_REASONING_FIELDS
+
+
+def _private_reasoning_block(value: Any) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    channel = value.get("channel")
+    return _private_reasoning_field(value.get("type")) or (
+        isinstance(channel, str) and channel.strip().casefold() in {"analysis", "reasoning", "thinking"}
+    )
 
 
 def _strip_reasoning(value: Any) -> Any:
-    if isinstance(value, list):
+    # JSON writes tuples as arrays too, so sanitize their elements like lists.
+    if isinstance(value, (list, tuple)):
         result = []
         for item in value:
-            if isinstance(item, Mapping) and _private_reasoning_field(item.get("type")):
+            if _private_reasoning_block(item):
                 continue
             result.append(_strip_reasoning(item))
         return result
     if isinstance(value, Mapping):
         return {
             key: _strip_reasoning(item) for key, item in value.items()
-            if not _private_reasoning_field(key)
+            if not _private_reasoning_field(key) and not _private_reasoning_block(item)
         }
     return value
 
@@ -245,7 +272,7 @@ def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
         if not isinstance(dumped, dict):
             continue
         roles = [role for role in (dumped.get("role"), getattr(message, "role", None)) if role is not None]
-        if not roles or not all(_is_public_message_role(role) for role in roles):
+        if not roles or not all(_is_public_message_role(role) for role in roles) or _private_reasoning_block(dumped):
             continue
         messages.append(_strip_reasoning(dumped))
 
@@ -254,7 +281,7 @@ def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
         dumped = _dump(event)
         if not isinstance(dumped, dict):
             continue
-        if dumped.get("event", getattr(event, "event", None)) not in ("tool", "approval"):
+        if dumped.get("event", getattr(event, "event", None)) not in ("tool", "approval") or _private_reasoning_block(dumped):
             continue
         events.append(_strip_reasoning(dumped))
 
@@ -276,6 +303,21 @@ def _git(repo_root: Path, *args: str) -> str:
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _create_raw_log_directory(raw_log_dir: Path) -> None:
+    # Inspect writes unsanitized evaluation logs before the public exporter runs.
+    # A linked parent must not redirect those private logs to another location.
+    for candidate in (raw_log_dir, *raw_log_dir.parents):
+        try:
+            entry = candidate.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(entry.st_mode) or (
+            getattr(entry, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        ):
+            raise ValueError(f"refusing linked raw log directory: {candidate}")
+    raw_log_dir.mkdir(parents=True, exist_ok=True)
 
 
 def fixture_fingerprints(bench_root: Path, task_ids: tuple[str, ...]) -> dict[str, Any]:
@@ -411,6 +453,10 @@ def execute_benchmark(
     )
     working_tree_dirty = bool(_git(repo_root, "status", "--porcelain"))
 
+    canonical_tasks = load_manifest(bench_root / "tasks" / "manifest.json")
+    validate_manifest(canonical_tasks)
+    task_categories = {task.id: task.category for task in canonical_tasks}
+
     tasks = [
         build_task(
             condition,
@@ -425,7 +471,7 @@ def execute_benchmark(
         for condition, batch_ids in condition_batches(profile.task_ids)
     ]
     raw_log_dir = output_dir / "inspect-logs"
-    raw_log_dir.mkdir(parents=True, exist_ok=True)
+    _create_raw_log_directory(raw_log_dir)
     kwargs: dict[str, Any] = {
         "model": model,
         "log_dir": str(raw_log_dir),
@@ -463,7 +509,7 @@ def execute_benchmark(
             records.append(sample_record(sample, condition))
             trajectories.append(public_trajectory(sample, condition))
 
-    validate_sample_coverage(profile, records)
+    validate_sample_coverage(profile, records, task_categories)
 
     manifest = build_manifest(
         repo_root,
