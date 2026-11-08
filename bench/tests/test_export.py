@@ -196,6 +196,24 @@ def test_public_exports_redact_api_token_key_variants_and_inline_assignment(tmp_
     assert '[REDACTED]' in (tmp_path / 'manifest.json').read_text(encoding='utf-8')
 
 
+def test_public_exports_redact_spaced_api_key_and_token_labels(tmp_path: Path):
+    # Human-readable diagnostics and telemetry keys often spell API Key with a space.
+    synthetic_key = 'SYNTHETIC_SPACED_KEY_123'
+    synthetic_token = 'SYNTHETIC_SPACED_TOKEN_456'
+    diagnostic = f'API Key: {synthetic_key}; API Token={synthetic_token}'
+    export_run(
+        tmp_path,
+        {'API Key': synthetic_key, 'api token': synthetic_token, 'note': diagnostic},
+        [replace(record(), infrastructure_error=diagnostic)],
+        [{'headers': {'API Key': synthetic_key}, 'output': diagnostic}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        output = (tmp_path / name).read_text(encoding='utf-8')
+        assert synthetic_key not in output, name
+        assert synthetic_token not in output, name
+    assert redact_secrets('API key usage is measured') == 'API key usage is measured'
+
+
 def test_public_exports_redact_http_basic_authorization_payloads(tmp_path: Path):
     # Base64 payloads are synthetic test values, never live credentials.
     encoded_user = 'dXNlcjp0ZXN0LW9ubHk='

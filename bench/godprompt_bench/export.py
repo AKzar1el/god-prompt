@@ -13,7 +13,7 @@ from .aggregate import aggregate
 from .models import SampleRecord
 
 _SECRET_KEY = re.compile(
-    r"(?:api[_-]?(?:key|token)|authorization|access[_-]?key[_-]?id|access[_-]?token|refresh[_-]?token|"
+    r"(?:api[ _-]?(?:key|token)|authorization|access[_-]?key[_-]?id|access[_-]?token|refresh[_-]?token|"
     r"session[_-]?token|id[_-]?token|(?:auth|oauth|client)[_-]?token|private[_-]?key|secret|password|^token$|"
     r"^(?:cookie|set[_-]?cookie|sig|signature|awsaccesskeyid|googleaccessid|"
     r"x-amz-(?:signature|credential|security-token)|"
@@ -21,7 +21,7 @@ _SECRET_KEY = re.compile(
     re.IGNORECASE,
 )
 _INLINE_CREDENTIAL = re.compile(
-    r"(?i)(\b(?:[a-z][a-z0-9]*[_-])*(?:api[_-]?(?:key|token)|authorization|"
+    r"(?i)(\b(?:[a-z][a-z0-9]*[_-])*(?:api[ _-]?(?:key|token)|authorization|"
     r"access[_-]?key[_-]?id|access[_-]?token|refresh[_-]?token|secret[_-]access[_-]?key|"
     r"secret[_-]?key|github[_-]?token|(?:auth|oauth|client)[_-]?token|token|secret|password)\s*[:=]\s*)"
     r"(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;&]+)"
