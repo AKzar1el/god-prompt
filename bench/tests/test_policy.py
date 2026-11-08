@@ -44,6 +44,19 @@ def test_text_editor_rejects_windows_reserved_paths_without_accessing_files():
         assert validate_workspace_path(path), path
 
 
+def test_text_editor_rejects_windows_superscript_device_digits():
+    from godprompt_bench.policy import classify_tool_call
+
+    # Windows reserves COM/LPT 1-3 with superscript digits as well as ASCII.
+    # Classification only: no device paths are opened or written.
+    for path in ('COM\u00b9', 'src/COM\u00b2.txt', 'src/LPT\u00b3.log'):
+        assert not validate_workspace_path(path), path
+        assert classify_tool_call('text_editor', {'path': path}).reason == 'outside-workspace', path
+
+    assert validate_workspace_path('src/COMP\u00b9.txt')
+    assert validate_workspace_path('src/LPT\u00b2value.txt')
+
+
 def test_shell_policy_rejects_network_and_host_mutations():
     assert classify_shell_command('python3 test_visible.py').allowed is True
     assert classify_shell_command('node --test').allowed is True
@@ -102,6 +115,22 @@ def test_shell_policy_rejects_windows_network_executables_without_execution():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_windows_absolute_launchers_without_execution():
+    # Only classify argv; never start these Windows host executables.
+    for command in (
+        [r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe',
+         '-NoProfile', '-Command', 'Write-Output', 'marker'],
+        [r'C:\Tools\curl.exe', 'https://example.invalid'],
+        [r'C:\Tools\git.exe', 'fetch', 'origin'],
+        [r'\\server\share\cmd.exe', 'echo', 'marker'],
+        r'echo ok && "C:\Tools\curl.exe" https://example.invalid',
+    ):
+        assert classify_shell_command(command).reason == 'absolute-path', command
+
+    # A relative Windows-style path remains ordinary local data.
+    assert classify_shell_command(['python3', 'test_visible.py', r'fixtures\visible.txt']).allowed
+
+
 def test_shell_policy_rejects_paths_hidden_in_option_assignments():
     # Classification only: these GNU options would write outside the workspace.
     for command, reason in (
@@ -132,6 +161,23 @@ def test_shell_policy_rejects_dynamic_git_aliases():
     ).reason == "dynamic-git-alias"
     assert classify_shell_command("git -c color.ui=always status").allowed
     assert classify_shell_command("echo git -c alias.check=x").allowed
+
+
+def test_shell_policy_rejects_git_environment_config_injection_without_execution():
+    # Git reads these overrides before resolving a seemingly harmless subcommand.
+    for command in (
+        "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.check GIT_CONFIG_VALUE_0='!curl example.invalid' git check",
+        "env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.check GIT_CONFIG_VALUE_0='!sh -c true' git check",
+        "GIT_CONFIG_PARAMETERS='alias.check=!curl' git check",
+        "GIT_CONFIG_SYSTEM=/tmp/untrusted-config git status",
+        "GIT_EXEC_PATH=/tmp/untrusted-helpers git status",
+        "echo ok && GIT_CONFIG_COUNT=1 git status",
+    ):
+        assert classify_shell_command(command).reason == 'git-environment-override', command
+
+    assert classify_shell_command('git status').allowed
+    assert classify_shell_command('git -c color.ui=always status').allowed
+    assert classify_shell_command('echo GIT_CONFIG_COUNT=1').allowed
 
 
 def test_shell_policy_rejects_global_git_config_after_options():
@@ -264,6 +310,27 @@ def test_shell_policy_rejects_versioned_inline_interpreter_aliases():
         ['php8.3', '-r', 'echo 1;'],
     ):
         assert classify_shell_command(argv).reason == 'inline-interpreter', argv
+
+
+def test_shell_policy_rejects_windows_exe_interpreter_aliases_without_execution():
+    # The policy classifies argv data only; none of these snippets is executed.
+    for command in (
+        'python.exe -c pass',
+        'Python3.12.EXE -I -c pass',
+        'pypy3.exe -c pass',
+        'node.exe --eval=1',
+        'NodeJS.EXE --print 1',
+        'perl5.36.exe -e pass',
+        'ruby3.2.exe -e pass',
+        'php8.3.exe -r pass',
+    ):
+        assert classify_shell_command(command).reason == 'inline-interpreter', command
+    for command in ('python.exe -m pip install demo', 'python3.exe -m http.server'):
+        assert classify_shell_command(command).reason == 'network-command', command
+    assert classify_shell_command(['PYTHON.EXE', '-c', 'pass']).reason == 'inline-interpreter'
+
+    for command in ('python.exe -m pytest -q', 'node.exe --test', 'echo python.exe'):
+        assert classify_shell_command(command).allowed, command
 
 
 def test_shell_policy_rejects_inline_code_after_interpreter_option_operands():
@@ -440,6 +507,40 @@ def test_shell_policy_rejects_package_manager_config_mutations():
         assert classify_shell_command(command).reason == 'network-command', command
 
     for command in ('pip config list', 'pip config get global.index-url', 'npm config get registry'):
+        assert classify_shell_command(command).allowed, command
+
+
+def test_shell_policy_rejects_windows_package_manager_shims_without_execution():
+    # Windows resolves PATHEXT wrappers and executable names case-insensitively.
+    # Only classify these strings; never invoke the package managers.
+    for command in (
+        'npm.cmd install demo-package',
+        'NPM.EXE ci',
+        'pnpm.CMD dlx demo-tool',
+        'yarn.BAT add demo-package',
+        'npx.cmd --yes demo-tool',
+        'corepack.cmd prepare pnpm@latest',
+        'pip3.12.exe wheel demo-package',
+        'PIP.EXE config set global.index-url value',
+        'uv.EXE pip install demo-package',
+        'env -C fixtures npm.cmd install demo-package',
+        'command NPM.CMD install demo-package',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+
+    for argv in (
+        ['npm.cmd', 'install', 'demo-package'],
+        ['env', 'pip3.12.exe', 'download', 'demo-package'],
+    ):
+        assert classify_shell_command(argv).reason == 'network-command', argv
+
+    # Absolute Windows launchers are rejected before package classification.
+    assert classify_shell_command(
+        ['C:\\tools\\NPM.CMD', 'install', 'demo-package']
+    ).reason == 'absolute-path'
+
+    for command in ('npm.cmd test', 'pip.EXE list', 'pnpm.cmd test',
+                    'echo npm.cmd install', 'python3 test_visible.py npm.cmd install'):
         assert classify_shell_command(command).allowed, command
 
 

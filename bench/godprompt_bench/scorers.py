@@ -71,11 +71,18 @@ def _symlink_hash(path: Path) -> str:
 
 
 def hashes_for_files(files: dict[str, str]) -> dict[str, str]:
-    return {
-        path: hashlib.sha256(content.encode("utf-8")).hexdigest()
-        for path, content in sorted(files.items())
-        if not _ignored_scope_path(path)
-    }
+    result: dict[str, str] = {}
+    directory_hash = hashlib.sha256(b"directory\0").hexdigest()
+    for path, content in sorted(files.items()):
+        if _ignored_scope_path(path):
+            continue
+        result[path] = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        # The post-agent snapshot includes directories, even if the fixture
+        # was supplied as a flat file map. Match that initial layout exactly.
+        for parent in PurePosixPath(path).parents:
+            if parent != PurePosixPath("."):
+                result[parent.as_posix()] = directory_hash
+    return dict(sorted(result.items()))
 
 
 def _ignored_scope_path(path: str) -> bool:

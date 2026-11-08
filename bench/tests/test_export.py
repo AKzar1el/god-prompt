@@ -1,5 +1,6 @@
 import csv
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 import pytest
@@ -38,11 +39,89 @@ def test_export_writes_exact_public_artifact_set_and_redacts_secrets(tmp_path: P
     assert summary['baseline']['passed'] == 1
 
 
+def test_public_json_artifacts_never_emit_nonstandard_nan_or_infinity(tmp_path: Path):
+    # Provider/tool telemetry can carry nonfinite floats, but public JSON is strict.
+    export_run(
+        tmp_path,
+        {'latency': float('nan'), 'nested': {'durations': [float('inf'), 1.25]}},
+        [record()],
+        [{'events': [{'duration': float('-inf')}, {'duration': 0.0}]}],
+    )
+
+    def reject_nonstandard(value: str):
+        raise ValueError(f'nonstandard JSON number: {value}')
+
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'),
+                          parse_constant=reject_nonstandard)
+    trajectory = json.loads((tmp_path / 'trajectories.jsonl').read_text(encoding='utf-8'),
+                            parse_constant=reject_nonstandard)
+    json.loads((tmp_path / 'summary.json').read_text(encoding='utf-8'),
+               parse_constant=reject_nonstandard)
+    assert manifest['latency'] is None
+    assert manifest['nested']['durations'] == [None, 1.25]
+    assert trajectory['events'] == [{'duration': None}, {'duration': 0.0}]
+
+
+def test_export_serializes_mixed_type_telemetry_mapping_keys(tmp_path: Path):
+    # Provider diagnostics may index samples by number alongside named fields.
+    export_run(
+        tmp_path,
+        {'metrics': {1: 'first', 'status': 'ok'}},
+        [record()],
+        [{'tool_output': {0: 'zero', 'status': 'done'}}],
+    )
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    trajectory = json.loads((tmp_path / 'trajectories.jsonl').read_text(encoding='utf-8'))
+    assert manifest['metrics'] == {'1': 'first', 'status': 'ok'}
+    assert trajectory['tool_output'] == {'0': 'zero', 'status': 'done'}
+
+
+def test_redactor_rejects_ambiguous_mapping_keys_after_stringification():
+    with pytest.raises(ValueError, match='ambiguous JSON object key'):
+        redact_secrets({1: 'integer', '1': 'string'})
+
+
 def test_export_overwrites_only_known_files_not_arbitrary_output(tmp_path: Path):
     marker = tmp_path / 'keep.txt'
     marker.write_text('keep')
     export_run(tmp_path, {'run_id': 'r1'}, [record()], [])
     assert marker.read_text() == 'keep'
+
+
+@pytest.mark.parametrize('filename', ('manifest.json', 'summary.json', 'scores.csv', 'trajectories.jsonl'))
+def test_export_refuses_existing_hardlinked_artifact_before_any_write(tmp_path: Path, filename: str):
+    output = tmp_path / 'public'
+    output.mkdir()
+    protected = tmp_path / 'protected.txt'
+    protected.write_text('preserve original', encoding='utf-8')
+    os.link(protected, output / filename)
+
+    with pytest.raises(ValueError, match='linked public artifact'):
+        export_run(output, {'run_id': 'unsafe'}, [record()], [])
+    assert protected.read_text(encoding='utf-8') == 'preserve original'
+    assert {path.name for path in output.iterdir()} == {filename}
+
+
+@pytest.mark.parametrize('nested', (False, True))
+def test_export_refuses_symlinked_output_directory_or_parent_before_any_write(tmp_path: Path, nested: bool):
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    link = tmp_path / 'linked-output'
+    try:
+        os.symlink(outside, link, target_is_directory=True)
+    except OSError:
+        pytest.skip('directory symlink creation unavailable on this host')
+
+    output = link / 'public' if nested else link
+    with pytest.raises(ValueError, match='linked output directory'):
+        export_run(output, {'run_id': 'synthetic-only'}, [record()], [])
+    assert list(outside.iterdir()) == []
+
+
+def test_export_allows_replacing_ordinary_unlinked_artifacts(tmp_path: Path):
+    export_run(tmp_path, {'run_id': 'old'}, [record()], [])
+    export_run(tmp_path, {'run_id': 'new'}, [record()], [])
+    assert json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))['run_id'] == 'new'
 
 
 def test_export_rejects_unknown_conditions_without_creating_public_artifacts(tmp_path: Path):
@@ -112,6 +191,46 @@ def test_public_exports_redact_short_bearer_credentials(tmp_path: Path):
         exported = (tmp_path / name).read_text(encoding='utf-8')
         assert synthetic_token not in exported, name
         assert 'Bearer [REDACTED]' in exported, name
+
+
+def test_public_exports_redact_api_token_key_variants_and_inline_assignment(tmp_path: Path):
+    # These are synthetic values, not credentials. Both structured telemetry
+    # keys and free-text diagnostics can use common apiToken spelling.
+    tokens = {
+        'apiToken': 'syntheticApiValueAlpha42',
+        'api_token': 'syntheticApiValueBeta42',
+        'api-token': 'syntheticApiValueGamma42',
+    }
+    diagnostic = 'apiToken=syntheticInlineApiValue42'
+    export_run(
+        tmp_path,
+        {'config': tokens, 'note': diagnostic},
+        [replace(record(), infrastructure_error=diagnostic)],
+        [{'telemetry': tokens, 'detail': diagnostic}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        for secret in (*tokens.values(), 'syntheticInlineApiValue42'):
+            assert secret not in exported, (name, secret)
+    assert '[REDACTED]' in (tmp_path / 'manifest.json').read_text(encoding='utf-8')
+
+
+def test_public_exports_redact_spaced_api_key_and_token_labels(tmp_path: Path):
+    # Human-readable diagnostics and telemetry keys often spell API Key with a space.
+    synthetic_key = 'SYNTHETIC_SPACED_KEY_123'
+    synthetic_token = 'SYNTHETIC_SPACED_TOKEN_456'
+    diagnostic = f'API Key: {synthetic_key}; API Token={synthetic_token}'
+    export_run(
+        tmp_path,
+        {'API Key': synthetic_key, 'api token': synthetic_token, 'note': diagnostic},
+        [replace(record(), infrastructure_error=diagnostic)],
+        [{'headers': {'API Key': synthetic_key}, 'output': diagnostic}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        output = (tmp_path / name).read_text(encoding='utf-8')
+        assert synthetic_key not in output, name
+        assert synthetic_token not in output, name
+    assert redact_secrets('API key usage is measured') == 'API key usage is measured'
 
 
 def test_public_exports_redact_http_basic_authorization_payloads(tmp_path: Path):
@@ -209,6 +328,21 @@ def test_public_exports_redact_url_userinfo_credentials(tmp_path: Path):
     assert redact_secrets('Contact ops@example.invalid') == 'Contact ops@example.invalid'
 
 
+@pytest.mark.parametrize('url, expected, secret', (
+    ('https://alice@team:FAKEPASS123@api.example.invalid/v1',
+     'https://[REDACTED]@api.example.invalid/v1', 'FAKEPASS123'),
+    ('postgresql://tenant@org:FAKEDB456@db.example.invalid/app',
+     'postgresql://[REDACTED]@db.example.invalid/app', 'FAKEDB456'),
+))
+def test_public_exports_redact_multiple_at_signs_in_url_userinfo(tmp_path: Path, url: str, expected: str, secret: str):
+    assert redact_secrets(url) == expected
+    export_run(tmp_path, {'note': url}, [replace(record(), infrastructure_error=url)], [{'output': url}])
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / filename).read_text(encoding='utf-8')
+        assert secret not in exported, filename
+        assert expected in exported, filename
+
+
 def test_public_exports_redact_signed_url_query_credentials(tmp_path: Path):
     cases = (
         ('https://r2.example.invalid/object?X-Amz-Credential=FAKE_AWS_CRED_123'
@@ -251,6 +385,31 @@ def test_public_exports_redact_structured_signed_url_keys():
         'GoogleAccessId': 'FAKE_GCS_V2_ID', 'Signature': 'FAKE_V2_SIG',
     }
     assert redact_secrets(fields) == {name: '[REDACTED]' for name in fields}
+
+
+def test_public_exports_redact_percent_encoded_query_parameter_names(tmp_path: Path):
+    url = (
+        'https://storage.example.invalid/object?api%5Fkey=FAKE_API_KEY_123'
+        '&X-Amz%2DSignature=FAKE_AWS_SIG_456'
+        '&session%5Ftoken=FAKE_SESSION_789'
+        '&part%5Fnumber=7'
+    )
+    expected = (
+        'https://storage.example.invalid/object?api%5Fkey=[REDACTED]'
+        '&X-Amz%2DSignature=[REDACTED]'
+        '&session%5Ftoken=[REDACTED]'
+        '&part%5Fnumber=7'
+    )
+    assert redact_secrets(url) == expected
+    export_run(tmp_path, {'note': url},
+               [replace(record(), infrastructure_error=url)],
+               [{'events': [{'output': url}]}])
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        assert all(secret not in exported for secret in (
+            'FAKE_API_KEY_123', 'FAKE_AWS_SIG_456', 'FAKE_SESSION_789'
+        )), name
+        assert 'part%5Fnumber=7' in exported
 
 
 def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: Path):
