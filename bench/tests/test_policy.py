@@ -266,6 +266,27 @@ def test_shell_policy_rejects_versioned_inline_interpreter_aliases():
         assert classify_shell_command(argv).reason == 'inline-interpreter', argv
 
 
+def test_shell_policy_rejects_windows_exe_interpreter_aliases_without_execution():
+    # The policy classifies argv data only; none of these snippets is executed.
+    for command in (
+        'python.exe -c pass',
+        'Python3.12.EXE -I -c pass',
+        'pypy3.exe -c pass',
+        'node.exe --eval=1',
+        'NodeJS.EXE --print 1',
+        'perl5.36.exe -e pass',
+        'ruby3.2.exe -e pass',
+        'php8.3.exe -r pass',
+    ):
+        assert classify_shell_command(command).reason == 'inline-interpreter', command
+    for command in ('python.exe -m pip install demo', 'python3.exe -m http.server'):
+        assert classify_shell_command(command).reason == 'network-command', command
+    assert classify_shell_command(['PYTHON.EXE', '-c', 'pass']).reason == 'inline-interpreter'
+
+    for command in ('python.exe -m pytest -q', 'node.exe --test', 'echo python.exe'):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_inline_code_after_interpreter_option_operands():
     # These are data-only classifier inputs; no code payload is executed.
     for command in (
