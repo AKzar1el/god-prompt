@@ -42,7 +42,7 @@ Secondary metrics are reported separately rather than collapsed into a weighted 
 - wall-clock latency (explicitly infrastructure-sensitive);
 - completion state and infrastructure failures.
 
-Infrastructure failures are reported separately from model failures. Aggregate output always includes raw counts and denominators.
+Infrastructure failures are reported separately from model failures. Aggregate output always includes raw counts and denominators. Token totals are `null` when any model sample lacks that provider-reported counter (or no model samples exist), rather than misrepresenting missing usage as zero; a measured zero remains `0`.
 
 ## Isolation
 

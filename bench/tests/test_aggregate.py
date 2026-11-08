@@ -90,3 +90,33 @@ def test_aggregate_excludes_invalid_latency_values_from_public_summary():
     assert summary['by_category']['implementation']['baseline']['median_latency_seconds'] == 2.0
     # The exported summary must remain strict JSON, not nonstandard NaN/Infinity values.
     json.dumps(summary, allow_nan=False)
+
+
+def test_aggregate_does_not_report_unknown_usage_as_zero_or_partial_totals():
+    # A provider with no usage telemetry did not report a free, zero-token run.
+    missing = replace(rec('baseline', True), input_tokens=None, output_tokens=None)
+    measured = rec('baseline', True)
+    summary = aggregate([measured, missing])
+    assert summary['baseline']['input_tokens'] is None
+    assert summary['baseline']['output_tokens'] is None
+    assert summary['by_category']['implementation']['baseline']['input_tokens'] is None
+    assert summary['by_category']['implementation']['baseline']['output_tokens'] is None
+
+    summary = aggregate([missing])
+    assert summary['baseline']['input_tokens'] is None
+    assert summary['baseline']['output_tokens'] is None
+    assert summary['godprompt']['input_tokens'] is None
+    assert summary['godprompt']['output_tokens'] is None
+
+
+def test_aggregate_preserves_true_zero_and_independent_usage_fields():
+    zero = replace(rec('baseline', True), input_tokens=0, output_tokens=0)
+    missing_output = replace(rec('baseline', True), input_tokens=4, output_tokens=None)
+    infrastructure = replace(rec('baseline', False, infra='sandbox failed'),
+                             input_tokens=None, output_tokens=None)
+    summary = aggregate([zero, missing_output, infrastructure])
+    assert summary['baseline']['model_samples'] == 2
+    assert summary['baseline']['input_tokens'] == 4
+    assert summary['baseline']['output_tokens'] is None
+    assert summary['by_category']['implementation']['baseline']['input_tokens'] == 4
+    assert aggregate([zero])['baseline']['output_tokens'] == 0
