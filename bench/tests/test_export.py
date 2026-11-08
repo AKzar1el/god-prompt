@@ -62,6 +62,25 @@ def test_public_json_artifacts_never_emit_nonstandard_nan_or_infinity(tmp_path: 
     assert trajectory['events'] == [{'duration': None}, {'duration': 0.0}]
 
 
+def test_export_serializes_mixed_type_telemetry_mapping_keys(tmp_path: Path):
+    # Provider diagnostics may index samples by number alongside named fields.
+    export_run(
+        tmp_path,
+        {'metrics': {1: 'first', 'status': 'ok'}},
+        [record()],
+        [{'tool_output': {0: 'zero', 'status': 'done'}}],
+    )
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    trajectory = json.loads((tmp_path / 'trajectories.jsonl').read_text(encoding='utf-8'))
+    assert manifest['metrics'] == {'1': 'first', 'status': 'ok'}
+    assert trajectory['tool_output'] == {'0': 'zero', 'status': 'done'}
+
+
+def test_redactor_rejects_ambiguous_mapping_keys_after_stringification():
+    with pytest.raises(ValueError, match='ambiguous JSON object key'):
+        redact_secrets({1: 'integer', '1': 'string'})
+
+
 def test_export_overwrites_only_known_files_not_arbitrary_output(tmp_path: Path):
     marker = tmp_path / 'keep.txt'
     marker.write_text('keep')

@@ -78,11 +78,18 @@ def redact_secrets(value: Any) -> Any:
         # Nonfinite provider diagnostics must not become invalid public JSON.
         return None
     if isinstance(value, dict):
-        return {
-            (_redact_text(key) if isinstance(key, str) else key):
-                "[REDACTED]" if _SECRET_KEY.search(str(key)) else redact_secrets(item)
-            for key, item in value.items()
-        }
+        normalized: dict[str, Any] = {}
+        for key, item in value.items():
+            raw_key = str(key)
+            safe_key = _redact_text(raw_key)
+            # JSON member names are strings; avoid silently collapsing keys
+            # such as the integer 1 and the string "1" during conversion.
+            if safe_key in normalized:
+                raise ValueError("ambiguous JSON object key after redaction")
+            normalized[safe_key] = (
+                "[REDACTED]" if _SECRET_KEY.search(raw_key) else redact_secrets(item)
+            )
+        return normalized
     if isinstance(value, list):
         return [redact_secrets(item) for item in value]
     if isinstance(value, tuple):
