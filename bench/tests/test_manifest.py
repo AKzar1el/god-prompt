@@ -47,6 +47,14 @@ def test_manifest_rejects_duplicate_ids(tmp_path: Path):
         validate_manifest(tasks)
 
 
+def test_manifest_rejects_case_insensitive_duplicate_task_ids():
+    # Task IDs become workspace directory names, which alias on Windows.
+    task = load_manifest(ROOT / 'tasks' / 'manifest.json')[0]
+    tasks = [replace(task, id='Example-Task'), replace(task, id='example-task')]
+    with pytest.raises(ValueError, match='duplicate task id'):
+        validate_manifest(tasks)
+
+
 def test_manifest_rejects_duplicate_json_security_field(tmp_path: Path):
     source = json.loads((ROOT / 'tasks' / 'manifest.json').read_text(encoding='utf-8'))[0]
     encoded = json.dumps(source)
@@ -120,7 +128,11 @@ def test_fixture_bundle_rejects_unknown_fields(tmp_path: Path):
     r'..\outside', r'C:\private\fixture', r'C:relative', r'\rooted',
     r'tasks\..\private', '../outside', '/absolute', '.', '',
     'CON', 'src/NUL.txt', 'src/COM3.log', 'src/LPT9', 'src/CONOUT$',
+    'src/COM\u00b9.log', 'src/LPT\u00b2.txt', 'src/COM\u00b3',
     'src/trailing.', 'src/file ', 'src/log.txt:stream', 'src/' + chr(0) + 'bad',
+    'src/what?.py', 'src/all*.py', 'src/a"b.py', 'src/a<b.py',
+    'src/a>b.py', 'src/a|b.py', 'src/a' + chr(9) + 'b.py',
+    'src/a' + chr(31) + 'b.py',
 ])
 def test_manifest_and_fixture_reject_nonportable_or_escaping_paths(tmp_path: Path, unsafe: str):
     task = load_manifest(ROOT / 'tasks' / 'manifest.json')[0]
@@ -144,7 +156,7 @@ def test_manifest_and_fixture_reject_nonportable_or_escaping_paths(tmp_path: Pat
 
 @pytest.mark.parametrize('unsafe', (
     '../outside', '/absolute', r'C:\private', r'..\outside',
-    'nested/task', '.', 'invalid\x00name',
+    'nested/task', '.', 'invalid\x00name', 'COM\u00b9', 'LPT\u00b2',
 ))
 def test_manifest_rejects_unsafe_task_ids(unsafe: str):
     # Task IDs are used as workspace directory names by benchmark fixtures.
@@ -174,6 +186,23 @@ def test_fixture_rejects_paths_that_alias_after_normalization(tmp_path: Path, al
 ))
 def test_fixture_rejects_file_and_directory_path_conflicts(tmp_path: Path, files: dict[str, str]):
     # Inspect cannot materialize a file at a path that another file uses as a directory.
+    fixture = tmp_path / 'fixture.json'
+    fixture.write_text(json.dumps({
+        'files': files,
+        'hidden_verifier': 'assert True',
+        'starter_expected_pass': False,
+    }), encoding='utf-8')
+    with pytest.raises(ValueError, match='fixture files contain conflicting paths'):
+        load_fixture_bundle(fixture)
+
+
+@pytest.mark.parametrize('files', (
+    {'src/Readme.md': 'first', 'src/README.md': 'second'},
+    {'SRC/app.py': 'first', 'src/app.py': 'second'},
+    {'src': 'a regular file', 'SRC/app.py': 'child of that file'},
+))
+def test_fixture_rejects_case_insensitive_path_collisions(tmp_path: Path, files: dict[str, str]):
+    # Windows aliases these paths even when the Linux sandbox keeps them distinct.
     fixture = tmp_path / 'fixture.json'
     fixture.write_text(json.dumps({
         'files': files,

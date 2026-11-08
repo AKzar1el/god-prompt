@@ -268,11 +268,13 @@ async def run_hidden_verifier(environment: Any, hidden_verifier: str, verifier_c
     # Never replace or delete a file created by the agent under the conventional name.
     verifier_file = f".godprompt_verifier_{uuid4().hex}.py"
     command = [verifier_file if arg == placeholder else arg for arg in verifier_command]
-    await environment.write_file(verifier_file, hidden_verifier)
     try:
+        await environment.write_file(verifier_file, hidden_verifier)
         verifier = await environment.exec(command, timeout=30, timeout_retry=False)
     finally:
-        await environment.exec(["rm", "-f", "--", verifier_file], timeout=10, timeout_retry=False)
+        cleanup = await environment.exec(["rm", "-f", "--", verifier_file], timeout=10, timeout_retry=False)
+        if not cleanup.success:
+            raise RuntimeError("hidden verifier cleanup failed")
     return verifier, final_hashes
 
 

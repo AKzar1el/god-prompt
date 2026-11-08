@@ -1,14 +1,49 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from godprompt_bench.run import execute_benchmark, load_profile, public_trajectory, sample_record, validate_sample_coverage, fixture_fingerprints, condition_batches, build_manifest
+from godprompt_bench.run import execute_benchmark, load_profile, public_trajectory, sample_record, validate_sample_coverage, fixture_fingerprints, condition_batches, build_manifest, _condition_for_log
 from godprompt_bench.models import RunProfile
 
 ROOT = Path(__file__).parents[1]
+
+
+@pytest.mark.parametrize('nested', (False, True))
+def test_inspect_raw_log_directory_rejects_symlinked_roots_before_writing(tmp_path: Path, nested: bool):
+    # Only a disposable temp directory is involved; no provider or Inspect eval runs.
+    from godprompt_bench.run import _create_raw_log_directory
+
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    link = tmp_path / 'linked-results'
+    try:
+        os.symlink(outside, link, target_is_directory=True)
+    except OSError:
+        pytest.skip('directory symlink creation unavailable on this host')
+
+    raw_dir = (link / 'batch' if nested else link) / 'inspect-logs'
+    with pytest.raises(ValueError, match='linked raw log directory'):
+        _create_raw_log_directory(raw_dir)
+    assert list(outside.iterdir()) == []
+
+
+def test_inspect_log_condition_rejects_conflicting_or_ambiguous_identity():
+    # Synthetic log metadata must not silently swap baseline and treatment samples.
+    def log(task, metadata):
+        return SimpleNamespace(eval=SimpleNamespace(task=task), metadata=metadata)
+
+    assert _condition_for_log(log('godprompt_bench_baseline', {'condition': 'baseline'})) == 'baseline'
+    assert _condition_for_log(log('godprompt_bench_godprompt', {})) == 'godprompt'
+    with pytest.raises(RuntimeError, match='condition.*conflict'):
+        _condition_for_log(log('godprompt_bench_godprompt', {'condition': 'baseline'}))
+    with pytest.raises(RuntimeError, match='condition'):
+        _condition_for_log(log('godprompt_bench_baseline', {'condition': 'unexpected'}))
+    with pytest.raises(RuntimeError, match='condition'):
+        _condition_for_log(log('prefix_godprompt_bench_godprompt_suffix', {}))
 
 
 def test_run_manifest_fingerprints_actual_compose_isolation_configuration():
@@ -88,15 +123,32 @@ def test_sample_coverage_rejects_missing_duplicate_and_extra_samples():
     expected = [(condition, task_id, epoch)
                 for condition in ('baseline', 'godprompt')
                 for task_id in profile.task_ids for epoch in (1, 2)]
-    records = [SimpleNamespace(condition=c, task_id=t, epoch=e) for c, t, e in expected]
-    validate_sample_coverage(profile, records)
+    categories = {'task-a': 'implementation', 'task-b': 'debugging'}
+    records = [SimpleNamespace(condition=c, task_id=t, epoch=e, category=categories[t])
+               for c, t, e in expected]
+    validate_sample_coverage(profile, records, categories)
 
     with pytest.raises(ValueError, match='missing.*godprompt.*task-b'):
-        validate_sample_coverage(profile, records[:-1])
+        validate_sample_coverage(profile, records[:-1], categories)
     with pytest.raises(ValueError, match='duplicate.*baseline.*task-a'):
-        validate_sample_coverage(profile, records + [records[0]])
+        validate_sample_coverage(profile, records + [records[0]], categories)
     with pytest.raises(ValueError, match='unexpected.*baseline.*task-a'):
-        validate_sample_coverage(profile, records + [SimpleNamespace(condition='baseline', task_id='task-a', epoch=3)])
+        validate_sample_coverage(profile, records + [SimpleNamespace(
+            condition='baseline', task_id='task-a', epoch=3, category='implementation')], categories)
+
+
+def test_sample_coverage_rejects_misattributed_categories():
+    profile = RunProfile(name='tiny', task_ids=('task-a', 'task-b'), epochs=1,
+                         max_messages=10, max_time_seconds=30, max_output_tokens=1000)
+    categories = {'task-a': 'implementation', 'task-b': 'debugging'}
+    records = [SimpleNamespace(condition=c, task_id=t, epoch=1, category=categories[t])
+               for c in ('baseline', 'godprompt') for t in profile.task_ids]
+    validate_sample_coverage(profile, records, categories)
+
+    # A swapped but valid category would otherwise silently corrupt by_category.
+    records[0].category = 'debugging'
+    with pytest.raises(ValueError, match='category.*task-a'):
+        validate_sample_coverage(profile, records, categories)
 
 
 def test_execute_benchmark_rejects_incomplete_samples_before_export(monkeypatch, tmp_path):
@@ -110,6 +162,29 @@ def test_execute_benchmark_rejects_incomplete_samples_before_export(monkeypatch,
     monkeypatch.setattr(inspect_ai, 'eval', lambda *args, **kwargs: logs)
     monkeypatch.setattr(run_module, 'export_run', lambda *args, **kwargs: pytest.fail('must not publish incomplete benchmark'))
     with pytest.raises(ValueError, match='missing'):
+        execute_benchmark(ROOT.parent, ROOT, profile, model='mockllm/model', output_dir=tmp_path)
+
+
+def test_execute_benchmark_rejects_wrong_category_before_export(monkeypatch, tmp_path):
+    import inspect_ai
+    import godprompt_bench.run as run_module
+    from godprompt_bench.corpus import load_manifest
+
+    profile = load_profile(ROOT / 'configs' / 'smoke.json')
+    canonical = {spec.id: spec.category for spec in load_manifest(ROOT / 'tasks' / 'manifest.json')}
+    logs = [SimpleNamespace(
+        metadata={'condition': condition}, eval=SimpleNamespace(model='mockllm/model'),
+        samples=[SimpleNamespace(id=task_id, epoch=1) for task_id in profile.task_ids],
+    ) for condition in ('baseline', 'godprompt')]
+    monkeypatch.setattr(run_module, 'build_task', lambda *args, **kwargs: object())
+    monkeypatch.setattr(inspect_ai, 'eval', lambda *args, **kwargs: logs)
+    monkeypatch.setattr(run_module, 'sample_record', lambda sample, condition: SimpleNamespace(
+        condition=condition, task_id=sample.id, epoch=sample.epoch,
+        category='debugging' if sample.id == profile.task_ids[0] else canonical[sample.id],
+    ))
+    monkeypatch.setattr(run_module, 'public_trajectory', lambda *args: {})
+    monkeypatch.setattr(run_module, 'export_run', lambda *args: pytest.fail('must not export misattributed categories'))
+    with pytest.raises(ValueError, match='category.*impl-py-slugify'):
         execute_benchmark(ROOT.parent, ROOT, profile, model='mockllm/model', output_dir=tmp_path)
 
 
@@ -352,6 +427,17 @@ def test_usage_totals_accepts_integral_floats_and_missing_optional_counts():
     assert _usage_totals({'synthetic-model': usage}) == (5, 3)
 
 
+def test_usage_totals_counts_serialized_model_usage_and_rejects_invalid_values():
+    from godprompt_bench.run import _usage_totals
+
+    usage = {'input_tokens': 8, 'input_tokens_cache_read': 4,
+             'input_tokens_cache_write': 2, 'output_tokens': 3}
+    assert _usage_totals({'serialized-model': usage}) == (14, 3)
+    usage['output_tokens'] = -1
+    with pytest.raises(ValueError, match='invalid model usage token count: output_tokens'):
+        _usage_totals({'serialized-model': usage})
+
+
 def test_public_trajectory_excludes_system_and_reasoning_content():
     messages = [
         SimpleNamespace(role='system', model_dump=lambda **kwargs: {'role': 'system', 'content': 'secret prompt'}),
@@ -369,6 +455,32 @@ def test_public_trajectory_excludes_system_and_reasoning_content():
     assert [m['role'] for m in trajectory['messages']] == ['user', 'assistant']
     assert trajectory['messages'][1]['content'] == [{'type': 'text', 'text': 'public'}]
     assert trajectory['events'][0]['event'] == 'tool'
+
+
+def test_public_trajectory_excludes_private_analysis_channel_messages_and_blocks():
+    # Some adapters tag reasoning by channel rather than by content block type.
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[
+            {'role': 'assistant', 'channel': 'analysis', 'content': 'SYNTHETIC_PRIVATE_MESSAGE'},
+            {'role': 'assistant', 'channel': 'final', 'content': 'public answer'},
+            {'role': 'assistant', 'content': [
+                {'channel': 'reasoning', 'text': 'SYNTHETIC_PRIVATE_BLOCK'},
+                {'type': 'text', 'text': 'public text'},
+            ]},
+        ],
+        events=[{'event': 'tool', 'output': [
+            {'channel': 'thinking', 'text': 'SYNTHETIC_PRIVATE_EVENT'},
+            {'channel': 'final', 'text': 'public result'},
+        ]}],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'] == [
+        {'role': 'assistant', 'channel': 'final', 'content': 'public answer'},
+        {'role': 'assistant', 'content': [{'type': 'text', 'text': 'public text'}]},
+    ]
+    assert trajectory['events'][0]['output'] == [{'channel': 'final', 'text': 'public result'}]
 
 
 def test_public_trajectory_redacts_provider_reasoning_field_variants():
@@ -392,6 +504,83 @@ def test_public_trajectory_redacts_provider_reasoning_field_variants():
     assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
     assert trajectory['messages'][0]['content'] == [{'type': 'text', 'text': 'visible answer'}]
     assert trajectory['events'][0]['output'] == {'status': 'ok'}
+
+
+def test_public_trajectory_redacts_delimited_reasoning_and_padded_channels():
+    # Provider serializers may use spaced/dotted aliases or padded channel labels.
+    # Never export the private content merely because the delimiter differs.
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[
+            {'role': 'assistant', 'reasoning content': 'SYNTHETIC_PRIVATE_FIELD',
+             'content': [
+                 {'type': 'reasoning.details', 'text': 'SYNTHETIC_PRIVATE_BLOCK'},
+                 {'type': 'text', 'text': 'visible answer'},
+             ]},
+            {'role': 'assistant', 'channel': ' analysis ', 'content': 'SYNTHETIC_PRIVATE_MESSAGE'},
+            {'role': 'assistant', 'channel': 'final', 'content': 'public answer'},
+        ],
+        events=[{'event': 'tool', 'output': [
+            {'channel': ' Thinking ', 'text': 'SYNTHETIC_PRIVATE_EVENT'},
+            {'reasoning.details': 'SYNTHETIC_PRIVATE_NESTED', 'status': 'ok'},
+            {'channel': 'final', 'text': 'public result'},
+        ]}],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'] == [
+        {'role': 'assistant', 'content': [{'type': 'text', 'text': 'visible answer'}]},
+        {'role': 'assistant', 'channel': 'final', 'content': 'public answer'},
+    ]
+    assert trajectory['events'][0]['output'] == [
+        {'status': 'ok'}, {'channel': 'final', 'text': 'public result'},
+    ]
+
+
+def test_public_trajectory_redacts_reasoning_blocks_in_mapping_positions():
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[
+            {'role': 'assistant', 'content': {
+                'type': 'reasoning', 'text': 'SYNTHETIC_PRIVATE_CONTENT',
+            }, 'status': 'ok'},
+            {'role': 'assistant', 'type': 'thinking',
+             'text': 'SYNTHETIC_PRIVATE_TOP_LEVEL'},
+            {'role': 'assistant', 'content': {
+                'type': 'text', 'text': 'visible answer',
+            }},
+        ],
+        events=[{'event': 'tool', 'output': {
+            'private_block': {'type': 'redacted_thinking', 'data': 'SYNTHETIC_PRIVATE_EVENT'},
+            'result': 'public result',
+        }}],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'] == [
+        {'role': 'assistant', 'status': 'ok'},
+        {'role': 'assistant', 'content': {'type': 'text', 'text': 'visible answer'}},
+    ]
+    assert trajectory['events'][0]['output'] == {'result': 'public result'}
+
+
+def test_public_trajectory_redacts_private_reasoning_inside_tuple_sequences():
+    # Some tool/provider adapters use tuples; JSON export still serializes them as arrays.
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[{'role': 'assistant', 'content': (
+            {'type': 'thinking', 'thinking': 'SYNTHETIC_PRIVATE_MESSAGE'},
+            {'type': 'text', 'text': 'visible answer', 'reasoning': 'SYNTHETIC_PRIVATE_FIELD'},
+        )}],
+        events=[{'event': 'tool', 'output': (
+            {'type': 'reasoning', 'text': 'SYNTHETIC_PRIVATE_EVENT'},
+            {'result': 'public result'},
+        )}],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'][0]['content'] == [{'type': 'text', 'text': 'visible answer'}]
+    assert trajectory['events'][0]['output'] == [{'result': 'public result'}]
 
 
 @pytest.mark.parametrize('field', ('reasoning_text', 'reasoningText', 'thinking_text', 'thinkingText'))

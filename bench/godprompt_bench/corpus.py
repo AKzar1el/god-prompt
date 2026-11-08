@@ -19,6 +19,7 @@ RUNTIMES = {"python", "javascript"}
 _WINDOWS_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
     f"{prefix}{number}" for prefix in ("COM", "LPT") for number in range(1, 10)
 }
+_WINDOWS_DEVICE_DIGITS = str.maketrans("\u00b9\u00b2\u00b3", "123")
 
 
 def _tuple(value: object, field: str) -> tuple[str, ...]:
@@ -89,16 +90,18 @@ def _validate_relative(path: str, field: str, task_id: str) -> None:
     # Windows device names, alternate streams and trailing dots/spaces can alias
     # paths that look distinct to POSIX tooling or fail during fixture setup.
     nonportable_component = any(
-        part.endswith((".", " ")) or part.split(".", 1)[0].rstrip(" ").upper() in _WINDOWS_DEVICE_NAMES
+        part.endswith((".", " ")) or (
+            part.split(".", 1)[0].rstrip(" ").upper().translate(_WINDOWS_DEVICE_DIGITS)
+            in _WINDOWS_DEVICE_NAMES
+        )
         for part in parsed.parts
     )
     if (
-        "\x00" in path
+        any(ord(char) < 32 or char in '*?"<>|' for char in path)
         or parsed == PurePosixPath(".")
         or parsed.is_absolute()
         or ".." in parsed.parts
         or path != parsed.as_posix()
-        or "\x00" in path
         or ":" in path
         or nonportable_component
         or "\\" in path
@@ -116,9 +119,11 @@ def validate_manifest(tasks: list[TaskSpec]) -> None:
         _validate_relative(task.id, "task id", task.id)
         if "/" in task.id:
             raise ValueError(f"{task.id}: task id must be a single path component")
-        if task.id in seen:
+        # Workspace directory names must remain unique on case-insensitive hosts.
+        folded_id = task.id.casefold()
+        if folded_id in seen:
             raise ValueError(f"duplicate task id: {task.id}")
-        seen.add(task.id)
+        seen.add(folded_id)
         if task.category not in CATEGORIES:
             raise ValueError(f"{task.id}: unknown category {task.category}")
         if task.runtime not in RUNTIMES:
@@ -155,8 +160,12 @@ def load_fixture_bundle(path: Path) -> FixtureBundle:
         raise ValueError("fixture files must be a non-empty string map")
     for relative in files:
         _validate_relative(relative, "fixture file", path.parent.name)
-        if any(parent.as_posix() in files for parent in PurePosixPath(relative).parents):
-            raise ValueError("fixture files contain conflicting paths")
+    folded_paths = {relative.casefold() for relative in files}
+    if len(folded_paths) != len(files) or any(
+        parent.as_posix().casefold() in folded_paths
+        for relative in files for parent in PurePosixPath(relative).parents
+    ):
+        raise ValueError("fixture files contain conflicting paths")
     if not isinstance(verifier, str) or not verifier.strip():
         raise ValueError("fixture hidden_verifier must be non-empty")
     if not isinstance(expected, bool):
