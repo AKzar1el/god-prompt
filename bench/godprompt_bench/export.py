@@ -41,7 +41,9 @@ _HTTP_AUTH_HEADER = re.compile(
 )
 _COOKIE_HEADER = re.compile(r"(?i)(\b(?:set-cookie|cookie)[ \t]*:[ \t]*)(?=[^\r\n]*=)[^\r\n]+")
 _KNOWN_TOKEN = re.compile(r"\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9_]{12,}|github_pat_[A-Za-z0-9_]{12,})\b")
-_URL_USERINFO = re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://)[^\s/?#@]+@")
+# Match through the last @ in the URL authority, not the first: userinfo can
+# itself contain @, including in malformed-but-observed diagnostic strings.
+_URL_USERINFO = re.compile(r"(?i)(\b[a-z][a-z0-9+.-]*://)[^\s/?#]+@")
 _SIGNED_URL_QUERY = re.compile(
     r"(?i)([?&](?:x-amz-(?:credential|signature|security-token)|"
     r"x-goog-(?:credential|signature)|awsaccesskeyid|googleaccessid|signature|sig)=)"
