@@ -217,8 +217,17 @@ def _private_reasoning_field(value: Any) -> bool:
     return isinstance(value, str) and value.casefold().replace("_", "").replace("-", "") in _PRIVATE_REASONING_FIELDS
 
 
+def _private_channel(value: Any) -> bool:
+    channel = getattr(value, "value", value)
+    return isinstance(channel, str) and (
+        channel.casefold() in {"analysis", "private"} or _private_reasoning_field(channel)
+    )
+
+
 def _private_reasoning_block(value: Any) -> bool:
-    return isinstance(value, Mapping) and _private_reasoning_field(value.get("type"))
+    return isinstance(value, Mapping) and (
+        _private_reasoning_field(value.get("type")) or _private_channel(value.get("channel"))
+    )
 
 
 def _strip_reasoning(value: Any) -> Any:
@@ -250,7 +259,9 @@ def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
         if not isinstance(dumped, dict):
             continue
         roles = [role for role in (dumped.get("role"), getattr(message, "role", None)) if role is not None]
-        if not roles or not all(_is_public_message_role(role) for role in roles) or _private_reasoning_block(dumped):
+        channels = (dumped.get("channel"), getattr(message, "channel", None))
+        if (not roles or not all(_is_public_message_role(role) for role in roles)
+                or _private_reasoning_block(dumped) or any(_private_channel(channel) for channel in channels)):
             continue
         messages.append(_strip_reasoning(dumped))
 
@@ -259,7 +270,9 @@ def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
         dumped = _dump(event)
         if not isinstance(dumped, dict):
             continue
-        if dumped.get("event", getattr(event, "event", None)) not in ("tool", "approval") or _private_reasoning_block(dumped):
+        if (dumped.get("event", getattr(event, "event", None)) not in ("tool", "approval")
+                or _private_reasoning_block(dumped)
+                or _private_channel(getattr(event, "channel", None))):
             continue
         events.append(_strip_reasoning(dumped))
 
