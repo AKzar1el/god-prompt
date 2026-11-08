@@ -92,11 +92,20 @@ def _has_unquoted_here_string(command: str) -> bool:
     return False
 
 
+def _package_executable_name(token: str) -> str:
+    # Windows package managers commonly launch through PATHEXT shims.
+    name = PurePosixPath(token.replace("\\", "/")).name.casefold()
+    for suffix in (".exe", ".cmd", ".bat", ".com"):
+        if name.endswith(suffix):
+            return name[:-len(suffix)]
+    return name
+
+
 def _runs_package_network_command(tokens: list[str]) -> bool:
     # Inspect the actual launched program, not inert script arguments.
     index = 0
     while index < len(tokens):
-        launcher = PurePosixPath(tokens[index]).name
+        launcher = _package_executable_name(tokens[index])
         if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", tokens[index]):
             index += 1
         elif launcher == "env":
@@ -131,7 +140,7 @@ def _runs_package_network_command(tokens: list[str]) -> bool:
             break
     if index >= len(tokens):
         return False
-    launcher = PurePosixPath(tokens[index]).name
+    launcher = _package_executable_name(tokens[index])
     config_mutations: set[str] = set()
     if launcher in {"npx", "pnpx", "bunx", "uvx"}:
         return True
