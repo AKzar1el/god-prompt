@@ -368,6 +368,31 @@ def test_public_exports_redact_structured_signed_url_keys():
     assert redact_secrets(fields) == {name: '[REDACTED]' for name in fields}
 
 
+def test_public_exports_redact_percent_encoded_query_parameter_names(tmp_path: Path):
+    url = (
+        'https://storage.example.invalid/object?api%5Fkey=FAKE_API_KEY_123'
+        '&X-Amz%2DSignature=FAKE_AWS_SIG_456'
+        '&session%5Ftoken=FAKE_SESSION_789'
+        '&part%5Fnumber=7'
+    )
+    expected = (
+        'https://storage.example.invalid/object?api%5Fkey=[REDACTED]'
+        '&X-Amz%2DSignature=[REDACTED]'
+        '&session%5Ftoken=[REDACTED]'
+        '&part%5Fnumber=7'
+    )
+    assert redact_secrets(url) == expected
+    export_run(tmp_path, {'note': url},
+               [replace(record(), infrastructure_error=url)],
+               [{'events': [{'output': url}]}])
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        assert all(secret not in exported for secret in (
+            'FAKE_API_KEY_123', 'FAKE_AWS_SIG_456', 'FAKE_SESSION_789'
+        )), name
+        assert 'part%5Fnumber=7' in exported
+
+
 def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: Path):
     # All values are made-up placeholders, not credentials; plain text must still be sanitized.
     entries = (
