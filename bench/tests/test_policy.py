@@ -102,6 +102,22 @@ def test_shell_policy_rejects_windows_network_executables_without_execution():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_windows_absolute_launchers_without_execution():
+    # Only classify argv; never start these Windows host executables.
+    for command in (
+        [r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe',
+         '-NoProfile', '-Command', 'Write-Output', 'marker'],
+        [r'C:\Tools\curl.exe', 'https://example.invalid'],
+        [r'C:\Tools\git.exe', 'fetch', 'origin'],
+        [r'\\server\share\cmd.exe', 'echo', 'marker'],
+        r'echo ok && "C:\Tools\curl.exe" https://example.invalid',
+    ):
+        assert classify_shell_command(command).reason == 'absolute-path', command
+
+    # A relative Windows-style path remains ordinary local data.
+    assert classify_shell_command(['python3', 'test_visible.py', r'fixtures\visible.txt']).allowed
+
+
 def test_shell_policy_rejects_paths_hidden_in_option_assignments():
     # Classification only: these GNU options would write outside the workspace.
     for command, reason in (
