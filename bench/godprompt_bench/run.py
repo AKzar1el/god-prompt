@@ -105,16 +105,19 @@ def _usage_totals(model_usage: Mapping[str, Any] | None) -> tuple[int | None, in
         return None, None
     input_tokens = 0
     output_tokens = 0
+    input_observed = True
+    output_observed = True
+    fields = ("input_tokens", "input_tokens_cache_read", "input_tokens_cache_write", "output_tokens")
     for usage in model_usage.values():
-        def count(field: str) -> int:
-            value = usage.get(field) if isinstance(usage, Mapping) else getattr(usage, field, None)
-            return _token_count(value, field)
-
-        input_tokens += count("input_tokens")
-        input_tokens += count("input_tokens_cache_read")
-        input_tokens += count("input_tokens_cache_write")
-        output_tokens += count("output_tokens")
-    return input_tokens, output_tokens
+        counts = {
+            field: usage.get(field) if isinstance(usage, Mapping) else getattr(usage, field, None)
+            for field in fields
+        }
+        input_observed &= any(counts[field] is not None for field in fields[:3])
+        output_observed &= counts["output_tokens"] is not None
+        input_tokens += sum(_token_count(counts[field], field) for field in fields[:3])
+        output_tokens += _token_count(counts["output_tokens"], "output_tokens")
+    return input_tokens if input_observed else None, output_tokens if output_observed else None
 
 
 def _score_count(value: Any, field: str) -> int:
@@ -222,6 +225,8 @@ def _dump(value: Any) -> Any:
 
 
 _PRIVATE_REASONING_FIELDS = {
+    "analysis", "analysiscontent", "analysisdetails", "analysistext",
+    "chainofthought",
     "reasoning", "reasoningcontent", "reasoningdetails", "redactedreasoning",
     "reasoningtext", "thinking", "thinkingcontent", "thinkingdetails",
     "thinkingtext", "redactedthinking",
@@ -233,13 +238,19 @@ def _private_reasoning_field(value: Any) -> bool:
     return isinstance(value, str) and re.sub(r"[\s_.-]+", "", value.casefold()) in _PRIVATE_REASONING_FIELDS
 
 
+def _private_channel(value: Any) -> bool:
+    # Preserve the object's original channel, even if model_dump labels it final.
+    channel = getattr(value, "value", value)
+    return isinstance(channel, str) and (
+        channel.strip().casefold() == "private" or _private_reasoning_field(channel)
+    )
+
+
 def _private_reasoning_block(value: Any) -> bool:
     if not isinstance(value, Mapping):
         return False
     channel = value.get("channel")
-    return _private_reasoning_field(value.get("type")) or (
-        isinstance(channel, str) and channel.strip().casefold() in {"analysis", "reasoning", "thinking"}
-    )
+    return _private_reasoning_field(value.get("type")) or _private_channel(channel)
 
 
 def _strip_reasoning(value: Any) -> Any:
@@ -271,7 +282,10 @@ def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
         if not isinstance(dumped, dict):
             continue
         roles = [role for role in (dumped.get("role"), getattr(message, "role", None)) if role is not None]
-        if not roles or not all(_is_public_message_role(role) for role in roles) or _private_reasoning_block(dumped):
+        channels = (dumped.get("channel"), getattr(message, "channel", None))
+        if (not roles or not all(_is_public_message_role(role) for role in roles)
+                or _private_reasoning_block(dumped)
+                or any(_private_channel(channel) for channel in channels)):
             continue
         messages.append(_strip_reasoning(dumped))
 
@@ -280,7 +294,9 @@ def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
         dumped = _dump(event)
         if not isinstance(dumped, dict):
             continue
-        if dumped.get("event", getattr(event, "event", None)) not in ("tool", "approval") or _private_reasoning_block(dumped):
+        if (dumped.get("event", getattr(event, "event", None)) not in ("tool", "approval")
+                or _private_reasoning_block(dumped)
+                or _private_channel(getattr(event, "channel", None))):
             continue
         events.append(_strip_reasoning(dumped))
 

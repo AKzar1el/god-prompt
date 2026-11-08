@@ -85,6 +85,24 @@ def test_empty_directory_changes_count_as_scope_violations(tmp_path: Path):
     assert detect_scope_violation(after, snapshot_hashes(tmp_path), ('src/target.py',)) is True
 
 
+def test_fixture_baseline_includes_existing_parent_directories(tmp_path: Path):
+    from godprompt_bench.scorers import hashes_for_files
+
+    files = {'src/nested/answer.py': 'starter code', 'README.md': 'instructions'}
+    for relative, content in files.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+
+    baseline = hashes_for_files(files)
+    unchanged = snapshot_hashes(tmp_path)
+    assert baseline == unchanged
+    assert not detect_scope_violation(baseline, unchanged, ('src/nested/answer.py',))
+
+    (tmp_path / 'unexpected-empty').mkdir()
+    assert detect_scope_violation(baseline, snapshot_hashes(tmp_path), ('src/nested/answer.py',))
+
+
 def test_explicit_forbidden_subtree_overrides_allowed_directory(tmp_path: Path):
     (tmp_path / 'src' / 'private').mkdir(parents=True)
     (tmp_path / 'src' / 'private-other').mkdir()

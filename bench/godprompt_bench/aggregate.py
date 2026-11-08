@@ -12,6 +12,17 @@ def _rate(numerator: int, denominator: int) -> float | None:
     return numerator / denominator if denominator else None
 
 
+def _complete_token_total(counts: Iterable[int | None]) -> int | None:
+    total = 0
+    seen = False
+    for count in counts:
+        if count is None:
+            return None
+        total += count
+        seen = True
+    return total if seen else None
+
+
 def _summarize(records: list[SampleRecord]) -> dict[str, int | float | None]:
     model_records = [record for record in records if record.infrastructure_error is None]
     latencies = [
@@ -41,8 +52,8 @@ def _summarize(records: list[SampleRecord]) -> dict[str, int | float | None]:
         "verification_attempts": sum(record.verification_attempts for record in model_records),
         "failed_tool_calls": sum(record.failed_tool_calls for record in model_records),
         "retries": sum(record.retries for record in model_records),
-        "input_tokens": sum(record.input_tokens or 0 for record in model_records),
-        "output_tokens": sum(record.output_tokens or 0 for record in model_records),
+        "input_tokens": _complete_token_total(record.input_tokens for record in model_records),
+        "output_tokens": _complete_token_total(record.output_tokens for record in model_records),
         "median_latency_seconds": median(latencies) if latencies else None,
     }
 

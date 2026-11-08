@@ -62,6 +62,25 @@ def test_public_json_artifacts_never_emit_nonstandard_nan_or_infinity(tmp_path: 
     assert trajectory['events'] == [{'duration': None}, {'duration': 0.0}]
 
 
+def test_export_serializes_mixed_type_telemetry_mapping_keys(tmp_path: Path):
+    # Provider diagnostics may index samples by number alongside named fields.
+    export_run(
+        tmp_path,
+        {'metrics': {1: 'first', 'status': 'ok'}},
+        [record()],
+        [{'tool_output': {0: 'zero', 'status': 'done'}}],
+    )
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    trajectory = json.loads((tmp_path / 'trajectories.jsonl').read_text(encoding='utf-8'))
+    assert manifest['metrics'] == {'1': 'first', 'status': 'ok'}
+    assert trajectory['tool_output'] == {'0': 'zero', 'status': 'done'}
+
+
+def test_redactor_rejects_ambiguous_mapping_keys_after_stringification():
+    with pytest.raises(ValueError, match='ambiguous JSON object key'):
+        redact_secrets({1: 'integer', '1': 'string'})
+
+
 def test_export_overwrites_only_known_files_not_arbitrary_output(tmp_path: Path):
     marker = tmp_path / 'keep.txt'
     marker.write_text('keep')
@@ -366,6 +385,52 @@ def test_public_exports_redact_structured_signed_url_keys():
         'GoogleAccessId': 'FAKE_GCS_V2_ID', 'Signature': 'FAKE_V2_SIG',
     }
     assert redact_secrets(fields) == {name: '[REDACTED]' for name in fields}
+
+
+def test_public_exports_redact_percent_encoded_query_parameter_names(tmp_path: Path):
+    url = (
+        'https://storage.example.invalid/object?api%5Fkey=FAKE_API_KEY_123'
+        '&X-Amz%2DSignature=FAKE_AWS_SIG_456'
+        '&session%5Ftoken=FAKE_SESSION_789'
+        '&part%5Fnumber=7'
+    )
+    expected = (
+        'https://storage.example.invalid/object?api%5Fkey=[REDACTED]'
+        '&X-Amz%2DSignature=[REDACTED]'
+        '&session%5Ftoken=[REDACTED]'
+        '&part%5Fnumber=7'
+    )
+    assert redact_secrets(url) == expected
+    export_run(tmp_path, {'note': url},
+               [replace(record(), infrastructure_error=url)],
+               [{'events': [{'output': url}]}])
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        assert all(secret not in exported for secret in (
+            'FAKE_API_KEY_123', 'FAKE_AWS_SIG_456', 'FAKE_SESSION_789'
+        )), name
+        assert 'part%5Fnumber=7' in exported
+
+
+def test_public_exports_redact_html_escaped_signed_url_query(tmp_path: Path):
+    # HTML attribute values can encode query separators as &amp;.
+    url = (
+        'https://storage.example.invalid/object?partNumber=1'
+        '&amp;X-Amz-Signature=FAKE_HTML_AWS_SIG_123'
+        '&amp;X-Goog-Credential=FAKE_HTML_GCS_CRED_456'
+        '&amp;sig=FAKE_HTML_AZURE_SIG_789'
+    )
+    export_run(
+        tmp_path, {'note': url},
+        [replace(record(), infrastructure_error=url)],
+        [{'output': url}],
+    )
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / filename).read_text(encoding='utf-8')
+        assert 'FAKE_HTML_' not in exported, filename
+        for name in ('X-Amz-Signature', 'X-Goog-Credential', 'sig'):
+            assert f'&amp;{name}=[REDACTED]' in exported, (filename, name)
+        assert 'partNumber=1' in exported
 
 
 def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: Path):

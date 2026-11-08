@@ -438,6 +438,26 @@ def test_usage_totals_counts_serialized_model_usage_and_rejects_invalid_values()
         _usage_totals({'serialized-model': usage})
 
 
+@pytest.mark.parametrize('usage', [
+    {'provider_metadata': 'no usage reported'},
+    {'input_tokens': None, 'output_tokens': None},
+    SimpleNamespace(model='unavailable'),
+])
+def test_usage_totals_does_not_report_unknown_usage_as_zero(usage):
+    from godprompt_bench.run import _usage_totals
+
+    assert _usage_totals({'synthetic-model': usage}) == (None, None)
+    assert _usage_totals({'synthetic-model': {'input_tokens': 0, 'output_tokens': 0}}) == (0, 0)
+
+
+def test_usage_totals_preserves_partially_available_and_multimodel_usage():
+    from godprompt_bench.run import _usage_totals
+
+    assert _usage_totals({'m': {'input_tokens': 3}}) == (3, None)
+    assert _usage_totals({'m': {'output_tokens': 5}}) == (None, 5)
+    assert _usage_totals({'m': {'input_tokens': 3, 'output_tokens': 5}, 'n': {}}) == (None, None)
+
+
 def test_public_trajectory_excludes_system_and_reasoning_content():
     messages = [
         SimpleNamespace(role='system', model_dump=lambda **kwargs: {'role': 'system', 'content': 'secret prompt'}),
@@ -481,6 +501,26 @@ def test_public_trajectory_excludes_private_analysis_channel_messages_and_blocks
         {'role': 'assistant', 'content': [{'type': 'text', 'text': 'public text'}]},
     ]
     assert trajectory['events'][0]['output'] == [{'channel': 'final', 'text': 'public result'}]
+
+
+def test_public_trajectory_redacts_analysis_fields_and_typed_blocks():
+    # Reasoning may be serialized as an analysis field, type, or channel alias.
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[{'role': 'assistant', 'analysis': 'SYNTHETIC_PRIVATE_FIELD', 'content': [
+            {'type': 'analysis', 'text': 'SYNTHETIC_PRIVATE_BLOCK'},
+            {'type': 'analysis_text', 'text': 'SYNTHETIC_PRIVATE_ALIAS'},
+            {'type': 'text', 'text': 'visible answer'},
+        ]}],
+        events=[{'event': 'tool', 'output': [
+            {'channel': 'analysis_text', 'text': 'SYNTHETIC_PRIVATE_EVENT'},
+            {'status': 'ok'},
+        ]}],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'][0]['content'] == [{'type': 'text', 'text': 'visible answer'}]
+    assert trajectory['events'][0]['output'] == [{'status': 'ok'}]
 
 
 def test_public_trajectory_redacts_provider_reasoning_field_variants():
@@ -602,6 +642,25 @@ def test_public_trajectory_redacts_provider_reasoning_text_aliases(field):
     assert trajectory['events'][0]['output'] == {'status': 'ok'}
 
 
+@pytest.mark.parametrize('field', ('chain_of_thought', 'chainOfThought', 'chain-of-thought', 'chainofthought'))
+def test_public_trajectory_redacts_chain_of_thought_aliases(field):
+    # Some providers label private reasoning as chain-of-thought rather than thinking.
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[{'role': 'assistant', 'content': [
+            {'type': 'text', 'text': 'public answer', field: 'SYNTHETIC_PRIVATE_FIELD'},
+            {'type': field, 'text': 'SYNTHETIC_PRIVATE_BLOCK'},
+        ]}],
+        events=[{'event': 'tool', 'output': {
+            field: 'SYNTHETIC_PRIVATE_EVENT', 'status': 'ok',
+        }}],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'][0]['content'] == [{'type': 'text', 'text': 'public answer'}]
+    assert trajectory['events'][0]['output'] == {'status': 'ok'}
+
+
 def test_public_trajectory_filters_privileged_mapping_messages_and_keeps_mapping_events():
     sample = SimpleNamespace(
         id='fixture', epoch=1,
@@ -646,6 +705,40 @@ def test_public_trajectory_fails_closed_on_conflicting_or_unknown_message_roles(
     trajectory = public_trajectory(sample, 'baseline')
     assert [message['role'] for message in trajectory['messages']] == ['user', 'assistant', 'tool']
     assert 'PRIVATE' not in json.dumps(trajectory)
+
+
+def test_public_trajectory_excludes_private_channels_even_when_dump_disagrees():
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[
+            {'role': 'assistant', 'channel': 'private', 'content': 'SYNTHETIC_PRIVATE_MESSAGE'},
+            SimpleNamespace(role='assistant', channel='analysis', model_dump=lambda **kwargs: {
+                'role': 'assistant', 'channel': 'final',
+                'content': 'SYNTHETIC_PRIVATE_DISGUISED',
+            }),
+            {'role': 'assistant', 'channel': 'final', 'content': [
+                {'channel': 'reasoning', 'text': 'SYNTHETIC_PRIVATE_NESTED'},
+                {'type': 'text', 'text': 'public answer'},
+            ]},
+        ],
+        events=[
+            {'event': 'tool', 'channel': 'thinking', 'result': 'SYNTHETIC_PRIVATE_EVENT'},
+            {'event': 'tool', 'output': {
+                'channel': 'analysis', 'text': 'SYNTHETIC_PRIVATE_OUTPUT',
+            }, 'status': 'ok'},
+            {'event': 'tool', 'channel': 'commentary', 'result': 'public result'},
+        ],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'] == [
+        {'role': 'assistant', 'channel': 'final',
+         'content': [{'type': 'text', 'text': 'public answer'}]},
+    ]
+    assert trajectory['events'] == [
+        {'event': 'tool', 'status': 'ok'},
+        {'event': 'tool', 'channel': 'commentary', 'result': 'public result'},
+    ]
 
 
 def test_execute_benchmark_reads_actual_model_from_eval_spec(monkeypatch, tmp_path):
