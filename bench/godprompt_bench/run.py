@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import platform
+import stat
 import subprocess
 import uuid
 from collections import Counter
@@ -302,6 +303,21 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _create_raw_log_directory(raw_log_dir: Path) -> None:
+    # Inspect writes unsanitized evaluation logs before the public exporter runs.
+    # A linked parent must not redirect those private logs to another location.
+    for candidate in (raw_log_dir, *raw_log_dir.parents):
+        try:
+            entry = candidate.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(entry.st_mode) or (
+            getattr(entry, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+        ):
+            raise ValueError(f"refusing linked raw log directory: {candidate}")
+    raw_log_dir.mkdir(parents=True, exist_ok=True)
+
+
 def fixture_fingerprints(bench_root: Path, task_ids: tuple[str, ...]) -> dict[str, Any]:
     """Fingerprint selected fixture files, including their hidden verifier content."""
     manifest = json.loads(
@@ -453,7 +469,7 @@ def execute_benchmark(
         for condition, batch_ids in condition_batches(profile.task_ids)
     ]
     raw_log_dir = output_dir / "inspect-logs"
-    raw_log_dir.mkdir(parents=True, exist_ok=True)
+    _create_raw_log_directory(raw_log_dir)
     kwargs: dict[str, Any] = {
         "model": model,
         "log_dir": str(raw_log_dir),
