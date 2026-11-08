@@ -372,6 +372,24 @@ def test_shell_policy_rejects_network_capable_python_module_entry_points():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_python_module_package_manager_aliases():
+    # Calling an installed package manager via `python -m` bypasses argv checks
+    # for its standalone executable; classify these strings without execution.
+    for command in (
+        'python3 -m pipx install demo',
+        'python3.12 -m pipx.__main__ run demo',
+        'python -m poetry add demo',
+        'pypy3 -mpoetry install',
+        'python3 -m uv pip install demo',
+        'env python3 -m uv tool run demo',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+    assert classify_shell_command(['python3', '-m', 'pipx', 'install', 'demo']).reason == 'network-command'
+    for command in ('python3 -m pytest -q', 'python3 -m json.tool data.json',
+                    'python3 visible.py -m pipx', 'echo python3 -m poetry add'):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_package_manager_network_commands():
     for command in (
         'pip install demo-package',
