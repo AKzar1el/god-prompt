@@ -17,6 +17,7 @@ class PolicyDecision:
 _WINDOWS_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
     f"{prefix}{number}" for prefix in ("COM", "LPT") for number in range(1, 10)
 }
+_WINDOWS_DEVICE_DIGITS = str.maketrans("\u00b9\u00b2\u00b3", "123")
 
 
 def validate_workspace_path(path: str) -> bool:
@@ -26,7 +27,9 @@ def validate_workspace_path(path: str) -> bool:
     windows = PureWindowsPath(path)
     # An editor can interpret backslashes and drive-relative paths on Windows.
     nonportable_component = any(
-        part.endswith((".", " ")) or part.split(".", 1)[0].rstrip(" ").upper() in _WINDOWS_DEVICE_NAMES
+        part.endswith((".", " ")) or part.split(".", 1)[0].rstrip(" ").upper().translate(
+            _WINDOWS_DEVICE_DIGITS
+        ) in _WINDOWS_DEVICE_NAMES
         for part in parsed.parts
     )
     if (
