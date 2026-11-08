@@ -230,6 +230,21 @@ def test_public_exports_redact_url_userinfo_credentials(tmp_path: Path):
     assert redact_secrets('Contact ops@example.invalid') == 'Contact ops@example.invalid'
 
 
+@pytest.mark.parametrize('url, expected, secret', (
+    ('https://alice@team:FAKEPASS123@api.example.invalid/v1',
+     'https://[REDACTED]@api.example.invalid/v1', 'FAKEPASS123'),
+    ('postgresql://tenant@org:FAKEDB456@db.example.invalid/app',
+     'postgresql://[REDACTED]@db.example.invalid/app', 'FAKEDB456'),
+))
+def test_public_exports_redact_multiple_at_signs_in_url_userinfo(tmp_path: Path, url: str, expected: str, secret: str):
+    assert redact_secrets(url) == expected
+    export_run(tmp_path, {'note': url}, [replace(record(), infrastructure_error=url)], [{'output': url}])
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / filename).read_text(encoding='utf-8')
+        assert secret not in exported, filename
+        assert expected in exported, filename
+
+
 def test_public_exports_redact_signed_url_query_credentials(tmp_path: Path):
     cases = (
         ('https://r2.example.invalid/object?X-Amz-Credential=FAKE_AWS_CRED_123'
