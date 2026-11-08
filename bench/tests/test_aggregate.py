@@ -90,3 +90,19 @@ def test_aggregate_excludes_invalid_latency_values_from_public_summary():
     assert summary['by_category']['implementation']['baseline']['median_latency_seconds'] == 2.0
     # The exported summary must remain strict JSON, not nonstandard NaN/Infinity values.
     json.dumps(summary, allow_nan=False)
+
+
+def test_aggregate_does_not_underreport_missing_token_usage_as_zero():
+    valid = rec('baseline', True)
+    unavailable = replace(rec('baseline', False), input_tokens=None, output_tokens=None)
+    partial = replace(rec('godprompt', True), input_tokens=None, output_tokens=0)
+    infrastructure = replace(rec('godprompt', False, infra='failed'), input_tokens=None, output_tokens=None)
+
+    summary = aggregate([valid, unavailable, partial, infrastructure])
+    assert summary['baseline']['input_tokens'] is None
+    assert summary['baseline']['output_tokens'] is None
+    assert summary['godprompt']['input_tokens'] is None
+    assert summary['godprompt']['output_tokens'] == 0
+    assert summary['by_category']['implementation']['baseline']['input_tokens'] is None
+    assert aggregate([replace(valid, input_tokens=0, output_tokens=0)])['baseline']['input_tokens'] == 0
+    assert aggregate([])['baseline']['input_tokens'] is None

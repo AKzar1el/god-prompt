@@ -103,16 +103,19 @@ def _usage_totals(model_usage: Mapping[str, Any] | None) -> tuple[int | None, in
         return None, None
     input_tokens = 0
     output_tokens = 0
+    input_observed = True
+    output_observed = True
+    fields = ("input_tokens", "input_tokens_cache_read", "input_tokens_cache_write", "output_tokens")
     for usage in model_usage.values():
-        def count(field: str) -> int:
-            value = usage.get(field) if isinstance(usage, Mapping) else getattr(usage, field, None)
-            return _token_count(value, field)
-
-        input_tokens += count("input_tokens")
-        input_tokens += count("input_tokens_cache_read")
-        input_tokens += count("input_tokens_cache_write")
-        output_tokens += count("output_tokens")
-    return input_tokens, output_tokens
+        counts = {
+            field: usage.get(field) if isinstance(usage, Mapping) else getattr(usage, field, None)
+            for field in fields
+        }
+        input_observed &= any(counts[field] is not None for field in fields[:3])
+        output_observed &= counts["output_tokens"] is not None
+        input_tokens += sum(_token_count(counts[field], field) for field in fields[:3])
+        output_tokens += _token_count(counts["output_tokens"], "output_tokens")
+    return input_tokens if input_observed else None, output_tokens if output_observed else None
 
 
 def _score_count(value: Any, field: str) -> int:

@@ -43,6 +43,7 @@ Secondary metrics are reported separately rather than collapsed into a weighted 
 - completion state and infrastructure failures.
 
 Infrastructure failures are reported separately from model failures. Aggregate output always includes raw counts and denominators.
+Token totals are `null` when provider usage is unavailable or incomplete, rather than treating unreported tokens as zero. Explicitly reported zero-token usage remains zero.
 
 ## Isolation
 

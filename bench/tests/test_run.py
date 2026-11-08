@@ -418,6 +418,26 @@ def test_usage_totals_counts_serialized_model_usage_and_rejects_invalid_values()
         _usage_totals({'serialized-model': usage})
 
 
+@pytest.mark.parametrize('usage', [
+    {'provider_metadata': 'no usage reported'},
+    {'input_tokens': None, 'output_tokens': None},
+    SimpleNamespace(model='unavailable'),
+])
+def test_usage_totals_does_not_report_unknown_usage_as_zero(usage):
+    from godprompt_bench.run import _usage_totals
+
+    assert _usage_totals({'synthetic-model': usage}) == (None, None)
+    assert _usage_totals({'synthetic-model': {'input_tokens': 0, 'output_tokens': 0}}) == (0, 0)
+
+
+def test_usage_totals_preserves_partially_available_and_multimodel_usage():
+    from godprompt_bench.run import _usage_totals
+
+    assert _usage_totals({'m': {'input_tokens': 3}}) == (3, None)
+    assert _usage_totals({'m': {'output_tokens': 5}}) == (None, 5)
+    assert _usage_totals({'m': {'input_tokens': 3, 'output_tokens': 5}, 'n': {}}) == (None, None)
+
+
 def test_public_trajectory_excludes_system_and_reasoning_content():
     messages = [
         SimpleNamespace(role='system', model_dump=lambda **kwargs: {'role': 'system', 'content': 'secret prompt'}),
