@@ -102,6 +102,22 @@ def test_shell_policy_rejects_windows_network_executables_without_execution():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_windows_absolute_launchers_without_execution():
+    # Only classify argv; never start these Windows host executables.
+    for command in (
+        [r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe',
+         '-NoProfile', '-Command', 'Write-Output', 'marker'],
+        [r'C:\Tools\curl.exe', 'https://example.invalid'],
+        [r'C:\Tools\git.exe', 'fetch', 'origin'],
+        [r'\\server\share\cmd.exe', 'echo', 'marker'],
+        r'echo ok && "C:\Tools\curl.exe" https://example.invalid',
+    ):
+        assert classify_shell_command(command).reason == 'absolute-path', command
+
+    # A relative Windows-style path remains ordinary local data.
+    assert classify_shell_command(['python3', 'test_visible.py', r'fixtures\visible.txt']).allowed
+
+
 def test_shell_policy_rejects_paths_hidden_in_option_assignments():
     # Classification only: these GNU options would write outside the workspace.
     for command, reason in (
@@ -440,6 +456,40 @@ def test_shell_policy_rejects_package_manager_config_mutations():
         assert classify_shell_command(command).reason == 'network-command', command
 
     for command in ('pip config list', 'pip config get global.index-url', 'npm config get registry'):
+        assert classify_shell_command(command).allowed, command
+
+
+def test_shell_policy_rejects_windows_package_manager_shims_without_execution():
+    # Windows resolves PATHEXT wrappers and executable names case-insensitively.
+    # Only classify these strings; never invoke the package managers.
+    for command in (
+        'npm.cmd install demo-package',
+        'NPM.EXE ci',
+        'pnpm.CMD dlx demo-tool',
+        'yarn.BAT add demo-package',
+        'npx.cmd --yes demo-tool',
+        'corepack.cmd prepare pnpm@latest',
+        'pip3.12.exe wheel demo-package',
+        'PIP.EXE config set global.index-url value',
+        'uv.EXE pip install demo-package',
+        'env -C fixtures npm.cmd install demo-package',
+        'command NPM.CMD install demo-package',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+
+    for argv in (
+        ['npm.cmd', 'install', 'demo-package'],
+        ['env', 'pip3.12.exe', 'download', 'demo-package'],
+    ):
+        assert classify_shell_command(argv).reason == 'network-command', argv
+
+    # Absolute Windows launchers are rejected before package classification.
+    assert classify_shell_command(
+        ['C:\\tools\\NPM.CMD', 'install', 'demo-package']
+    ).reason == 'absolute-path'
+
+    for command in ('npm.cmd test', 'pip.EXE list', 'pnpm.cmd test',
+                    'echo npm.cmd install', 'python3 test_visible.py npm.cmd install'):
         assert classify_shell_command(command).allowed, command
 
 

@@ -8,12 +8,13 @@ from dataclasses import asdict
 from math import isfinite
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import unquote
 
 from .aggregate import aggregate
 from .models import SampleRecord
 
 _SECRET_KEY = re.compile(
-    r"(?:api[_-]?(?:key|token)|authorization|access[_-]?key[_-]?id|access[_-]?token|refresh[_-]?token|"
+    r"(?:api[ _-]?(?:key|token)|authorization|access[_-]?key[_-]?id|access[_-]?token|refresh[_-]?token|"
     r"session[_-]?token|id[_-]?token|(?:auth|oauth|client)[_-]?token|private[_-]?key|secret|password|^token$|"
     r"^(?:cookie|set[_-]?cookie|sig|signature|awsaccesskeyid|googleaccessid|"
     r"x-amz-(?:signature|credential|security-token)|"
@@ -21,7 +22,7 @@ _SECRET_KEY = re.compile(
     re.IGNORECASE,
 )
 _INLINE_CREDENTIAL = re.compile(
-    r"(?i)(\b(?:[a-z][a-z0-9]*[_-])*(?:api[_-]?(?:key|token)|authorization|"
+    r"(?i)(\b(?:[a-z][a-z0-9]*[_-])*(?:api[ _-]?(?:key|token)|authorization|"
     r"access[_-]?key[_-]?id|access[_-]?token|refresh[_-]?token|secret[_-]access[_-]?key|"
     r"secret[_-]?key|github[_-]?token|(?:auth|oauth|client)[_-]?token|token|secret|password)\s*[:=]\s*)"
     r"(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;&]+)"
@@ -51,11 +52,22 @@ _SIGNED_URL_QUERY = re.compile(
     r"x-goog-(?:credential|signature)|awsaccesskeyid|googleaccessid|signature|sig)=)"
     r"[^\s&#\"'<>]+"
 )
+_ENCODED_QUERY_KEY_VALUE = re.compile(
+    r"([?&])([^?&=\s#\"'<>]*%[0-9a-fA-F]{2}[^?&=\s#\"'<>]*)(=)([^\s&#\"'<>]+)"
+)
+
+
+def _redact_encoded_query_key(match: re.Match[str]) -> str:
+    # Decode only for classification; preserve the original URL key spelling.
+    if _SECRET_KEY.search(unquote(match.group(2))):
+        return f"{match.group(1)}{match.group(2)}{match.group(3)}[REDACTED]"
+    return match.group(0)
 
 
 def _redact_text(text: str) -> str:
     """Redact credential-shaped substrings even inside otherwise public text."""
     text = _URL_USERINFO.sub(lambda match: f"{match.group(1)}[REDACTED]@", text)
+    text = _ENCODED_QUERY_KEY_VALUE.sub(_redact_encoded_query_key, text)
     # Presigned storage URLs carry credentials in query parameter values.
     text = _SIGNED_URL_QUERY.sub(lambda match: f"{match.group(1)}[REDACTED]", text)
     # Authentication schemes can carry comma-separated signed credentials;
