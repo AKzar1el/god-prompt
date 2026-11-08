@@ -479,10 +479,14 @@ def test_shell_policy_rejects_windows_package_manager_shims_without_execution():
 
     for argv in (
         ['npm.cmd', 'install', 'demo-package'],
-        ['C:\\tools\\NPM.CMD', 'install', 'demo-package'],
         ['env', 'pip3.12.exe', 'download', 'demo-package'],
     ):
         assert classify_shell_command(argv).reason == 'network-command', argv
+
+    # Absolute Windows launchers are rejected before package classification.
+    assert classify_shell_command(
+        ['C:\\tools\\NPM.CMD', 'install', 'demo-package']
+    ).reason == 'absolute-path'
 
     for command in ('npm.cmd test', 'pip.EXE list', 'pnpm.cmd test',
                     'echo npm.cmd install', 'python3 test_visible.py npm.cmd install'):
