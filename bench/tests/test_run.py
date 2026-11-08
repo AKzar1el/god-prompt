@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -9,6 +10,25 @@ from godprompt_bench.run import execute_benchmark, load_profile, public_trajecto
 from godprompt_bench.models import RunProfile
 
 ROOT = Path(__file__).parents[1]
+
+
+@pytest.mark.parametrize('nested', (False, True))
+def test_inspect_raw_log_directory_rejects_symlinked_roots_before_writing(tmp_path: Path, nested: bool):
+    # Only a disposable temp directory is involved; no provider or Inspect eval runs.
+    from godprompt_bench.run import _create_raw_log_directory
+
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    link = tmp_path / 'linked-results'
+    try:
+        os.symlink(outside, link, target_is_directory=True)
+    except OSError:
+        pytest.skip('directory symlink creation unavailable on this host')
+
+    raw_dir = (link / 'batch' if nested else link) / 'inspect-logs'
+    with pytest.raises(ValueError, match='linked raw log directory'):
+        _create_raw_log_directory(raw_dir)
+    assert list(outside.iterdir()) == []
 
 
 def test_inspect_log_condition_rejects_conflicting_or_ambiguous_identity():
