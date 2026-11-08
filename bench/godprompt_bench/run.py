@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import platform
+import re
 import stat
 import subprocess
 import uuid
@@ -229,7 +230,7 @@ _PRIVATE_REASONING_FIELDS = {
 
 
 def _private_reasoning_field(value: Any) -> bool:
-    return isinstance(value, str) and value.casefold().replace("_", "").replace("-", "") in _PRIVATE_REASONING_FIELDS
+    return isinstance(value, str) and re.sub(r"[\s_.-]+", "", value.casefold()) in _PRIVATE_REASONING_FIELDS
 
 
 def _private_reasoning_block(value: Any) -> bool:
@@ -237,7 +238,7 @@ def _private_reasoning_block(value: Any) -> bool:
         return False
     channel = value.get("channel")
     return _private_reasoning_field(value.get("type")) or (
-        isinstance(channel, str) and channel.casefold() in {"analysis", "reasoning", "thinking"}
+        isinstance(channel, str) and channel.strip().casefold() in {"analysis", "reasoning", "thinking"}
     )
 
 
