@@ -103,15 +103,32 @@ def test_sample_coverage_rejects_missing_duplicate_and_extra_samples():
     expected = [(condition, task_id, epoch)
                 for condition in ('baseline', 'godprompt')
                 for task_id in profile.task_ids for epoch in (1, 2)]
-    records = [SimpleNamespace(condition=c, task_id=t, epoch=e) for c, t, e in expected]
-    validate_sample_coverage(profile, records)
+    categories = {'task-a': 'implementation', 'task-b': 'debugging'}
+    records = [SimpleNamespace(condition=c, task_id=t, epoch=e, category=categories[t])
+               for c, t, e in expected]
+    validate_sample_coverage(profile, records, categories)
 
     with pytest.raises(ValueError, match='missing.*godprompt.*task-b'):
-        validate_sample_coverage(profile, records[:-1])
+        validate_sample_coverage(profile, records[:-1], categories)
     with pytest.raises(ValueError, match='duplicate.*baseline.*task-a'):
-        validate_sample_coverage(profile, records + [records[0]])
+        validate_sample_coverage(profile, records + [records[0]], categories)
     with pytest.raises(ValueError, match='unexpected.*baseline.*task-a'):
-        validate_sample_coverage(profile, records + [SimpleNamespace(condition='baseline', task_id='task-a', epoch=3)])
+        validate_sample_coverage(profile, records + [SimpleNamespace(
+            condition='baseline', task_id='task-a', epoch=3, category='implementation')], categories)
+
+
+def test_sample_coverage_rejects_misattributed_categories():
+    profile = RunProfile(name='tiny', task_ids=('task-a', 'task-b'), epochs=1,
+                         max_messages=10, max_time_seconds=30, max_output_tokens=1000)
+    categories = {'task-a': 'implementation', 'task-b': 'debugging'}
+    records = [SimpleNamespace(condition=c, task_id=t, epoch=1, category=categories[t])
+               for c in ('baseline', 'godprompt') for t in profile.task_ids]
+    validate_sample_coverage(profile, records, categories)
+
+    # A swapped but valid category would otherwise silently corrupt by_category.
+    records[0].category = 'debugging'
+    with pytest.raises(ValueError, match='category.*task-a'):
+        validate_sample_coverage(profile, records, categories)
 
 
 def test_execute_benchmark_rejects_incomplete_samples_before_export(monkeypatch, tmp_path):
@@ -125,6 +142,29 @@ def test_execute_benchmark_rejects_incomplete_samples_before_export(monkeypatch,
     monkeypatch.setattr(inspect_ai, 'eval', lambda *args, **kwargs: logs)
     monkeypatch.setattr(run_module, 'export_run', lambda *args, **kwargs: pytest.fail('must not publish incomplete benchmark'))
     with pytest.raises(ValueError, match='missing'):
+        execute_benchmark(ROOT.parent, ROOT, profile, model='mockllm/model', output_dir=tmp_path)
+
+
+def test_execute_benchmark_rejects_wrong_category_before_export(monkeypatch, tmp_path):
+    import inspect_ai
+    import godprompt_bench.run as run_module
+    from godprompt_bench.corpus import load_manifest
+
+    profile = load_profile(ROOT / 'configs' / 'smoke.json')
+    canonical = {spec.id: spec.category for spec in load_manifest(ROOT / 'tasks' / 'manifest.json')}
+    logs = [SimpleNamespace(
+        metadata={'condition': condition}, eval=SimpleNamespace(model='mockllm/model'),
+        samples=[SimpleNamespace(id=task_id, epoch=1) for task_id in profile.task_ids],
+    ) for condition in ('baseline', 'godprompt')]
+    monkeypatch.setattr(run_module, 'build_task', lambda *args, **kwargs: object())
+    monkeypatch.setattr(inspect_ai, 'eval', lambda *args, **kwargs: logs)
+    monkeypatch.setattr(run_module, 'sample_record', lambda sample, condition: SimpleNamespace(
+        condition=condition, task_id=sample.id, epoch=sample.epoch,
+        category='debugging' if sample.id == profile.task_ids[0] else canonical[sample.id],
+    ))
+    monkeypatch.setattr(run_module, 'public_trajectory', lambda *args: {})
+    monkeypatch.setattr(run_module, 'export_run', lambda *args: pytest.fail('must not export misattributed categories'))
+    with pytest.raises(ValueError, match='category.*impl-py-slugify'):
         execute_benchmark(ROOT.parent, ROOT, profile, model='mockllm/model', output_dir=tmp_path)
 
 
