@@ -39,6 +39,29 @@ def test_export_writes_exact_public_artifact_set_and_redacts_secrets(tmp_path: P
     assert summary['baseline']['passed'] == 1
 
 
+def test_public_json_artifacts_never_emit_nonstandard_nan_or_infinity(tmp_path: Path):
+    # Provider/tool telemetry can carry nonfinite floats, but public JSON is strict.
+    export_run(
+        tmp_path,
+        {'latency': float('nan'), 'nested': {'durations': [float('inf'), 1.25]}},
+        [record()],
+        [{'events': [{'duration': float('-inf')}, {'duration': 0.0}]}],
+    )
+
+    def reject_nonstandard(value: str):
+        raise ValueError(f'nonstandard JSON number: {value}')
+
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'),
+                          parse_constant=reject_nonstandard)
+    trajectory = json.loads((tmp_path / 'trajectories.jsonl').read_text(encoding='utf-8'),
+                            parse_constant=reject_nonstandard)
+    json.loads((tmp_path / 'summary.json').read_text(encoding='utf-8'),
+               parse_constant=reject_nonstandard)
+    assert manifest['latency'] is None
+    assert manifest['nested']['durations'] == [None, 1.25]
+    assert trajectory['events'] == [{'duration': None}, {'duration': 0.0}]
+
+
 def test_export_overwrites_only_known_files_not_arbitrary_output(tmp_path: Path):
     marker = tmp_path / 'keep.txt'
     marker.write_text('keep')
