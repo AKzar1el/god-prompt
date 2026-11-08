@@ -4,6 +4,7 @@ import csv
 import json
 import re
 from dataclasses import asdict
+from math import isfinite
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -73,6 +74,9 @@ def _redact_text(text: str) -> str:
 def redact_secrets(value: Any) -> Any:
     if isinstance(value, str):
         return _redact_text(value)
+    if isinstance(value, float) and not isfinite(value):
+        # Nonfinite provider diagnostics must not become invalid public JSON.
+        return None
     if isinstance(value, dict):
         return {
             (_redact_text(key) if isinstance(key, str) else key):
@@ -87,7 +91,7 @@ def redact_secrets(value: Any) -> Any:
 
 
 def _write_json(path: Path, payload: Any) -> None:
-    path.write_text(json.dumps(redact_secrets(payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(redact_secrets(payload), indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
 
 
 def _spreadsheet_safe_cell(value: Any) -> Any:
@@ -129,4 +133,4 @@ def export_run(
 
     with (output_dir / "trajectories.jsonl").open("w", encoding="utf-8") as handle:
         for trajectory in trajectories_list:
-            handle.write(json.dumps(redact_secrets(trajectory), sort_keys=True) + "\n")
+            handle.write(json.dumps(redact_secrets(trajectory), sort_keys=True, allow_nan=False) + "\n")
