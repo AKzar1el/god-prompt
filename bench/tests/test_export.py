@@ -193,6 +193,24 @@ def test_public_artifacts_redact_credentials_embedded_in_text_values(tmp_path: P
     assert 'failed with token=' in (tmp_path / 'scores.csv').read_text(encoding='utf-8')
 
 
+def test_public_exports_redact_credentials_in_json_encoded_diagnostics(tmp_path: Path):
+    # Diagnostics often contain JSON as text, sometimes escaped one layer deeper.
+    secret = 'SYNTHETIC_JSON_SECRET_EXAMPLE_12345'
+    diagnostic = json.dumps({'api_key': secret, 'detail': 'safe'})
+    escaped = json.dumps(diagnostic)
+    export_run(
+        tmp_path,
+        {'diagnostic': diagnostic, 'escaped': escaped},
+        [replace(record(), infrastructure_error=diagnostic)],
+        [{'output': escaped}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        assert secret not in (tmp_path / name).read_text(encoding='utf-8'), name
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert json.loads(manifest['diagnostic']) == {'api_key': '[REDACTED]', 'detail': 'safe'}
+    assert json.loads(json.loads(manifest['escaped'])) == {'api_key': '[REDACTED]', 'detail': 'safe'}
+
+
 def test_public_exports_redact_short_bearer_credentials(tmp_path: Path):
     # Bearer tokens need not be eight characters long to be credentials.
     synthetic_token = 'abc123'
@@ -581,3 +599,27 @@ def test_public_exports_redact_camel_case_auth_tokens_in_text_and_metadata(tmp_p
     assert manifest['authToken'] == '[REDACTED]'
     assert manifest['oauthToken'] == '[REDACTED]'
     assert manifest['token_count'] == 3
+
+
+def test_public_exports_redact_inline_secret_aliases_without_masking_counts(tmp_path: Path):
+    secrets = ('FAKE_CLIENT_SECRET_123', 'FAKE_API_SECRET_456', 'FAKE_ACCESS_KEY_789')
+    note = (
+        f'clientSecret={secrets[0]} apiSecret: {secrets[1]} '
+        f'accessKey="{secrets[2]}" accessKeyCount=3'
+    )
+    export_run(
+        tmp_path,
+        {'note': note, 'clientSecret': secrets[0], 'accessKey': secrets[2],
+         'accessKeyIdentifier': secrets[2], 'accessKeyCount': 3},
+        [replace(record(), infrastructure_error=note)],
+        [{'output': note}],
+    )
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / filename).read_text(encoding='utf-8')
+        assert all(secret not in exported for secret in secrets), filename
+        assert 'accessKeyCount=3' in exported
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['clientSecret'] == '[REDACTED]'
+    assert manifest['accessKey'] == '[REDACTED]'
+    assert manifest['accessKeyIdentifier'] == '[REDACTED]'
+    assert manifest['accessKeyCount'] == 3

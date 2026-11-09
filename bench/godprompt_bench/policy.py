@@ -283,7 +283,10 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                for token in executable_tokens):
             return PolicyDecision(False, "dynamic-env-command")
 
-    inline_interpreters = {"python", "python3", "node", "nodejs", "perl", "ruby", "php"}
+    inline_interpreters = {
+        "python", "python3", "py", "pyw", "pythonw", "node", "nodejs",
+        "perl", "ruby", "php",
+    }
     inline_flags = {"-c", "-e", "--eval", "--execute"}
     for index, token in enumerate(executable_tokens):
         # Windows can launch the same language runtime with a case-insensitive
@@ -292,14 +295,14 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
         # Common version-suffixed interpreter binaries can run the same inline
         # payloads as their unversioned names (e.g. python3.12 -c).
         if executable_name in inline_interpreters or re.fullmatch(
-            r"(?:python[23]|pypy[23]?|perl5|ruby[23]|php[578])(?:\.\d+)*",
+            r"(?:python[23]|pythonw[23]?|pypy[23]?|perl5|ruby[23]|php[578])(?:\.\d+)*",
             executable_name,
         ):
             is_node = executable_name in {"node", "nodejs"}
             is_perl = executable_name.startswith("perl")
             is_php = executable_name.startswith("php")
             is_ruby = executable_name.startswith("ruby")
-            is_python = executable_name.startswith(("python", "pypy"))
+            is_python = executable_name.startswith(("python", "pypy")) or executable_name in {"py", "pyw"}
             # Examine the full interpreter option prefix, not only four tokens.
             # Stop at a script operand so ordinary script arguments remain data.
             consumes_value = False
@@ -332,12 +335,22 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                         "pip", "pipx", "poetry", "uv", "ensurepip", "pdm", "hatch", "build"
                     } or module == "http.server" or module.startswith("http.server.")):
                         return PolicyDecision(False, "network-command")
+                # Short interpreter switches can be bundled: -Ic, -0e, -we,
+                # and -nr still invoke inline code. Avoid operand-taking -X,
+                # -W, -I (Perl/Ruby), and -d (PHP) to preserve ordinary scripts.
+                compact_inline = (
+                    (is_python and re.match(r"^-[bBdEhiIOPqRsSuUvVx]+c", option))
+                    or (is_perl and re.match(r"^-(?:[0-7]+|[awntpT]+)[eE]", option))
+                    or (is_ruby and re.match(r"^-[aCdlnpswUv]+e", option))
+                    or (is_php and re.match(r"^-[nv]+r", option))
+                )
                 if (
                     option in inline_flags
                     or option.startswith(("--eval=", "--execute=", "-c", "-e"))
                     or (is_node and (option.startswith("-p") or option == "--print" or option.startswith("--print=")))
                     or (is_perl and option.startswith("-E"))
                     or (is_php and option.startswith("-r"))
+                    or compact_inline
                 ):
                     return PolicyDecision(False, "inline-interpreter")
                 if (
@@ -350,9 +363,9 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                     break
 
     banned_network = {"curl", "wget", "ssh", "scp", "nc", "ncat", "telnet"}
-    # Windows resolves these network binaries case-insensitively with .exe suffixes.
+    # Match Windows executable shims (.exe/.cmd/.bat/.com) as well as bare names.
     command_names = {
-        PurePosixPath(token).name.casefold().removesuffix(".exe")
+        _package_executable_name(token)
         for token in executable_tokens if token not in {"&&", "||", ";", "|"}
     }
     if command_names & banned_network or _runs_package_network_command(executable_tokens):

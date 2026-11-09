@@ -127,6 +127,27 @@ def test_shell_policy_rejects_windows_network_executables_without_execution():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_windows_network_command_shims_without_execution():
+    # Windows may run .cmd, .bat and .com launchers as programs too.
+    for command in (
+        'curl.cmd https://example.invalid',
+        'WGET.BAT https://example.invalid',
+        'ssh.com example.invalid',
+        'env ncat.cmd example.invalid',
+        'SCP.BAT local.txt remote.invalid:target',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+
+    assert classify_shell_command(['CURL.CMD', 'https://example.invalid']).reason == 'network-command'
+    for command in (
+        'echo curl.cmd',
+        'printf %s wget.bat',
+        'python3 test_visible.py --tool=curl.cmd',
+        'curl-helper.cmd test.txt',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_windows_absolute_launchers_without_execution():
     # Only classify argv; never start these Windows host executables.
     for command in (
@@ -358,6 +379,32 @@ def test_shell_policy_rejects_windows_exe_interpreter_aliases_without_execution(
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_windows_python_launchers_without_execution():
+    # Classifier-only inputs: py/pyw and pythonw execute inline code on Windows.
+    for command in (
+        'py -c pass',
+        'py -3 -c pass',
+        'py.exe -3.12 -Ic pass',
+        'PYW.EXE -c pass',
+        'pythonw -c pass',
+        'pythonw.exe -Bc pass',
+        'pythonw3.12.exe -c pass',
+        'env py -c pass',
+    ):
+        assert classify_shell_command(command).reason == 'inline-interpreter', command
+
+    for command in ('py -m pip list', 'py.exe -3 -m pip install demo',
+                    'pythonw.exe -m http.server'):
+        assert classify_shell_command(command).reason == 'network-command', command
+
+    for argv in (['py', '-3', '-c', 'pass'], ['PYTHONW.EXE', '-c', 'pass']):
+        assert classify_shell_command(argv).reason == 'inline-interpreter', argv
+
+    for command in ('py -3 test_visible.py', 'pyw script.py',
+                    'pythonw.exe script.py', 'echo py.exe'):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_inline_code_after_interpreter_option_operands():
     # These are data-only classifier inputs; no code payload is executed.
     for command in (
@@ -382,6 +429,43 @@ def test_shell_policy_rejects_inline_code_after_interpreter_option_operands():
         'php -d display_errors=1 script.php',
         'ruby -I lib script.rb',
         'perl -I lib script.pl',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
+def test_shell_policy_rejects_compact_inline_interpreter_flags_without_execution():
+    # Only classify strings/argv. Combined options can hide the inline-code flag.
+    for command in (
+        'python -Ic pass',
+        'python3 -Bc pass',
+        'python3.12 -Sc pass',
+        'python3 -OOc pass',
+        'env python3 -Ic pass',
+        'echo ok && python3 -Ic pass',
+        'perl -0e pass',
+        'perl5.36 -we pass',
+        'ruby -we pass',
+        'php -nr pass',
+    ):
+        assert classify_shell_command(command).reason == 'inline-interpreter', command
+
+    for argv in (
+        ['python3', '-Ic', 'pass'],
+        ['perl', '-0e', 'pass'],
+    ):
+        assert classify_shell_command(argv).reason == 'inline-interpreter', argv
+
+    # Ordinary script invocations and inline-looking script arguments stay valid.
+    for command in (
+        'python3 -I -m pytest -q',
+        'python3 -B test_visible.py',
+        'python3 -X dev script.py',
+        'python3 -W ignore script.py',
+        'python3 script.py -Ic',
+        'perl -w test_visible.pl',
+        'perl -Ilibe script.pl',
+        'ruby -w script.rb',
+        'php -n script.php',
     ):
         assert classify_shell_command(command).allowed, command
 

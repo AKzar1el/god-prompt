@@ -16,28 +16,62 @@ def _complete_token_total(counts: Iterable[int | None]) -> int | None:
     total = 0
     seen = False
     for count in counts:
-        if count is None:
+        # Provider usage is untrusted: a negative, fractional or non-finite
+        # value must not reduce the reported total or escape into JSON.
+        if type(count) is not int or count < 0:
             return None
         total += count
         seen = True
     return total if seen else None
 
 
+def _nonnegative_counter_total(counts: Iterable[int]) -> int | None:
+    total = 0
+    for count in counts:
+        # An unvalidated historical row must not corrupt a reported total.
+        if type(count) is not int or count < 0:
+            return None
+        total += count
+    return total
+
+
+def _historical_flag(value: object, field: str) -> bool:
+    # Imported rows can bypass the strict sample_record conversion. Do not
+    # let truthy strings, NaN or non-binary numbers alter published rates.
+    if type(value) is bool:
+        return value
+    if type(value) is int and value in (0, 1):
+        return bool(value)
+    if type(value) is float and isfinite(value) and value in (0.0, 1.0):
+        return bool(value)
+    raise ValueError(f"invalid historical benchmark flag: {field}")
+
+
 def _summarize(records: list[SampleRecord]) -> dict[str, int | float | None]:
     model_records = [record for record in records if record.infrastructure_error is None]
-    latencies = [
-        record.latency_seconds for record in model_records
-        if record.latency_seconds is not None
-        and isfinite(record.latency_seconds)
-        and record.latency_seconds >= 0
-    ]
-    # Correct historic records whose stored outcome flags predate scope-aware scoring.
-    passed = sum(record.passed and not record.scope_violation for record in model_records)
-    false_completions = sum(
-        record.completion_status == "complete" and (not record.passed or record.scope_violation)
+    outcomes = [
+        (record, _historical_flag(record.passed, "passed"),
+         _historical_flag(record.scope_violation, "scope_violation"))
         for record in model_records
+    ]
+    latencies: list[float] = []
+    for record in model_records:
+        value = record.latency_seconds
+        if type(value) not in (int, float):
+            continue
+        try:
+            seconds = float(value)
+        except OverflowError:
+            continue
+        if isfinite(seconds) and seconds >= 0:
+            latencies.append(seconds)
+    # Correct historic records whose stored outcome flags predate scope-aware scoring.
+    passed = sum(passed and not scope for _, passed, scope in outcomes)
+    false_completions = sum(
+        record.completion_status == "complete" and (not passed or scope)
+        for record, passed, scope in outcomes
     )
-    scope_violations = sum(record.scope_violation for record in model_records)
+    scope_violations = sum(scope for _, _, scope in outcomes)
     return {
         "samples": len(records),
         "model_samples": len(model_records),
@@ -48,10 +82,10 @@ def _summarize(records: list[SampleRecord]) -> dict[str, int | float | None]:
         "false_completion_rate": _rate(false_completions, len(model_records)),
         "scope_violations": scope_violations,
         "scope_violation_rate": _rate(scope_violations, len(model_records)),
-        "tool_misuse_count": sum(record.tool_misuse_count for record in model_records),
-        "verification_attempts": sum(record.verification_attempts for record in model_records),
-        "failed_tool_calls": sum(record.failed_tool_calls for record in model_records),
-        "retries": sum(record.retries for record in model_records),
+        "tool_misuse_count": _nonnegative_counter_total(record.tool_misuse_count for record in model_records),
+        "verification_attempts": _nonnegative_counter_total(record.verification_attempts for record in model_records),
+        "failed_tool_calls": _nonnegative_counter_total(record.failed_tool_calls for record in model_records),
+        "retries": _nonnegative_counter_total(record.retries for record in model_records),
         "input_tokens": _complete_token_total(record.input_tokens for record in model_records),
         "output_tokens": _complete_token_total(record.output_tokens for record in model_records),
         "median_latency_seconds": median(latencies) if latencies else None,

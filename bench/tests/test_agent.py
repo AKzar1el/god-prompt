@@ -23,6 +23,13 @@ def test_unknown_condition_is_rejected(tmp_path: Path):
         condition_prompt('other', tmp_path)
 
 
+@pytest.mark.parametrize('content', ['', '   \n\t  '])
+def test_empty_godprompt_file_cannot_silently_run_treatment_as_scaffold(tmp_path: Path, content: str):
+    (tmp_path / 'GodPrompt.md').write_text(content, encoding='utf-8')
+    with pytest.raises(ValueError, match='GodPrompt.md.*empty'):
+        condition_prompt('godprompt', tmp_path)
+
+
 def test_fixture_bundle_keeps_hidden_verifier_out_of_model_files():
     root = Path(__file__).parents[1]
     bundle = load_fixture_bundle(root / 'tasks' / 'impl-py-slugify' / 'fixture.json')
