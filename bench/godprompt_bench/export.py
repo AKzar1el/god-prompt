@@ -53,7 +53,7 @@ _SIGNED_URL_QUERY = re.compile(
     r"[^\s&#\"'<>]+"
 )
 _ENCODED_QUERY_KEY_VALUE = re.compile(
-    r"([?&])([^?&=\s#\"'<>]*%[0-9a-fA-F]{2}[^?&=\s#\"'<>]*)(=)([^\s&#\"'<>]+)"
+    r"(&amp;|[?&])([^?&=\s#\"'<>]*%[0-9a-fA-F]{2}[^?&=\s#\"'<>]*)(=)([^\s&#\"'<>]+)"
 )
 _JSON_QUOTED_FIELD = re.compile(
     r'(?P<prefix>(?P<key_quote>\\?")(?P<key>[^"\\\r\n]{1,128})(?P=key_quote)[ \t]*:[ \t]*)'

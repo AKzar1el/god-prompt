@@ -473,6 +473,30 @@ def test_public_exports_redact_html_escaped_signed_url_query(tmp_path: Path):
         assert 'partNumber=1' in exported
 
 
+def test_public_exports_redact_percent_encoded_html_escaped_signed_query(tmp_path: Path):
+    # HTML-escaped separators must not prefix decoded query keys during classification.
+    url = (
+        'https://storage.example.invalid/object?partNumber=7'
+        '&amp;X-Amz%2DSignature=FAKE_HTML_ENCODED_SIG_123'
+        '&amp;X-Goog%2DCredential=FAKE_HTML_ENCODED_CRED_456'
+        '&amp;part%5Fnumber=3'
+    )
+    expected = (
+        'https://storage.example.invalid/object?partNumber=7'
+        '&amp;X-Amz%2DSignature=[REDACTED]'
+        '&amp;X-Goog%2DCredential=[REDACTED]'
+        '&amp;part%5Fnumber=3'
+    )
+    assert redact_secrets(url) == expected
+    export_run(tmp_path, {'note': url},
+               [replace(record(), infrastructure_error=url)],
+               [{'output': url}])
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        assert 'FAKE_HTML_ENCODED_' not in exported, name
+        assert expected in exported, name
+
+
 def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: Path):
     # All values are made-up placeholders, not credentials; plain text must still be sanitized.
     entries = (
