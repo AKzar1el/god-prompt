@@ -386,6 +386,43 @@ def test_shell_policy_rejects_inline_code_after_interpreter_option_operands():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_compact_inline_interpreter_flags_without_execution():
+    # Only classify strings/argv. Combined options can hide the inline-code flag.
+    for command in (
+        'python -Ic pass',
+        'python3 -Bc pass',
+        'python3.12 -Sc pass',
+        'python3 -OOc pass',
+        'env python3 -Ic pass',
+        'echo ok && python3 -Ic pass',
+        'perl -0e pass',
+        'perl5.36 -we pass',
+        'ruby -we pass',
+        'php -nr pass',
+    ):
+        assert classify_shell_command(command).reason == 'inline-interpreter', command
+
+    for argv in (
+        ['python3', '-Ic', 'pass'],
+        ['perl', '-0e', 'pass'],
+    ):
+        assert classify_shell_command(argv).reason == 'inline-interpreter', argv
+
+    # Ordinary script invocations and inline-looking script arguments stay valid.
+    for command in (
+        'python3 -I -m pytest -q',
+        'python3 -B test_visible.py',
+        'python3 -X dev script.py',
+        'python3 -W ignore script.py',
+        'python3 script.py -Ic',
+        'perl -w test_visible.pl',
+        'perl -Ilibe script.pl',
+        'ruby -w script.rb',
+        'php -n script.php',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_python_timeit_module_inline_code():
     # The timeit module evaluates a supplied statement; classify only, never run it.
     for command in (
