@@ -362,7 +362,10 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                 elif not option.startswith("-"):
                     break
 
-    banned_network = {"curl", "wget", "ssh", "scp", "nc", "ncat", "telnet"}
+    banned_network = {
+        "curl", "wget", "ssh", "scp", "sftp", "ftp", "tftp", "rsync",
+        "nc", "ncat", "socat", "telnet",
+    }
     # Match Windows executable shims (.exe/.cmd/.bat/.com) as well as bare names.
     command_names = {
         _package_executable_name(token)
