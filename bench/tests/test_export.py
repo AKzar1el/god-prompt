@@ -583,3 +583,27 @@ def test_public_exports_redact_camel_case_auth_tokens_in_text_and_metadata(tmp_p
     assert manifest['authToken'] == '[REDACTED]'
     assert manifest['oauthToken'] == '[REDACTED]'
     assert manifest['token_count'] == 3
+
+
+def test_public_exports_redact_inline_secret_aliases_without_masking_counts(tmp_path: Path):
+    secrets = ('FAKE_CLIENT_SECRET_123', 'FAKE_API_SECRET_456', 'FAKE_ACCESS_KEY_789')
+    note = (
+        f'clientSecret={secrets[0]} apiSecret: {secrets[1]} '
+        f'accessKey="{secrets[2]}" accessKeyCount=3'
+    )
+    export_run(
+        tmp_path,
+        {'note': note, 'clientSecret': secrets[0], 'accessKey': secrets[2],
+         'accessKeyIdentifier': secrets[2], 'accessKeyCount': 3},
+        [replace(record(), infrastructure_error=note)],
+        [{'output': note}],
+    )
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / filename).read_text(encoding='utf-8')
+        assert all(secret not in exported for secret in secrets), filename
+        assert 'accessKeyCount=3' in exported
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['clientSecret'] == '[REDACTED]'
+    assert manifest['accessKey'] == '[REDACTED]'
+    assert manifest['accessKeyIdentifier'] == '[REDACTED]'
+    assert manifest['accessKeyCount'] == 3
