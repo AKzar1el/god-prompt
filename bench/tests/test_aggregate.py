@@ -127,6 +127,22 @@ def test_aggregate_ignores_malformed_historical_latency_values():
     json.dumps(summary, allow_nan=False)
 
 
+@pytest.mark.parametrize('latencies, expected', [
+    ((1e308, 1e308), 1e308),
+    ((0.0, 1e308), 5e307),
+    ((5e-324, 5e-324), 5e-324),
+])
+def test_aggregate_finite_extreme_latencies_remain_json_serializable(latencies, expected):
+    # Each historical latency is individually finite; averaging the two must
+    # not overflow to Infinity or underflow away a subnormal value.
+    records = [replace(rec('baseline', True), task_id=f'case-{index}', latency_seconds=value)
+               for index, value in enumerate(latencies)]
+    summary = aggregate(records)
+    assert summary['baseline']['median_latency_seconds'] == expected
+    assert summary['by_category']['implementation']['baseline']['median_latency_seconds'] == expected
+    json.dumps(summary, allow_nan=False)
+
+
 def test_aggregate_does_not_underreport_missing_token_usage_as_zero():
     valid = rec('baseline', True)
     unavailable = replace(rec('baseline', False), input_tokens=None, output_tokens=None)

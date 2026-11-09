@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from math import isfinite
-from statistics import median
 from typing import Iterable
 
 from .models import SampleRecord
@@ -10,6 +9,19 @@ from .models import SampleRecord
 
 def _rate(numerator: int, denominator: int) -> float | None:
     return numerator / denominator if denominator else None
+
+
+def _finite_nonnegative_median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    lower, upper = ordered[middle - 1], ordered[middle]
+    # The sum of two finite latencies can overflow even when their median
+    # cannot. The sorted nonnegative difference stays finite instead.
+    return lower + (upper - lower) / 2
 
 
 def _complete_token_total(counts: Iterable[int | None]) -> int | None:
@@ -88,7 +100,7 @@ def _summarize(records: list[SampleRecord]) -> dict[str, int | float | None]:
         "retries": _nonnegative_counter_total(record.retries for record in model_records),
         "input_tokens": _complete_token_total(record.input_tokens for record in model_records),
         "output_tokens": _complete_token_total(record.output_tokens for record in model_records),
-        "median_latency_seconds": median(latencies) if latencies else None,
+        "median_latency_seconds": _finite_nonnegative_median(latencies),
     }
 
 
