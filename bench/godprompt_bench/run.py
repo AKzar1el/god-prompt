@@ -249,8 +249,13 @@ def _private_reasoning_field(value: Any) -> bool:
 def _private_channel(value: Any) -> bool:
     # Preserve the object's original channel, even if model_dump labels it final.
     channel = getattr(value, "value", value)
-    return isinstance(channel, str) and (
-        channel.strip().casefold() == "private" or _private_reasoning_field(channel)
+    # Serialized enum-like channels can use either a value or a name.
+    candidates = (channel.get("value"), channel.get("name")) if isinstance(channel, Mapping) else (channel,)
+    return any(
+        isinstance(candidate, str) and (
+            candidate.strip().casefold() == "private" or _private_reasoning_field(candidate)
+        )
+        for candidate in candidates
     )
 
 
