@@ -73,6 +73,28 @@ def test_legacy_scope_violations_also_count_as_false_completion_claims():
     assert summary['by_category']['implementation']['baseline']['false_completions'] == 1
 
 
+@pytest.mark.parametrize('field', ('passed', 'scope_violation'))
+@pytest.mark.parametrize('invalid', ('false', -1, 2, 0.5, float('nan'), [], None))
+def test_aggregate_rejects_malformed_historical_outcome_flags(field, invalid):
+    # Older/imported SampleRecord objects bypass sample_record's strict flag validation.
+    # Truthy strings and NaN must not inflate pass or scope-violation rates.
+    malformed = replace(rec('baseline', True), **{field: invalid})
+    with pytest.raises(ValueError, match=f'invalid historical benchmark flag: {field}'):
+        aggregate([rec('baseline', True), malformed])
+
+
+def test_aggregate_normalizes_legacy_binary_outcome_flags():
+    records = [
+        replace(rec('baseline', True), passed=1, scope_violation=0),
+        replace(rec('baseline', True), passed=1.0, scope_violation=1.0),
+        replace(rec('baseline', False), passed=0.0, scope_violation=False),
+    ]
+    baseline = aggregate(records)['baseline']
+    assert baseline['passed'] == 1
+    assert baseline['scope_violations'] == 1
+    assert baseline['false_completions'] == 2
+
+
 def test_aggregate_excludes_invalid_latency_values_from_public_summary():
     records = [
         rec('baseline', True, latency=3.0),
