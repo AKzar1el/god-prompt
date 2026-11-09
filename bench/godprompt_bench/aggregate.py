@@ -27,12 +27,17 @@ def _complete_token_total(counts: Iterable[int | None]) -> int | None:
 
 def _summarize(records: list[SampleRecord]) -> dict[str, int | float | None]:
     model_records = [record for record in records if record.infrastructure_error is None]
-    latencies = [
-        record.latency_seconds for record in model_records
-        if record.latency_seconds is not None
-        and isfinite(record.latency_seconds)
-        and record.latency_seconds >= 0
-    ]
+    latencies: list[float] = []
+    for record in model_records:
+        value = record.latency_seconds
+        if type(value) not in (int, float):
+            continue
+        try:
+            seconds = float(value)
+        except OverflowError:
+            continue
+        if isfinite(seconds) and seconds >= 0:
+            latencies.append(seconds)
     # Correct historic records whose stored outcome flags predate scope-aware scoring.
     passed = sum(record.passed and not record.scope_violation for record in model_records)
     false_completions = sum(
