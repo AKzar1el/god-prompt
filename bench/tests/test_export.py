@@ -195,6 +195,28 @@ def test_public_exports_redact_credentials_in_json_encoded_diagnostics(tmp_path:
     assert json.loads(json.loads(manifest['escaped'])) == {'api_key': '[REDACTED]', 'detail': 'safe'}
 
 
+def test_public_exports_redact_numeric_credentials_in_json_encoded_diagnostics(tmp_path: Path):
+    # Synthetic numeric secrets can appear in JSON logs without surrounding quotes.
+    password = 98765432112345
+    token = 24681357913579
+    diagnostic = json.dumps({'password': password, 'nested': {'access_token': token}, 'attempts': 3})
+    escaped = json.dumps(diagnostic)
+    export_run(
+        tmp_path,
+        {'diagnostic': diagnostic, 'escaped': escaped},
+        [replace(record(), infrastructure_error=diagnostic)],
+        [{'output': escaped}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        assert str(password) not in exported, name
+        assert str(token) not in exported, name
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    expected = {'password': '[REDACTED]', 'nested': {'access_token': '[REDACTED]'}, 'attempts': 3}
+    assert json.loads(manifest['diagnostic']) == expected
+    assert json.loads(json.loads(manifest['escaped'])) == expected
+
+
 def test_public_exports_redact_short_bearer_credentials(tmp_path: Path):
     # Bearer tokens need not be eight characters long to be credentials.
     synthetic_token = 'abc123'
