@@ -477,6 +477,19 @@ def test_public_trajectory_excludes_system_and_reasoning_content():
     assert trajectory['events'][0]['event'] == 'tool'
 
 
+def test_public_trajectory_rejects_conflicting_original_event_type():
+    private_event = SimpleNamespace(
+        event='model',
+        model_dump=lambda **kwargs: {'event': 'tool', 'content': 'SYNTHETIC_PRIVATE_EVENT'},
+    )
+    public_event = SimpleNamespace(
+        event='tool',
+        model_dump=lambda **kwargs: {'event': 'tool', 'function': 'bash'},
+    )
+    sample = SimpleNamespace(id='synthetic', epoch=1, messages=[], events=[private_event, public_event])
+    assert public_trajectory(sample, 'baseline')['events'] == [{'event': 'tool', 'function': 'bash'}]
+
+
 def test_public_trajectory_excludes_private_analysis_channel_messages_and_blocks():
     # Some adapters tag reasoning by channel rather than by content block type.
     sample = SimpleNamespace(
