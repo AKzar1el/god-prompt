@@ -144,9 +144,10 @@ def _is_verification_command(command: str, expected_commands: tuple[str, ...]) -
                     PurePosixPath(expected[0]).name in {'pytest', 'py.test'}
                     or any(left == '-m' and right == 'pytest' for left, right in zip(expected, expected[1:]))
                 )
-                # Pytest discovery/fixture listing modes do not execute test bodies.
+                # Pytest information-only modes do not execute test bodies.
                 if pytest_runner and any(
                     arg in {
+                        '-V', '-VV',
                         '--collect-only', '--co', '--setup-plan', '--setup-only',
                         '--fixtures', '--fixtures-per-test', '--markers',
                     } or arg.startswith('--collect-only=')
