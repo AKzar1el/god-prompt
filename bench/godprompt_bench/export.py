@@ -56,11 +56,11 @@ _ENCODED_QUERY_KEY_VALUE = re.compile(
     r"(&amp;|[?&])([^?&=\s#\"'<>]*%[0-9a-fA-F]{2}[^?&=\s#\"'<>]*)(=)([^\s&#\"'<>]+)"
 )
 _JSON_QUOTED_FIELD = re.compile(
-    r'(?P<prefix>(?P<key_quote>\\?")(?P<key>[^"\\\r\n]{1,128})(?P=key_quote)[ \t]*:[ \t]*)'
+    r'(?P<prefix>(?P<key_quote>\\?")(?P<key>(?:\\(?:u[0-9a-fA-F]{4}|[\\/bfnrt])|[^"\\\r\n]){1,128})(?P=key_quote)[ \t]*:[ \t]*)'
     r'(?P<value_quote>\\?")(?P<value>(?:\\.|[^"\\\r\n])*?)(?P=value_quote)'
 )
 _JSON_SCALAR_FIELD = re.compile(
-    r'(?P<prefix>(?P<key_quote>\\?")(?P<key>[^"\\\r\n]{1,128})(?P=key_quote)[ \t]*:[ \t]*)'
+    r'(?P<prefix>(?P<key_quote>\\?")(?P<key>(?:\\(?:u[0-9a-fA-F]{4}|[\\/bfnrt])|[^"\\\r\n]){1,128})(?P=key_quote)[ \t]*:[ \t]*)'
     r'(?:-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|true|false|null)'
     r'(?=[ \t]*[,}\]\r\n]|$)'
 )
@@ -73,15 +73,30 @@ def _redact_encoded_query_key(match: re.Match[str]) -> str:
     return match.group(0)
 
 
+def _json_key_is_secret(key: str) -> bool:
+    # Nested diagnostic JSON can escape a Unicode key more than once.
+    for _ in range(3):
+        if _SECRET_KEY.search(key):
+            return True
+        try:
+            decoded = json.loads(f'"{key}"')
+        except json.JSONDecodeError:
+            return False
+        if decoded == key:
+            return False
+        key = decoded
+    return bool(_SECRET_KEY.search(key))
+
+
 def _redact_json_quoted_field(match: re.Match[str]) -> str:
-    if _SECRET_KEY.search(match.group("key")):
+    if _json_key_is_secret(match.group("key")):
         quote = match.group("value_quote")
         return f'{match.group("prefix")}{quote}[REDACTED]{quote}'
     return match.group(0)
 
 
 def _redact_json_scalar_field(match: re.Match[str]) -> str:
-    if _SECRET_KEY.search(match.group("key")):
+    if _json_key_is_secret(match.group("key")):
         # Quote the replacement to keep embedded JSON and escaped JSON parseable.
         quote = match.group("key_quote")
         return f'{match.group("prefix")}{quote}[REDACTED]{quote}'

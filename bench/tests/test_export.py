@@ -217,6 +217,26 @@ def test_public_exports_redact_numeric_credentials_in_json_encoded_diagnostics(t
     assert json.loads(json.loads(manifest['escaped'])) == expected
 
 
+def test_public_exports_redact_unicode_escaped_json_credential_keys(tmp_path: Path):
+    # A serialized key can spell a sensitive name using JSON Unicode escapes.
+    diagnostic = r'{"\u0061pi_key":"SYNTHETIC_ESCAPED_KEY_123","pass\u0077ord":1234567890123,"attempts":3}'
+    escaped = json.dumps(diagnostic)
+    export_run(
+        tmp_path,
+        {'diagnostic': diagnostic, 'escaped': escaped},
+        [replace(record(), infrastructure_error=diagnostic)],
+        [{'output': escaped}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        assert 'SYNTHETIC_ESCAPED_KEY_123' not in exported, name
+        assert '1234567890123' not in exported, name
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    expected = {'api_key': '[REDACTED]', 'password': '[REDACTED]', 'attempts': 3}
+    assert json.loads(manifest['diagnostic']) == expected
+    assert json.loads(json.loads(manifest['escaped'])) == expected
+
+
 def test_public_exports_redact_short_bearer_credentials(tmp_path: Path):
     # Bearer tokens need not be eight characters long to be credentials.
     synthetic_token = 'abc123'
