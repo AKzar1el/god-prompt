@@ -169,6 +169,14 @@ def _sample_epoch(value: Any) -> int:
     return value
 
 
+def _sample_task_id(value: Any) -> str:
+    # Benchmark manifest IDs are strings. Coercing an Inspect log ID (such as
+    # integer 123) could silently attribute it to the manifest task "123".
+    if type(value) is not str or not value.strip():
+        raise ValueError("invalid sample task id: expected non-empty string")
+    return value
+
+
 def sample_record(sample: Any, condition: str) -> SampleRecord:
     score = (getattr(sample, "scores", None) or {}).get("godprompt_bench")
     limit = getattr(sample, "limit", None)
@@ -197,7 +205,7 @@ def sample_record(sample: Any, condition: str) -> SampleRecord:
     input_tokens, output_tokens = _usage_totals(getattr(sample, "model_usage", None))
     metadata = getattr(sample, "metadata", {}) or {}
     return SampleRecord(
-        task_id=str(sample.id),
+        task_id=_sample_task_id(sample.id),
         category=str(metadata.get("category", "unknown")),
         condition=condition,
         epoch=_sample_epoch(sample.epoch),
@@ -305,7 +313,7 @@ def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
         events.append(_strip_reasoning(dumped))
 
     return {
-        "task_id": str(sample.id),
+        "task_id": _sample_task_id(sample.id),
         "epoch": _sample_epoch(sample.epoch),
         "condition": condition,
         "messages": messages,

@@ -322,6 +322,19 @@ def test_sample_record_and_public_trajectory_reject_invalid_epochs(invalid_epoch
         public_trajectory(sample, 'baseline')
 
 
+@pytest.mark.parametrize('invalid_id', (123, True, None, '', '   '))
+def test_sample_record_and_public_trajectory_reject_noncanonical_task_ids(invalid_id):
+    # Coercing an Inspect numeric ID to str can match a different manifest task.
+    sample = SimpleNamespace(
+        id=invalid_id, epoch=1, metadata={}, scores={}, model_usage={},
+        total_time=1.0, error=None, limit=None, messages=[], events=[],
+    )
+    with pytest.raises(ValueError, match='invalid sample task id'):
+        sample_record(sample, 'baseline')
+    with pytest.raises(ValueError, match='invalid sample task id'):
+        public_trajectory(sample, 'baseline')
+
+
 @pytest.mark.parametrize('latency', [
     '1.5', True, -1.0, float('nan'), float('inf'), 10 ** 400,
 ])
