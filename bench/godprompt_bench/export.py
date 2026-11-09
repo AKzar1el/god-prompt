@@ -59,6 +59,11 @@ _JSON_QUOTED_FIELD = re.compile(
     r'(?P<prefix>(?P<key_quote>\\?")(?P<key>[^"\\\r\n]{1,128})(?P=key_quote)[ \t]*:[ \t]*)'
     r'(?P<value_quote>\\?")(?P<value>(?:\\.|[^"\\\r\n])*?)(?P=value_quote)'
 )
+_JSON_SCALAR_FIELD = re.compile(
+    r'(?P<prefix>(?P<key_quote>\\?")(?P<key>[^"\\\r\n]{1,128})(?P=key_quote)[ \t]*:[ \t]*)'
+    r'(?:-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|true|false|null)'
+    r'(?=[ \t]*[,}\]\r\n]|$)'
+)
 
 
 def _redact_encoded_query_key(match: re.Match[str]) -> str:
@@ -75,12 +80,21 @@ def _redact_json_quoted_field(match: re.Match[str]) -> str:
     return match.group(0)
 
 
+def _redact_json_scalar_field(match: re.Match[str]) -> str:
+    if _SECRET_KEY.search(match.group("key")):
+        # Quote the replacement to keep embedded JSON and escaped JSON parseable.
+        quote = match.group("key_quote")
+        return f'{match.group("prefix")}{quote}[REDACTED]{quote}'
+    return match.group(0)
+
+
 def _redact_text(text: str) -> str:
     """Redact credential-shaped substrings even inside otherwise public text."""
     text = _URL_USERINFO.sub(lambda match: f"{match.group(1)}[REDACTED]@", text)
     # Inspect diagnostics can embed raw JSON or an escaped JSON string; keep
     # quotation delimiters intact so the redacted text remains parseable.
     text = _JSON_QUOTED_FIELD.sub(_redact_json_quoted_field, text)
+    text = _JSON_SCALAR_FIELD.sub(_redact_json_scalar_field, text)
     text = _ENCODED_QUERY_KEY_VALUE.sub(_redact_encoded_query_key, text)
     # Presigned storage URLs carry credentials in query parameter values.
     text = _SIGNED_URL_QUERY.sub(lambda match: f"{match.group(1)}[REDACTED]", text)
