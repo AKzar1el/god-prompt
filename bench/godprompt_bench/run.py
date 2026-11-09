@@ -294,7 +294,11 @@ def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
         dumped = _dump(event)
         if not isinstance(dumped, dict):
             continue
+        # A serialized public label must not override an original private event kind.
+        original_kind = getattr(event, "event", None)
+        original_kind = getattr(original_kind, "value", original_kind)
         if (dumped.get("event", getattr(event, "event", None)) not in ("tool", "approval")
+                or (original_kind is not None and original_kind not in ("tool", "approval"))
                 or _private_reasoning_block(dumped)
                 or _private_channel(getattr(event, "channel", None))):
             continue
