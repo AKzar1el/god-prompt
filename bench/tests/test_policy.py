@@ -148,6 +148,19 @@ def test_shell_policy_rejects_windows_network_command_shims_without_execution():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_other_network_transfer_clients_without_execution():
+    for command in (
+        'sftp remote.invalid',
+        'rsync local.txt remote.invalid:backup',
+        'ftp remote.invalid',
+        'tftp remote.invalid',
+        'socat TCP:remote.invalid:443 STDOUT',
+        'env SFTP.EXE remote.invalid',
+        'RSYNC.CMD local.txt remote.invalid:backup',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+
+
 def test_shell_policy_rejects_windows_absolute_launchers_without_execution():
     # Only classify argv; never start these Windows host executables.
     for command in (
