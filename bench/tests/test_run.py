@@ -775,6 +775,41 @@ def test_public_trajectory_excludes_private_channels_even_when_dump_disagrees():
     ]
 
 
+def test_public_trajectory_excludes_private_channels_serialized_as_objects():
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[
+            {'role': 'assistant', 'channel': {'value': 'analysis'},
+             'content': 'SYNTHETIC_PRIVATE_MESSAGE'},
+            {'role': 'assistant', 'channel': {'name': 'thinking'},
+             'content': 'SYNTHETIC_PRIVATE_NAMED'},
+            {'role': 'assistant', 'channel': {'value': 'final'}, 'content': [
+                {'channel': {'value': 'reasoning'}, 'text': 'SYNTHETIC_PRIVATE_NESTED'},
+                {'type': 'text', 'text': 'public answer'},
+            ]},
+        ],
+        events=[
+            {'event': 'tool', 'channel': {'value': 'analysis'},
+             'result': 'SYNTHETIC_PRIVATE_EVENT'},
+            {'event': 'tool', 'output': [
+                {'channel': {'name': 'thinking'}, 'text': 'SYNTHETIC_PRIVATE_OUTPUT'},
+                {'channel': {'name': 'commentary'}, 'text': 'public output'},
+            ]},
+        ],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'] == [
+        {'role': 'assistant', 'channel': {'value': 'final'},
+         'content': [{'type': 'text', 'text': 'public answer'}]},
+    ]
+    assert trajectory['events'] == [
+        {'event': 'tool', 'output': [
+            {'channel': {'name': 'commentary'}, 'text': 'public output'},
+        ]},
+    ]
+
+
 def test_execute_benchmark_reads_actual_model_from_eval_spec(monkeypatch, tmp_path):
     import inspect_ai
     import godprompt_bench.run as run_module
