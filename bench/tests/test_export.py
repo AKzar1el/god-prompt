@@ -195,6 +195,26 @@ def test_public_exports_redact_credentials_in_json_encoded_diagnostics(tmp_path:
     assert json.loads(json.loads(manifest['escaped'])) == {'api_key': '[REDACTED]', 'detail': 'safe'}
 
 
+def test_public_exports_redact_numeric_credentials_in_json_diagnostics(tmp_path: Path):
+    # Some adapters serialize numeric PINs and tokens into otherwise public diagnostics.
+    diagnostic = json.dumps({'clientSecret': 987654321, 'api_key': 123456789, 'publicCount': 42})
+    escaped = json.dumps(diagnostic)
+    export_run(
+        tmp_path,
+        {'note': diagnostic, 'escaped': escaped},
+        [replace(record(), infrastructure_error=diagnostic)],
+        [{'output': escaped}],
+    )
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / filename).read_text(encoding='utf-8')
+        assert '987654321' not in exported, filename
+        assert '123456789' not in exported, filename
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    expected = {'clientSecret': '[REDACTED]', 'api_key': '[REDACTED]', 'publicCount': 42}
+    assert json.loads(manifest['note']) == expected
+    assert json.loads(json.loads(manifest['escaped'])) == expected
+
+
 def test_public_exports_redact_short_bearer_credentials(tmp_path: Path):
     # Bearer tokens need not be eight characters long to be credentials.
     synthetic_token = 'abc123'
