@@ -105,6 +105,25 @@ def _package_executable_name(token: str) -> str:
     return name
 
 
+def _git_config_launches_command(config: str) -> bool:
+    # Git can execute configured helpers even for apparently read-only commands.
+    key = config.split("=", 1)[0].casefold()
+    if key in {
+        "core.pager", "core.editor", "core.fsmonitor", "core.hookspath",
+        "core.sshcommand", "core.askpass", "sequence.editor",
+        "diff.external", "credential.helper", "gpg.program",
+        "gpg.ssh.program", "sendemail.sendmailcmd", "include.path",
+    }:
+        return True
+    parts = key.split(".")
+    return (
+        (len(parts) >= 2 and parts[0] == "pager")
+        or (len(parts) >= 3 and parts[0] == "includeif" and parts[-1] == "path")
+        or (len(parts) >= 3 and parts[0] == "filter" and parts[-1] in {"clean", "smudge", "process"})
+        or (len(parts) >= 3 and parts[0] in {"difftool", "mergetool"} and parts[-1] == "cmd")
+    )
+
+
 def _runs_package_network_command(tokens: list[str]) -> bool:
     # Inspect the actual launched program, not inert script arguments.
     index = 0
@@ -251,7 +270,11 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     if any(
         "=" in token and (
             token.split("=", 1)[0].casefold().startswith("git_config_")
-            or token.split("=", 1)[0].casefold() in {"git_exec_path", "git_template_dir"}
+            or token.split("=", 1)[0].casefold() in {
+                "git_exec_path", "git_template_dir", "git_pager", "git_editor",
+                "git_sequence_editor", "git_external_diff", "git_ssh", "git_ssh_command",
+                "git_askpass", "ssh_askpass", "pager", "editor", "visual",
+            }
         )
         for token in executable_tokens
     ):
@@ -389,6 +412,8 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                     config = option.split("=", 1)[1]
                 if config is not None and config.casefold().startswith("alias."):
                     return PolicyDecision(False, "dynamic-git-alias")
+                if config is not None and _git_config_launches_command(config):
+                    return PolicyDecision(False, "dynamic-git-execution-config")
             # Git accepts global flags before the subcommand, including -C/-c.
             offset = 0
             options_with_values = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"}
@@ -396,6 +421,17 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                 offset += 2 if tail[offset] in options_with_values else 1
             if offset < len(tail):
                 git_command = tail[offset]
+                if git_command == "config" and any(
+                    option in {"--global", "--system"} for option in tail[offset + 1:]
+                ):
+                    return PolicyDecision(False, "global-git-config")
+                if git_command == "config":
+                    # A local config write can persist a helper for a later benign command.
+                    for config_token in tail[offset + 1:]:
+                        if config_token.casefold().startswith("alias."):
+                            return PolicyDecision(False, "dynamic-git-alias")
+                        if _git_config_launches_command(config_token):
+                            return PolicyDecision(False, "dynamic-git-execution-config")
                 # These Git entry points can contact remotes, run configured
                 # transports or launch helpers even without curl/ssh in argv.
                 if git_command in {
@@ -408,10 +444,6 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                     for option in tail[offset + 1:]
                 )):
                     return PolicyDecision(False, "network-command")
-            if offset < len(tail) and tail[offset] == "config" and any(
-                option in {"--global", "--system"} for option in tail[offset + 1 :]
-            ):
-                return PolicyDecision(False, "global-git-config")
         if executable == "find" and index + 1 < len(executable_tokens) and executable_tokens[index + 1] == "/":
             return PolicyDecision(False, "root-filesystem-search")
 

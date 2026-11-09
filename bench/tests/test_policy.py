@@ -222,6 +222,42 @@ def test_shell_policy_rejects_dynamic_git_aliases():
     assert classify_shell_command("echo git -c alias.check=x").allowed
 
 
+def test_shell_policy_rejects_git_configured_command_launchers_without_execution():
+    # Git can invoke these configured helpers during otherwise read-only commands.
+    for command in (
+        'git -c core.pager=helper log',
+        'git -ccore.fsmonitor=helper status',
+        'git -c diff.external=helper diff',
+        'git -c filter.demo.clean=helper add file.txt',
+        'git --config-env=core.pager=HELPER log',
+        'env git -C repo -c pager.log=helper log',
+        'git -c include.path=local-config.txt status',
+        'git config --local core.pager helper',
+        'git -C repo config --local filter.demo.process helper',
+        'echo ok && git -c core.fsmonitor=helper status',
+    ):
+        assert classify_shell_command(command).reason == 'dynamic-git-execution-config', command
+
+    assert classify_shell_command(['git', '-c', 'core.pager=helper', 'log']).reason == 'dynamic-git-execution-config'
+    assert classify_shell_command('git -c color.ui=always status').allowed
+    assert classify_shell_command('echo git -c core.pager=helper').allowed
+    assert classify_shell_command('git config --local user.name').allowed
+
+
+def test_shell_policy_rejects_git_helper_environment_overrides_without_execution():
+    for command in (
+        'GIT_PAGER=helper git log',
+        'GIT_EXTERNAL_DIFF=helper git diff',
+        'GIT_EDITOR=helper git commit',
+        'GIT_SSH_COMMAND=helper git status',
+        'env GIT_ASKPASS=helper git status',
+        'PAGER=helper git log',
+    ):
+        assert classify_shell_command(command).reason == 'git-environment-override', command
+
+    assert classify_shell_command('echo GIT_PAGER=helper').allowed
+
+
 def test_shell_policy_rejects_git_environment_config_injection_without_execution():
     # Git reads these overrides before resolving a seemingly harmless subcommand.
     for command in (
