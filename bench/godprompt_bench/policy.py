@@ -435,6 +435,15 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
            for token in tokens):
         return PolicyDecision(False, "compound-shell-command")
 
+    # Array-form commands lack shell quoting context: reject expansion or
+    # operators hidden inside one apparent argv element after specific checks.
+    if isinstance(command, list):
+        if any(_has_dynamic_dollar(token) or "`" in token or "\n" in token
+               or "\r" in token or "<<<" in token for token in tokens):
+            return PolicyDecision(False, "dynamic-shell-syntax")
+        if any(any(operator in token for operator in ";&|") for token in tokens):
+            return PolicyDecision(False, "compound-shell-command")
+
     return PolicyDecision(True, "allowed")
 
 
