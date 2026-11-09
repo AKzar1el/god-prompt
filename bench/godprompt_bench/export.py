@@ -59,6 +59,7 @@ _JSON_QUOTED_FIELD = re.compile(
     r'(?P<prefix>(?P<key_quote>\\?")(?P<key>[^"\\\r\n]{1,128})(?P=key_quote)[ \t]*:[ \t]*)'
     r'(?P<value_quote>\\?")(?P<value>(?:\\.|[^"\\\r\n])*?)(?P=value_quote)'
 )
+_CSV_FORMULA = re.compile(r"^[\s\u200b\ufeff]*[=+\-@]")
 
 
 def _redact_encoded_query_key(match: re.Match[str]) -> str:
@@ -130,7 +131,8 @@ def _write_json(path: Path, payload: Any) -> None:
 
 def _spreadsheet_safe_cell(value: Any) -> Any:
     """Keep untrusted text from becoming a formula when scores.csv is opened."""
-    if isinstance(value, str) and value.lstrip(" \t\r\n").startswith(("=", "+", "-", "@")):
+    # Spreadsheets can ignore leading whitespace and invisible format markers.
+    if isinstance(value, str) and _CSV_FORMULA.match(value):
         return "'" + value
     if isinstance(value, str) and value.startswith(("\t", "\r", "\n")):
         return "'" + value
