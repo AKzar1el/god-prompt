@@ -225,6 +225,7 @@ def _dump(value: Any) -> Any:
 
 
 _PRIVATE_REASONING_FIELDS = {
+    "analysis", "analysiscontent", "analysisdetails", "analysistext",
     "chainofthought",
     "reasoning", "reasoningcontent", "reasoningdetails", "redactedreasoning",
     "reasoningtext", "thinking", "thinkingcontent", "thinkingdetails",
@@ -237,13 +238,19 @@ def _private_reasoning_field(value: Any) -> bool:
     return isinstance(value, str) and re.sub(r"[\s_.-]+", "", value.casefold()) in _PRIVATE_REASONING_FIELDS
 
 
+def _private_channel(value: Any) -> bool:
+    # Preserve the object's original channel, even if model_dump labels it final.
+    channel = getattr(value, "value", value)
+    return isinstance(channel, str) and (
+        channel.strip().casefold() == "private" or _private_reasoning_field(channel)
+    )
+
+
 def _private_reasoning_block(value: Any) -> bool:
     if not isinstance(value, Mapping):
         return False
     channel = value.get("channel")
-    return _private_reasoning_field(value.get("type")) or (
-        isinstance(channel, str) and channel.strip().casefold() in {"analysis", "reasoning", "thinking"}
-    )
+    return _private_reasoning_field(value.get("type")) or _private_channel(channel)
 
 
 def _strip_reasoning(value: Any) -> Any:
@@ -275,7 +282,10 @@ def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
         if not isinstance(dumped, dict):
             continue
         roles = [role for role in (dumped.get("role"), getattr(message, "role", None)) if role is not None]
-        if not roles or not all(_is_public_message_role(role) for role in roles) or _private_reasoning_block(dumped):
+        channels = (dumped.get("channel"), getattr(message, "channel", None))
+        if (not roles or not all(_is_public_message_role(role) for role in roles)
+                or _private_reasoning_block(dumped)
+                or any(_private_channel(channel) for channel in channels)):
             continue
         messages.append(_strip_reasoning(dumped))
 
@@ -284,7 +294,9 @@ def public_trajectory(sample: Any, condition: str) -> dict[str, Any]:
         dumped = _dump(event)
         if not isinstance(dumped, dict):
             continue
-        if dumped.get("event", getattr(event, "event", None)) not in ("tool", "approval") or _private_reasoning_block(dumped):
+        if (dumped.get("event", getattr(event, "event", None)) not in ("tool", "approval")
+                or _private_reasoning_block(dumped)
+                or _private_channel(getattr(event, "channel", None))):
             continue
         events.append(_strip_reasoning(dumped))
 

@@ -57,6 +57,18 @@ def test_text_editor_rejects_windows_superscript_device_digits():
     assert validate_workspace_path('src/LPT\u00b2value.txt')
 
 
+def test_text_editor_rejects_control_characters_and_metacharacters():
+    from godprompt_bench.policy import classify_tool_call
+
+    # Classification only: no actual file operation.
+    for character in ('\n', '\r', '\t', '\x1b', '*', '?', '"', '<', '>', '|'):
+        path = f'src/unsafe{character}name.txt'
+        assert not validate_workspace_path(path), repr(path)
+        assert classify_tool_call('text_editor', {'path': path}).reason == 'outside-workspace'
+
+    assert validate_workspace_path('src/safe-name_2.txt')
+
+
 def test_shell_policy_rejects_network_and_host_mutations():
     assert classify_shell_command('python3 test_visible.py').allowed is True
     assert classify_shell_command('node --test').allowed is True
@@ -129,6 +141,19 @@ def test_shell_policy_rejects_windows_absolute_launchers_without_execution():
 
     # A relative Windows-style path remains ordinary local data.
     assert classify_shell_command(['python3', 'test_visible.py', r'fixtures\visible.txt']).allowed
+
+
+def test_shell_policy_rejects_posix_absolute_launchers_without_execution():
+    for command in (
+        '/usr/local/bin/custom-helper --version',
+        ['/tmp/unreviewed-program', '--flag'],
+        'echo ok && /tmp/helper --flag',
+    ):
+        assert classify_shell_command(command).reason == 'absolute-path', command
+
+    assert classify_shell_command('echo hello').allowed
+    assert classify_shell_command('echo /tmp/blocked').reason == 'absolute-path'
+    assert classify_shell_command(['python3', 'test_visible.py']).allowed
 
 
 def test_shell_policy_rejects_paths_hidden_in_option_assignments():
@@ -454,6 +479,22 @@ def test_shell_policy_rejects_python_module_package_manager_aliases():
     assert classify_shell_command(['python3', '-m', 'pipx', 'install', 'demo']).reason == 'network-command'
     for command in ('python3 -m pytest -q', 'python3 -m json.tool data.json',
                     'python3 visible.py -m pipx', 'echo python3 -m poetry add'):
+        assert classify_shell_command(command).allowed, command
+
+
+def test_shell_policy_rejects_more_module_installer_entrypoints():
+    # Never execute these commands: inspect their static argv classifications.
+    for command in (
+        'python3.12 -I -m pdm add demo-package',
+        'python -m hatch env create',
+        'python -m build',
+        'pypy3 -mpdm.install demo-package',
+        'env python3 -m hatch.cli run demo-package',
+        'echo ok && python3 -m build',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+    for command in ('python3 -m pytest -q', 'python -m json.tool data.json',
+                    'python3 local_script.py -m hatch'):
         assert classify_shell_command(command).allowed, command
 
 

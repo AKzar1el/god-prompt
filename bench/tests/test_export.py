@@ -430,6 +430,27 @@ def test_public_exports_redact_percent_encoded_query_parameter_names(tmp_path: P
         assert 'part%5Fnumber=7' in exported
 
 
+def test_public_exports_redact_html_escaped_signed_url_query(tmp_path: Path):
+    # HTML attribute values can encode query separators as &amp;.
+    url = (
+        'https://storage.example.invalid/object?partNumber=1'
+        '&amp;X-Amz-Signature=FAKE_HTML_AWS_SIG_123'
+        '&amp;X-Goog-Credential=FAKE_HTML_GCS_CRED_456'
+        '&amp;sig=FAKE_HTML_AZURE_SIG_789'
+    )
+    export_run(
+        tmp_path, {'note': url},
+        [replace(record(), infrastructure_error=url)],
+        [{'output': url}],
+    )
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / filename).read_text(encoding='utf-8')
+        assert 'FAKE_HTML_' not in exported, filename
+        for name in ('X-Amz-Signature', 'X-Goog-Credential', 'sig'):
+            assert f'&amp;{name}=[REDACTED]' in exported, (filename, name)
+        assert 'partNumber=1' in exported
+
+
 def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: Path):
     # All values are made-up placeholders, not credentials; plain text must still be sanitized.
     entries = (
