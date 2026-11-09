@@ -358,6 +358,32 @@ def test_shell_policy_rejects_windows_exe_interpreter_aliases_without_execution(
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_windows_python_launchers_without_execution():
+    # Classifier-only inputs: py/pyw and pythonw execute inline code on Windows.
+    for command in (
+        'py -c pass',
+        'py -3 -c pass',
+        'py.exe -3.12 -Ic pass',
+        'PYW.EXE -c pass',
+        'pythonw -c pass',
+        'pythonw.exe -Bc pass',
+        'pythonw3.12.exe -c pass',
+        'env py -c pass',
+    ):
+        assert classify_shell_command(command).reason == 'inline-interpreter', command
+
+    for command in ('py -m pip list', 'py.exe -3 -m pip install demo',
+                    'pythonw.exe -m http.server'):
+        assert classify_shell_command(command).reason == 'network-command', command
+
+    for argv in (['py', '-3', '-c', 'pass'], ['PYTHONW.EXE', '-c', 'pass']):
+        assert classify_shell_command(argv).reason == 'inline-interpreter', argv
+
+    for command in ('py -3 test_visible.py', 'pyw script.py',
+                    'pythonw.exe script.py', 'echo py.exe'):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_inline_code_after_interpreter_option_operands():
     # These are data-only classifier inputs; no code payload is executed.
     for command in (

@@ -283,7 +283,10 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                for token in executable_tokens):
             return PolicyDecision(False, "dynamic-env-command")
 
-    inline_interpreters = {"python", "python3", "node", "nodejs", "perl", "ruby", "php"}
+    inline_interpreters = {
+        "python", "python3", "py", "pyw", "pythonw", "node", "nodejs",
+        "perl", "ruby", "php",
+    }
     inline_flags = {"-c", "-e", "--eval", "--execute"}
     for index, token in enumerate(executable_tokens):
         # Windows can launch the same language runtime with a case-insensitive
@@ -292,14 +295,14 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
         # Common version-suffixed interpreter binaries can run the same inline
         # payloads as their unversioned names (e.g. python3.12 -c).
         if executable_name in inline_interpreters or re.fullmatch(
-            r"(?:python[23]|pypy[23]?|perl5|ruby[23]|php[578])(?:\.\d+)*",
+            r"(?:python[23]|pythonw[23]?|pypy[23]?|perl5|ruby[23]|php[578])(?:\.\d+)*",
             executable_name,
         ):
             is_node = executable_name in {"node", "nodejs"}
             is_perl = executable_name.startswith("perl")
             is_php = executable_name.startswith("php")
             is_ruby = executable_name.startswith("ruby")
-            is_python = executable_name.startswith(("python", "pypy"))
+            is_python = executable_name.startswith(("python", "pypy")) or executable_name in {"py", "pyw"}
             # Examine the full interpreter option prefix, not only four tokens.
             # Stop at a script operand so ordinary script arguments remain data.
             consumes_value = False
