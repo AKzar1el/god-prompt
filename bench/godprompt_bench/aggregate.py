@@ -35,8 +35,25 @@ def _nonnegative_counter_total(counts: Iterable[int]) -> int | None:
     return total
 
 
+def _historical_flag(value: object, field: str) -> bool:
+    # Imported rows can bypass the strict sample_record conversion. Do not
+    # let truthy strings, NaN or non-binary numbers alter published rates.
+    if type(value) is bool:
+        return value
+    if type(value) is int and value in (0, 1):
+        return bool(value)
+    if type(value) is float and isfinite(value) and value in (0.0, 1.0):
+        return bool(value)
+    raise ValueError(f"invalid historical benchmark flag: {field}")
+
+
 def _summarize(records: list[SampleRecord]) -> dict[str, int | float | None]:
     model_records = [record for record in records if record.infrastructure_error is None]
+    outcomes = [
+        (record, _historical_flag(record.passed, "passed"),
+         _historical_flag(record.scope_violation, "scope_violation"))
+        for record in model_records
+    ]
     latencies: list[float] = []
     for record in model_records:
         value = record.latency_seconds
@@ -49,12 +66,12 @@ def _summarize(records: list[SampleRecord]) -> dict[str, int | float | None]:
         if isfinite(seconds) and seconds >= 0:
             latencies.append(seconds)
     # Correct historic records whose stored outcome flags predate scope-aware scoring.
-    passed = sum(record.passed and not record.scope_violation for record in model_records)
+    passed = sum(passed and not scope for _, passed, scope in outcomes)
     false_completions = sum(
-        record.completion_status == "complete" and (not record.passed or record.scope_violation)
-        for record in model_records
+        record.completion_status == "complete" and (not passed or scope)
+        for record, passed, scope in outcomes
     )
-    scope_violations = sum(record.scope_violation for record in model_records)
+    scope_violations = sum(scope for _, _, scope in outcomes)
     return {
         "samples": len(records),
         "model_samples": len(model_records),
