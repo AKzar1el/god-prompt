@@ -106,3 +106,14 @@ def test_aggregate_does_not_underreport_missing_token_usage_as_zero():
     assert summary['by_category']['implementation']['baseline']['input_tokens'] is None
     assert aggregate([replace(valid, input_tokens=0, output_tokens=0)])['baseline']['input_tokens'] == 0
     assert aggregate([])['baseline']['input_tokens'] is None
+
+
+@pytest.mark.parametrize('invalid_count', (-1, -25, 1.5, float('nan'), True))
+def test_aggregate_does_not_publish_malformed_provider_token_counts(invalid_count):
+    valid = rec('baseline', True)
+    malformed = replace(rec('baseline', False), input_tokens=invalid_count, output_tokens=invalid_count)
+    summary = aggregate([valid, malformed])
+    assert summary['baseline']['input_tokens'] is None
+    assert summary['baseline']['output_tokens'] is None
+    assert summary['by_category']['implementation']['baseline']['input_tokens'] is None
+    json.dumps(summary, allow_nan=False)
