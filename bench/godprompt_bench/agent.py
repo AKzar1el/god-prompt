@@ -18,6 +18,8 @@ def condition_prompt(condition: str, repo_root: Path) -> str:
     elif condition == "godprompt":
         prompt_path = repo_root / "GodPrompt.md"
         prefix = prompt_path.read_text(encoding="utf-8").rstrip()
+        if not prefix:
+            raise ValueError("GodPrompt.md is empty; refusing an invalid treatment benchmark")
     else:
         raise ValueError(f"unknown benchmark condition: {condition}")
     return prefix.rstrip() + "\n\n" + COMMON_AGENT_INSTRUCTIONS
