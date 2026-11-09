@@ -30,6 +30,12 @@ def test_sample_payloads_reject_duplicate_ids_from_direct_call():
         build_sample_payloads(ROOT, ['impl-py-slugify', 'impl-py-slugify'])
 
 
+def test_sample_payloads_reject_explicit_empty_selection():
+    # An explicit empty filter must not silently produce a zero-sample benchmark.
+    with pytest.raises(ValueError, match='no benchmark tasks selected'):
+        build_sample_payloads(ROOT, [])
+
+
 def test_sample_payloads_reject_symlinked_fixture_outside_benchmark_root(tmp_path: Path):
     # A syntactically relative manifest path must not permit reading outside fixtures.
     bench = tmp_path / 'bench'
