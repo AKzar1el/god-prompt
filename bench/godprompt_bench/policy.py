@@ -332,12 +332,22 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                         "pip", "pipx", "poetry", "uv", "ensurepip", "pdm", "hatch", "build"
                     } or module == "http.server" or module.startswith("http.server.")):
                         return PolicyDecision(False, "network-command")
+                # Short interpreter switches can be bundled: -Ic, -0e, -we,
+                # and -nr still invoke inline code. Avoid operand-taking -X,
+                # -W, -I (Perl/Ruby), and -d (PHP) to preserve ordinary scripts.
+                compact_inline = (
+                    (is_python and re.match(r"^-[bBdEhiIOPqRsSuUvVx]+c", option))
+                    or (is_perl and re.match(r"^-(?:[0-7]+|[awntpT]+)[eE]", option))
+                    or (is_ruby and re.match(r"^-[aCdlnpswUv]+e", option))
+                    or (is_php and re.match(r"^-[nv]+r", option))
+                )
                 if (
                     option in inline_flags
                     or option.startswith(("--eval=", "--execute=", "-c", "-e"))
                     or (is_node and (option.startswith("-p") or option == "--print" or option.startswith("--print=")))
                     or (is_perl and option.startswith("-E"))
                     or (is_php and option.startswith("-r"))
+                    or compact_inline
                 ):
                     return PolicyDecision(False, "inline-interpreter")
                 if (
