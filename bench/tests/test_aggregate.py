@@ -92,6 +92,19 @@ def test_aggregate_excludes_invalid_latency_values_from_public_summary():
     json.dumps(summary, allow_nan=False)
 
 
+def test_aggregate_ignores_malformed_historical_latency_values():
+    valid = [rec('baseline', True, latency=1.0), rec('baseline', True, latency=3.0)]
+    # Legacy/external rows may bypass the typed sample_record conversion.
+    malformed = ['invalid', True, 10 ** 500, [], float('nan')]
+    records = valid + [replace(rec('baseline', False), latency_seconds=value)
+                       for value in malformed]
+    summary = aggregate(records)
+    assert summary['baseline']['samples'] == 7
+    assert summary['baseline']['median_latency_seconds'] == 2.0
+    assert summary['by_category']['implementation']['baseline']['median_latency_seconds'] == 2.0
+    json.dumps(summary, allow_nan=False)
+
+
 def test_aggregate_does_not_underreport_missing_token_usage_as_zero():
     valid = rec('baseline', True)
     unavailable = replace(rec('baseline', False), input_tokens=None, output_tokens=None)
