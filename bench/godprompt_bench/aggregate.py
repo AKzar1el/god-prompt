@@ -16,7 +16,9 @@ def _complete_token_total(counts: Iterable[int | None]) -> int | None:
     total = 0
     seen = False
     for count in counts:
-        if count is None:
+        # Provider usage is untrusted: a negative, fractional or non-finite
+        # value must not reduce the reported total or escape into JSON.
+        if type(count) is not int or count < 0:
             return None
         total += count
         seen = True
