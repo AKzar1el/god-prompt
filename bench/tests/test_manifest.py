@@ -55,6 +55,16 @@ def test_manifest_rejects_case_insensitive_duplicate_task_ids():
         validate_manifest(tasks)
 
 
+@pytest.mark.parametrize('verifier_command', [
+    ('python', '--version'),
+    ('python', '.godprompt_verifier.py', '.godprompt_verifier.py'),
+])
+def test_manifest_rejects_hidden_verifier_placeholder_errors(verifier_command):
+    task = load_manifest(ROOT / 'tasks' / 'manifest.json')[0]
+    with pytest.raises(ValueError, match='hidden verifier command'):
+        validate_manifest([replace(task, verifier_command=verifier_command)])
+
+
 def test_manifest_rejects_duplicate_json_security_field(tmp_path: Path):
     source = json.loads((ROOT / 'tasks' / 'manifest.json').read_text(encoding='utf-8'))[0]
     encoded = json.dumps(source)

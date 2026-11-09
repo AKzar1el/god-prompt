@@ -137,6 +137,11 @@ def validate_manifest(tasks: list[TaskSpec]) -> None:
         _validate_relative(task.fixture_dir, "fixture_dir", task.id)
         for path in (*task.allowed_paths, *task.forbidden_paths):
             _validate_relative(path, "workspace path", task.id)
+    # Reject impossible verifier commands before any paid model evaluation.
+    # The scorer replaces this placeholder only after the agent has run.
+    for task in tasks:
+        if task.verifier_command.count(".godprompt_verifier.py") != 1:
+            raise ValueError(f"{task.id}: hidden verifier command must reference its script exactly once")
 
 
 @dataclass(frozen=True)
