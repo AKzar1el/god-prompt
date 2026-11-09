@@ -580,6 +580,28 @@ def test_public_trajectory_redacts_provider_reasoning_field_variants():
     assert trajectory['events'][0]['output'] == {'status': 'ok'}
 
 
+def test_public_trajectory_redacts_streaming_private_reasoning_deltas():
+    # Streaming adapters can serialize private thought chunks as delta fields
+    # or content-block types inside otherwise public assistant/tool records.
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[{'role': 'assistant', 'analysis_delta': 'SYNTHETIC_PRIVATE_FIELD',
+                   'content': [
+                       {'type': 'reasoning_delta', 'text': 'SYNTHETIC_PRIVATE_BLOCK'},
+                       {'type': 'thinking.delta', 'text': 'SYNTHETIC_PRIVATE_TYPED'},
+                       {'type': 'text', 'text': 'public answer'},
+                   ]}],
+        events=[{'event': 'tool', 'output': [
+            {'channel': 'thinking_delta', 'text': 'SYNTHETIC_PRIVATE_EVENT'},
+            {'thinkingDelta': 'SYNTHETIC_PRIVATE_NESTED', 'status': 'ok'},
+        ]}],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'][0]['content'] == [{'type': 'text', 'text': 'public answer'}]
+    assert trajectory['events'][0]['output'] == [{'status': 'ok'}]
+
+
 def test_public_trajectory_redacts_delimited_reasoning_and_padded_channels():
     # Provider serializers may use spaced/dotted aliases or padded channel labels.
     # Never export the private content merely because the delimiter differs.
