@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 import hashlib
 import json
+from math import isfinite
 import os
 import re
 import shlex
@@ -123,6 +124,19 @@ def _event_attr(event: Any, name: str, default: Any = None) -> Any:
     return getattr(event, name, default)
 
 
+def _event_failed_flag(value: Any) -> bool:
+    # Saved event telemetry must not turn truthy strings or NaN into failures.
+    if value is None:
+        return False
+    if type(value) is bool:
+        return value
+    if type(value) is int and value in (0, 1):
+        return bool(value)
+    if type(value) is float and isfinite(value) and value in (0.0, 1.0):
+        return bool(value)
+    raise ValueError("invalid tool failure flag")
+
+
 def _is_verification_command(command: str, expected_commands: tuple[str, ...]) -> bool:
     # Match an executable argv prefix, not commands printed as text or embedded in another command.
     if not expected_commands or '\n' in command or '\r' in command:
@@ -185,7 +199,7 @@ def event_metrics(events: Iterable[Any], expected_commands: tuple[str, ...]) -> 
 
         function = _event_attr(event, "function")
         arguments = _event_attr(event, "arguments", {}) or {}
-        failed = bool(_event_attr(event, "failed", False) or _event_attr(event, "error") is not None)
+        failed = _event_failed_flag(_event_attr(event, "failed", False)) or _event_attr(event, "error") is not None
         if failed:
             failed_tool_calls += 1
 
