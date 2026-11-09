@@ -25,6 +25,16 @@ def _complete_token_total(counts: Iterable[int | None]) -> int | None:
     return total if seen else None
 
 
+def _nonnegative_counter_total(counts: Iterable[int]) -> int | None:
+    total = 0
+    for count in counts:
+        # An unvalidated historical row must not corrupt a reported total.
+        if type(count) is not int or count < 0:
+            return None
+        total += count
+    return total
+
+
 def _summarize(records: list[SampleRecord]) -> dict[str, int | float | None]:
     model_records = [record for record in records if record.infrastructure_error is None]
     latencies: list[float] = []
@@ -55,10 +65,10 @@ def _summarize(records: list[SampleRecord]) -> dict[str, int | float | None]:
         "false_completion_rate": _rate(false_completions, len(model_records)),
         "scope_violations": scope_violations,
         "scope_violation_rate": _rate(scope_violations, len(model_records)),
-        "tool_misuse_count": sum(record.tool_misuse_count for record in model_records),
-        "verification_attempts": sum(record.verification_attempts for record in model_records),
-        "failed_tool_calls": sum(record.failed_tool_calls for record in model_records),
-        "retries": sum(record.retries for record in model_records),
+        "tool_misuse_count": _nonnegative_counter_total(record.tool_misuse_count for record in model_records),
+        "verification_attempts": _nonnegative_counter_total(record.verification_attempts for record in model_records),
+        "failed_tool_calls": _nonnegative_counter_total(record.failed_tool_calls for record in model_records),
+        "retries": _nonnegative_counter_total(record.retries for record in model_records),
         "input_tokens": _complete_token_total(record.input_tokens for record in model_records),
         "output_tokens": _complete_token_total(record.output_tokens for record in model_records),
         "median_latency_seconds": median(latencies) if latencies else None,

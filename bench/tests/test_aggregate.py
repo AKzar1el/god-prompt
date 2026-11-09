@@ -130,3 +130,17 @@ def test_aggregate_does_not_publish_malformed_provider_token_counts(invalid_coun
     assert summary['baseline']['output_tokens'] is None
     assert summary['by_category']['implementation']['baseline']['input_tokens'] is None
     json.dumps(summary, allow_nan=False)
+
+
+@pytest.mark.parametrize('metric', (
+    'tool_misuse_count', 'verification_attempts', 'failed_tool_calls', 'retries',
+))
+@pytest.mark.parametrize('invalid_count', (-3, 1.5, float('nan'), True, 'invalid', []))
+def test_aggregate_does_not_publish_malformed_historical_score_counters(metric, invalid_count):
+    valid = rec('baseline', True)
+    malformed = replace(rec('baseline', False), **{metric: invalid_count})
+    summary = aggregate([valid, malformed])
+    assert summary['baseline']['samples'] == 2
+    assert summary['baseline'][metric] is None
+    assert summary['by_category']['implementation']['baseline'][metric] is None
+    json.dumps(summary, allow_nan=False)
