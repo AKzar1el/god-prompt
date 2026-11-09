@@ -127,6 +127,27 @@ def test_shell_policy_rejects_windows_network_executables_without_execution():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_windows_network_command_shims_without_execution():
+    # Windows may run .cmd, .bat and .com launchers as programs too.
+    for command in (
+        'curl.cmd https://example.invalid',
+        'WGET.BAT https://example.invalid',
+        'ssh.com example.invalid',
+        'env ncat.cmd example.invalid',
+        'SCP.BAT local.txt remote.invalid:target',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+
+    assert classify_shell_command(['CURL.CMD', 'https://example.invalid']).reason == 'network-command'
+    for command in (
+        'echo curl.cmd',
+        'printf %s wget.bat',
+        'python3 test_visible.py --tool=curl.cmd',
+        'curl-helper.cmd test.txt',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_windows_absolute_launchers_without_execution():
     # Only classify argv; never start these Windows host executables.
     for command in (
