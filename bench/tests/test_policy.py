@@ -844,6 +844,32 @@ def test_shell_policy_rejects_dynamic_dollar_expansions_without_running_payloads
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_dynamic_syntax_in_command_argument_arrays():
+    # Only classify these argv arrays; do not run any shell payloads.
+    for command in (
+        ['echo', '$(echo hidden)'],
+        ['echo', '`echo hidden`'],
+        ['echo', '${HOME}'],
+        ['echo', 'safe\necho hidden'],
+        ['python3', 'test_visible.py', '$(echo hidden)'],
+    ):
+        assert classify_shell_command(command).reason == 'dynamic-shell-syntax', command
+
+    assert classify_shell_command(['python3', 'test_visible.py']).allowed
+    assert classify_shell_command(['echo', 'literal text']).allowed
+
+
+def test_shell_policy_rejects_embedded_compound_operators_in_argument_arrays():
+    # Inspect policy must not trust a shell operator hidden inside one array item.
+    for command in (
+        ['echo', 'first;echo second'],
+        ['echo', 'first&&echo second'],
+        ['echo', 'first|echo second'],
+        ['echo', 'first&echo second'],
+    ):
+        assert classify_shell_command(command).reason == 'compound-shell-command', command
+
+
 def test_shell_policy_rejects_node_inline_data_url_preloads():
     # Classification only: the encoded URL payloads must NEVER be executed.
     data_url = 'data:text/javascript,process%2Eexit%281%29'
