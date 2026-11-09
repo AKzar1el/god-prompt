@@ -46,6 +46,14 @@ def test_inspect_log_condition_rejects_conflicting_or_ambiguous_identity():
         _condition_for_log(log('prefix_godprompt_bench_godprompt_suffix', {}))
 
 
+@pytest.mark.parametrize('condition', ('baseline', 'godprompt'))
+def test_inspect_log_condition_rejects_unrecognized_task_even_with_metadata(condition):
+    # Metadata alone must not authorize samples from another Inspect task.
+    log = SimpleNamespace(eval=SimpleNamespace(task='unrelated_eval'), metadata={'condition': condition})
+    with pytest.raises(RuntimeError, match='task identity'):
+        _condition_for_log(log)
+
+
 def test_run_manifest_fingerprints_actual_compose_isolation_configuration():
     profile = load_profile(ROOT / 'configs' / 'smoke.json')
     manifest = build_manifest(

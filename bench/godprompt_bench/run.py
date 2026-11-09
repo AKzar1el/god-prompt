@@ -419,6 +419,8 @@ def _condition_for_log(log: Any) -> str:
         "godprompt_bench_baseline": "baseline",
         "godprompt_bench_godprompt": "godprompt",
     }.get(task_name)
+    if task_name and task_condition is None:
+        raise RuntimeError("could not determine benchmark condition: unrecognized task identity")
     if condition is not None and condition not in {"baseline", "godprompt"}:
         raise RuntimeError("invalid benchmark condition in Inspect log metadata")
     if condition is not None and task_condition is not None and condition != task_condition:
