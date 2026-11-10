@@ -248,6 +248,30 @@ def test_shell_policy_rejects_git_helper_config_without_execution():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_additional_git_execution_config_without_execution():
+    # All four keys are documented by "git help -c" as external commands.
+    for command in (
+        'git -c diff.demo.command=helper diff',
+        'git -c diff.demo.textconv=helper show HEAD',
+        'git -c merge.demo.driver=helper merge main',
+        'git -c gpg.x509.program=helper verify-commit HEAD',
+        'git --config-env=diff.demo.command=HELPER diff',
+        'git config --local diff.demo.command helper',
+        'git config --local diff.demo.textconv helper',
+        'git config --local merge.demo.driver helper',
+        'git config --local gpg.openpgp.program helper',
+    ):
+        assert classify_shell_command(command).reason == 'dynamic-git-execution-config', command
+
+    # Inert options, queries and literal output must still be accepted.
+    for command in (
+        'git -c diff.demo.binary=true diff',
+        'git config --local merge.demo.driver',
+        'echo git -c diff.demo.command=helper',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_git_helper_environment_without_execution():
     for command in (
         'GIT_PAGER=helper git log',
