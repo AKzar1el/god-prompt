@@ -398,6 +398,17 @@ def test_event_metrics_counts_inspect_bash_command_schema_and_retries():
     assert invalid['failed_tool_calls'] == 1
 
 
+@pytest.mark.parametrize('invalid_flag', ('false', 'true', -1, 2, float('nan'), []))
+def test_event_metrics_rejects_malformed_tool_failure_flags(invalid_flag):
+    from godprompt_bench.scorers import event_metrics
+
+    # A truthy string like "false" must not invent a tool failure or retry.
+    event = {'event': 'tool', 'function': 'bash',
+             'arguments': {'command': 'python3 test_visible.py'}, 'failed': invalid_flag}
+    with pytest.raises(ValueError, match='invalid tool failure flag'):
+        event_metrics([event], ('python3 test_visible.py',))
+
+
 def test_event_metrics_stop_counting_retries_after_successful_recovery():
     from godprompt_bench.scorers import event_metrics
 
