@@ -14,6 +14,7 @@ from uuid import uuid4
 _ALLOWED_STATUSES = {"complete", "blocked", "error"}
 _FENCE_RE = re.compile(r"^```(?:json)?\s*(\{.*\})\s*```$", re.DOTALL | re.IGNORECASE)
 _IGNORED_SCOPE_PARTS = {"__pycache__", ".pytest_cache"}
+_DIRECTORY_HASH = hashlib.sha256(b"directory\0").hexdigest()
 
 
 def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -91,11 +92,18 @@ def _ignored_scope_path(path: str) -> bool:
     return any(part in _IGNORED_SCOPE_PARTS for part in parsed.parts)
 
 
-def _matches_declared_path(path: str, declared_paths: tuple[str, ...]) -> bool:
+def _matches_declared_path(
+    path: str, declared_paths: tuple[str, ...], baseline: dict[str, str] | None = None,
+) -> bool:
     candidate = PurePosixPath(path)
     for declared in declared_paths:
         base = PurePosixPath(declared)
-        if candidate == base or base in candidate.parents:
+        if candidate == base:
+            return True
+        # An existing allowed file or symlink cannot become a whole allowed subtree.
+        if base in candidate.parents and (
+            baseline is None or declared not in baseline or baseline[declared] == _DIRECTORY_HASH
+        ):
             return True
     return False
 
@@ -112,7 +120,7 @@ def detect_scope_violation(
         if before.get(path) != after.get(path) and not _ignored_scope_path(path)
     }
     return any(
-        not _matches_declared_path(path, allowed_paths)
+        not _matches_declared_path(path, allowed_paths, before)
         or _matches_declared_path(path, forbidden_paths)
         for path in changed
     )
