@@ -105,6 +105,46 @@ def _package_executable_name(token: str) -> str:
     return name
 
 
+def _uses_env_split_string(tokens: list[str]) -> bool:
+    # Only env launchers may interpret -S: script arguments mentioning env are data.
+    operators = {";", "&&", "||", "|", "&", "|&"}
+    start = 0
+    for end in range(len(tokens) + 1):
+        if end < len(tokens) and tokens[end] not in operators:
+            continue
+        segment = tokens[start:end]
+        start = end + 1
+        index = 0
+        while index < len(segment):
+            token = segment[index]
+            launcher = _package_executable_name(token)
+            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", token):
+                index += 1
+                continue
+            if launcher == "command":
+                index += 1
+                if index < len(segment) and segment[index] == "-p":
+                    index += 1
+                continue
+            if launcher != "env":
+                break
+            index += 1
+            while index < len(segment):
+                option = segment[index]
+                if option.startswith(("-S", "--split-string=")) or option == "--split-string":
+                    return True
+                if (option in {"-i", "--ignore-environment", "--", "-0", "--null", "-v", "--debug"}
+                        or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", option)
+                        or option.startswith(("--chdir=", "--unset=", "--argv0="))
+                        or (option.startswith("-C") and len(option) > 2)):
+                    index += 1
+                elif option in {"-C", "--chdir", "-u", "--unset", "-a", "--argv0"}:
+                    index += 2
+                else:
+                    break
+    return False
+
+
 def _runs_package_network_command(tokens: list[str]) -> bool:
     # Inspect the actual launched program, not inert script arguments.
     index = 0
@@ -278,10 +318,8 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
 
     # GNU env -S re-tokenizes a single argument into a new command, hiding
     # executable names from the normal shell-token scan.
-    if "env" in {_package_executable_name(token) for token in executable_tokens}:
-        if any(token.startswith(("-S", "--split-string=")) or token == "--split-string"
-               for token in executable_tokens):
-            return PolicyDecision(False, "dynamic-env-command")
+    if _uses_env_split_string(executable_tokens):
+        return PolicyDecision(False, "dynamic-env-command")
 
     inline_interpreters = {
         "python", "python3", "py", "pyw", "pythonw", "node", "nodejs",
