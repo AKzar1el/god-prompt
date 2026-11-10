@@ -5,6 +5,7 @@ import json
 import re
 import stat
 from dataclasses import asdict
+from io import StringIO
 from math import isfinite
 from pathlib import Path
 from typing import Any, Iterable
@@ -154,8 +155,8 @@ def redact_secrets(value: Any) -> Any:
     return value
 
 
-def _write_json(path: Path, payload: Any) -> None:
-    path.write_text(json.dumps(redact_secrets(payload), indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+def _serialize_json(payload: Any) -> str:
+    return json.dumps(redact_secrets(payload), indent=2, sort_keys=True, allow_nan=False) + "\n"
 
 
 def _spreadsheet_safe_cell(value: Any) -> Any:
@@ -177,12 +178,24 @@ def export_run(
     records_list = list(records)
     trajectories_list = list(trajectories)
     summary = aggregate(records_list)
-    # Validate all public trajectory events before replacing any artifacts.
-    # A malformed later event must not leave a partial or mixed-run export.
+    # Validate public JSON before creating a directory or replacing artifacts.
+    # Malformed later input must not leave a partial or mixed-run export.
+    serialized_manifest = _serialize_json(manifest)
+    serialized_summary = _serialize_json(summary)
     serialized_trajectories = [
         json.dumps(redact_secrets(trajectory), sort_keys=True, allow_nan=False)
         for trajectory in trajectories_list
     ]
+    fieldnames = list(SampleRecord.__dataclass_fields__.keys())
+    scores_buffer = StringIO(newline="")
+    scores_writer = csv.DictWriter(scores_buffer, fieldnames=fieldnames)
+    scores_writer.writeheader()
+    for record in records_list:
+        scores_writer.writerow({
+            key: _spreadsheet_safe_cell(redact_secrets(value))
+            for key, value in asdict(record).items()
+        })
+    serialized_scores = scores_buffer.getvalue()
     # Check each existing component before mkdir: a symlinked parent can
     # redirect every public artifact outside the chosen output directory.
     for candidate in (output_dir, *output_dir.parents):
@@ -203,15 +216,11 @@ def export_run(
         if target.is_symlink() or (target.exists() and target.stat().st_nlink > 1):
             raise ValueError(f"refusing linked public artifact: {name}")
 
-    _write_json(output_dir / "manifest.json", manifest)
-    _write_json(output_dir / "summary.json", summary)
+    (output_dir / "manifest.json").write_text(serialized_manifest, encoding="utf-8")
+    (output_dir / "summary.json").write_text(serialized_summary, encoding="utf-8")
 
-    fieldnames = list(SampleRecord.__dataclass_fields__.keys())
     with (output_dir / "scores.csv").open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
-        writer.writeheader()
-        for record in records_list:
-            writer.writerow({key: _spreadsheet_safe_cell(redact_secrets(value)) for key, value in asdict(record).items()})
+        handle.write(serialized_scores)
 
     with (output_dir / "trajectories.jsonl").open("w", encoding="utf-8") as handle:
         for trajectory in serialized_trajectories:
