@@ -121,6 +121,9 @@ def _git_config_launches_command(config: str) -> bool:
         (len(parts) >= 2 and parts[0] == "pager")
         or (len(parts) >= 3 and parts[0] == "includeif" and parts[-1] == "path")
         or (len(parts) >= 3 and parts[0] == "filter" and parts[-1] in {"clean", "smudge", "process"})
+        or (len(parts) >= 3 and parts[0] == "diff" and parts[-1] in {"command", "textconv"})
+        or (len(parts) >= 3 and parts[0] == "merge" and parts[-1] == "driver")
+        or (len(parts) >= 3 and parts[0] == "gpg" and parts[-1] == "program")
         or (len(parts) >= 3 and parts[0] in {"difftool", "mergetool"} and parts[-1] == "cmd")
     )
 
