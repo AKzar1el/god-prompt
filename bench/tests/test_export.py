@@ -563,6 +563,31 @@ def test_public_exports_redact_percent_encoded_query_parameter_names(tmp_path: P
         assert 'part%5Fnumber=7' in exported
 
 
+def test_public_exports_redact_multiply_encoded_query_parameter_names(tmp_path: Path):
+    url = (
+        'https://storage.example.invalid/object?api%255Fkey=FAKE_DOUBLE_KEY_123'
+        '&X-Amz%252DSignature=FAKE_DOUBLE_SIG_456'
+        '&amp;session%25255Ftoken=FAKE_TRIPLE_SESSION_789'
+        '&part%255Fnumber=7'
+    )
+    expected = (
+        'https://storage.example.invalid/object?api%255Fkey=[REDACTED]'
+        '&X-Amz%252DSignature=[REDACTED]'
+        '&amp;session%25255Ftoken=[REDACTED]'
+        '&part%255Fnumber=7'
+    )
+    assert redact_secrets(url) == expected
+    export_run(tmp_path, {'note': url},
+               [replace(record(), infrastructure_error=url)],
+               [{'output': url}])
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        output = (tmp_path / name).read_text(encoding='utf-8')
+        assert all(secret not in output for secret in (
+            'FAKE_DOUBLE_KEY_123', 'FAKE_DOUBLE_SIG_456', 'FAKE_TRIPLE_SESSION_789',
+        )), name
+        assert 'part%255Fnumber=7' in output
+
+
 def test_public_exports_redact_html_escaped_signed_url_query(tmp_path: Path):
     # HTML attribute values can encode query separators as &amp;.
     url = (
