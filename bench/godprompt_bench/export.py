@@ -177,6 +177,12 @@ def export_run(
     records_list = list(records)
     trajectories_list = list(trajectories)
     summary = aggregate(records_list)
+    # Validate all public trajectory events before replacing any artifacts.
+    # A malformed later event must not leave a partial or mixed-run export.
+    serialized_trajectories = [
+        json.dumps(redact_secrets(trajectory), sort_keys=True, allow_nan=False)
+        for trajectory in trajectories_list
+    ]
     # Check each existing component before mkdir: a symlinked parent can
     # redirect every public artifact outside the chosen output directory.
     for candidate in (output_dir, *output_dir.parents):
@@ -208,5 +214,5 @@ def export_run(
             writer.writerow({key: _spreadsheet_safe_cell(redact_secrets(value)) for key, value in asdict(record).items()})
 
     with (output_dir / "trajectories.jsonl").open("w", encoding="utf-8") as handle:
-        for trajectory in trajectories_list:
-            handle.write(json.dumps(redact_secrets(trajectory), sort_keys=True, allow_nan=False) + "\n")
+        for trajectory in serialized_trajectories:
+            handle.write(trajectory + "\n")

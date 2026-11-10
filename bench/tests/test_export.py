@@ -81,6 +81,31 @@ def test_redactor_rejects_ambiguous_mapping_keys_after_stringification():
         redact_secrets({1: 'integer', '1': 'string'})
 
 
+@pytest.mark.parametrize(
+    ('invalid_event', 'expected_error'),
+    [
+        ({'event': {1: 'integer', '1': 'string'}}, ValueError),
+        ({'event': object()}, TypeError),
+    ],
+)
+def test_late_trajectory_serialization_failure_preserves_existing_artifacts(
+    tmp_path: Path, invalid_event: dict, expected_error: type[Exception],
+):
+    output = tmp_path / 'public'
+    export_run(output, {'run_id': 'previous'}, [record()], [{'event': 'previous'}])
+    before = {path.name: path.read_bytes() for path in output.iterdir()}
+    invalid_trajectories = [{'event': 'valid'}, invalid_event]
+
+    with pytest.raises(expected_error):
+        export_run(output, {'run_id': 'next'}, [record()], invalid_trajectories)
+    assert {path.name: path.read_bytes() for path in output.iterdir()} == before
+
+    fresh = tmp_path / 'not-created'
+    with pytest.raises(expected_error):
+        export_run(fresh, {'run_id': 'next'}, [record()], invalid_trajectories)
+    assert not fresh.exists()
+
+
 def test_export_overwrites_only_known_files_not_arbitrary_output(tmp_path: Path):
     marker = tmp_path / 'keep.txt'
     marker.write_text('keep')
