@@ -832,6 +832,33 @@ def test_public_trajectory_excludes_private_channels_serialized_as_objects():
     ]
 
 
+def test_public_trajectory_excludes_private_block_types_serialized_as_objects():
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[
+            {'role': 'assistant', 'channel': 'final', 'content': [
+                {'type': {'value': 'reasoning'}, 'text': 'SYNTHETIC_PRIVATE_TYPE'},
+                {'type': {'name': 'thinking'}, 'text': 'SYNTHETIC_PRIVATE_NAMED_TYPE'},
+                {'type': {'value': 'text'}, 'text': 'public answer'},
+            ]},
+        ],
+        events=[
+            {'event': 'tool', 'output': [
+                {'type': {'name': 'analysis'}, 'text': 'SYNTHETIC_PRIVATE_EVENT_TYPE'},
+                {'type': 'text', 'text': 'public output'},
+            ]},
+        ],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'][0]['content'] == [
+        {'type': {'value': 'text'}, 'text': 'public answer'},
+    ]
+    assert trajectory['events'][0]['output'] == [
+        {'type': 'text', 'text': 'public output'},
+    ]
+
+
 def test_execute_benchmark_reads_actual_model_from_eval_spec(monkeypatch, tmp_path):
     import inspect_ai
     import godprompt_bench.run as run_module
