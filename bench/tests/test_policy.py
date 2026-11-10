@@ -272,6 +272,22 @@ def test_shell_policy_rejects_additional_git_execution_config_without_execution(
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_url_scoped_git_credential_helper_without_execution():
+    # Git's credential.<url>.helper is executable just like credential.helper.
+    for command in (
+        'git -c credential.https://example.invalid.helper=INERT_HELPER status',
+        'git -ccredential.https://example.invalid.helper=INERT_HELPER status',
+        'git --config-env=credential.https://example.invalid.helper=HELPER status',
+        'git config --local credential.https://example.invalid.helper INERT_HELPER',
+        'git config --local credential.https://example.invalid.helper=INERT_HELPER',
+    ):
+        assert classify_shell_command(command).reason == 'dynamic-git-execution-config', command
+
+    # Queries and non-executable scoped values remain inert.
+    assert classify_shell_command('git config --local credential.https://example.invalid.helper').allowed
+    assert classify_shell_command('git -c credential.https://example.invalid.username=alice status').allowed
+
+
 def test_shell_policy_rejects_git_helper_environment_without_execution():
     for command in (
         'GIT_PAGER=helper git log',
