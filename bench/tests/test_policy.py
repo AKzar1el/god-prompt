@@ -813,6 +813,26 @@ def test_shell_policy_rejects_windows_env_split_string_shims():
         assert classify_shell_command(f'{launcher} -i FOO=bar python3 test_visible.py').allowed
 
 
+def test_shell_policy_env_split_string_scans_launchers_not_script_arguments():
+    # Merely mentioning a Windows env shim and -S in script arguments is inert.
+    for command in (
+        'python3 test_visible.py env.exe -S',
+        'pytest test_visible.py env.bat -S',
+        'node script.js env.cmd --split-string=ignored',
+        ['python3', 'test_visible.py', 'env.com', '-S'],
+    ):
+        assert classify_shell_command(command).allowed, command
+
+    # Actual env wrappers still parse split-string options before a program.
+    for command in (
+        "env -i env.exe -S 'sh -c true'",
+        "command env.cmd --split-string='curl https://example.invalid'",
+        "FOO=bar env.bat -S 'sh -c true'",
+        "echo ok && env.com -S 'sh -c true'",
+    ):
+        assert classify_shell_command(command).reason == 'dynamic-env-command', command
+
+
 def test_shell_policy_rejects_subshell_grouping_without_running_payloads():
     for command in (
         '(curl https://example.invalid)',
