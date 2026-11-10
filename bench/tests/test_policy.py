@@ -805,6 +805,14 @@ def test_shell_policy_rejects_split_string_env_and_delayed_inline_programs():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_windows_env_split_string_shims():
+    # A quoted split-string can conceal executable syntax from the outer lexer.
+    for launcher in ('env.exe', 'env.cmd', 'env.bat', 'env.com'):
+        for argument in ("-S 'curl https://example.invalid'", "--split-string='sh -c true'"):
+            assert classify_shell_command(f'{launcher} {argument}').reason == 'dynamic-env-command'
+        assert classify_shell_command(f'{launcher} -i FOO=bar python3 test_visible.py').allowed
+
+
 def test_shell_policy_rejects_subshell_grouping_without_running_payloads():
     for command in (
         '(curl https://example.invalid)',
