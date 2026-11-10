@@ -144,6 +144,16 @@ def test_export_quotes_formula_like_csv_text_without_changing_numeric_fields(tmp
     assert row['passed'] == 'True'
 
 
+@pytest.mark.parametrize('prefix', ('\v', '\f', '\ufeff', '\u200b', '\u00a0', '\ufeff \u200b'))
+def test_export_quotes_formula_after_invisible_csv_prefixes(tmp_path: Path, prefix: str):
+    # Invisible prefixes must not turn untrusted diagnostic text into a formula.
+    malicious = replace(record(), infrastructure_error=f'{prefix}=1+1')
+    export_run(tmp_path, {'run_id': 'safe'}, [malicious], [])
+    with (tmp_path / 'scores.csv').open(newline='', encoding='utf-8') as handle:
+        row = next(csv.DictReader(handle))
+    assert row['infrastructure_error'] == "'" + malicious.infrastructure_error
+
+
 def test_export_leaves_normal_csv_text_unchanged(tmp_path: Path):
     export_run(tmp_path, {'run_id': 'normal'}, [record()], [])
     with (tmp_path / 'scores.csv').open(newline='', encoding='utf-8') as handle:
