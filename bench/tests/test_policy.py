@@ -376,6 +376,27 @@ def test_shell_policy_rejects_other_shell_interpreters_without_execution():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_treats_local_script_arguments_as_data():
+    # Pure string classification: never execute any tested shell command.
+    for command in (
+        'python3 test_visible.py curl',
+        'python3 test_visible.py bash',
+        'node test_visible.js pwsh',
+        'perl test_visible.pl ssh',
+        'ruby test_visible.rb curl',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+    # Compound operations retain full executable scanning.
+    for command in (
+        'python3 test_visible.py && curl https://example.invalid',
+        'node test_visible.js; bash local-script.sh',
+        'python3 test_visible.py | ssh example.invalid',
+    ):
+        assert not classify_shell_command(command).allowed, command
+    assert classify_shell_command('python3 test_visible.py /etc/hostname').reason == 'absolute-path'
+
+
 def test_shell_policy_rejects_versioned_inline_interpreter_aliases():
     # Classify adversarial commands as strings; never execute the payload.
     for command in (
