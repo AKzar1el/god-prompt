@@ -461,6 +461,9 @@ def test_verification_attempts_exclude_help_and_version_only_commands(command, e
 
 
 @pytest.mark.parametrize('command,expected_attempts', [
+    ('python3 -m pytest -q -V', 0),
+    ('python3 -m pytest -q -VV', 0),
+    ('python3 -m pytest -q -V tests/test_policy.py', 0),
     ('python3 -m pytest -q --collect-only', 0),
     ('python3 -m pytest -q --co', 0),
     ('python3 -m pytest -q --setup-plan', 0),
@@ -470,6 +473,7 @@ def test_verification_attempts_exclude_help_and_version_only_commands(command, e
     ('python3 -m pytest -q --fixtures-per-test', 0),
     ('python3 -m pytest -q --markers', 0),
     ('python3 -m pytest -q tests/test_policy.py', 1),
+    ('python3 -m pytest -q -v tests/test_policy.py', 1),
 ])
 def test_verification_attempts_require_executing_tests(command, expected_attempts):
     from godprompt_bench.scorers import event_metrics
