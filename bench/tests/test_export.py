@@ -81,6 +81,22 @@ def test_redactor_rejects_ambiguous_mapping_keys_after_stringification():
         redact_secrets({1: 'integer', '1': 'string'})
 
 
+def test_export_rejects_invalid_trajectory_before_overwriting_public_artifacts(tmp_path: Path):
+    output = tmp_path / 'public'
+    export_run(output, {'run_id': 'previous'}, [record()], [])
+    original = {path.name: path.read_bytes() for path in output.iterdir()}
+    invalid_trajectories = [{'status': 'valid'}, {'event': {1: 'integer', '1': 'string'}}]
+
+    with pytest.raises(ValueError, match='ambiguous JSON object key'):
+        export_run(output, {'run_id': 'next'}, [record()], invalid_trajectories)
+    assert {path.name: path.read_bytes() for path in output.iterdir()} == original
+
+    fresh_output = tmp_path / 'new'
+    with pytest.raises(ValueError, match='ambiguous JSON object key'):
+        export_run(fresh_output, {'run_id': 'next'}, [record()], invalid_trajectories)
+    assert not fresh_output.exists()
+
+
 def test_export_overwrites_only_known_files_not_arbitrary_output(tmp_path: Path):
     marker = tmp_path / 'keep.txt'
     marker.write_text('keep')
