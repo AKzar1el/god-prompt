@@ -263,7 +263,7 @@ def _private_reasoning_block(value: Any) -> bool:
     if not isinstance(value, Mapping):
         return False
     channel = value.get("channel")
-    return _private_reasoning_field(value.get("type")) or _private_channel(channel)
+    return _private_channel(value.get("type")) or _private_channel(channel)
 
 
 def _strip_reasoning(value: Any) -> Any:
