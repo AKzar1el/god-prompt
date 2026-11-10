@@ -222,6 +222,50 @@ def test_shell_policy_rejects_dynamic_git_aliases():
     assert classify_shell_command("echo git -c alias.check=x").allowed
 
 
+def test_shell_policy_rejects_git_helper_config_without_execution():
+    for command in (
+        'git -c core.pager=helper log',
+        'git -ccore.fsmonitor=helper status',
+        'git --config-env=core.pager=HELPER log',
+        'git --config-env core.pager=HELPER log',
+        'git -c diff.external=helper diff',
+        'git -c include.path=local-config.txt status',
+        'git -c filter.demo.process=helper status',
+        'env git -C repo -c pager.log=helper log',
+        'git config --local core.pager helper',
+        'git -C repo config --local filter.demo.process helper',
+        'echo ok && git -c core.fsmonitor=helper status',
+    ):
+        assert classify_shell_command(command).reason == 'dynamic-git-execution-config', command
+
+    assert classify_shell_command(['git', '-c', 'core.pager=helper', 'log']).reason == 'dynamic-git-execution-config'
+    for command in (
+        'git -c color.ui=always status',
+        'git config --local user.name',
+        'git config --local core.pager',
+        'echo git -c core.pager=helper',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
+def test_shell_policy_rejects_git_helper_environment_without_execution():
+    for command in (
+        'GIT_PAGER=helper git log',
+        'GIT_EXTERNAL_DIFF=helper git diff',
+        'GIT_EDITOR=helper git commit',
+        'env GIT_ASKPASS=helper git status',
+        'env -i GIT_SSH_COMMAND=helper git status',
+        'PAGER=helper git log',
+        'echo ok && GIT_PAGER=helper git log',
+    ):
+        assert classify_shell_command(command).reason == 'git-environment-override', command
+    for command in (
+        'echo GIT_PAGER=helper',
+        'python3 test_visible.py GIT_PAGER=helper',
+    ):
+        assert classify_shell_command(command).allowed, command
+
+
 def test_shell_policy_rejects_git_environment_config_injection_without_execution():
     # Git reads these overrides before resolving a seemingly harmless subcommand.
     for command in (
