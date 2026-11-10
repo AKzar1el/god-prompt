@@ -69,9 +69,12 @@ _CSV_FORMULA = re.compile(r"^[\s\u200b\ufeff]*[=+\-@]")
 
 
 def _redact_encoded_query_key(match: re.Match[str]) -> str:
-    # Decode only for classification; preserve the original URL key spelling.
-    if _SECRET_KEY.search(unquote(match.group(2))):
-        return f"{match.group(1)}{match.group(2)}{match.group(3)}[REDACTED]"
+    # Nested encodings occur in captured URLs; decode only for classification.
+    key = match.group(2)
+    for _ in range(3):
+        key = unquote(key)
+        if _SECRET_KEY.search(key):
+            return f"{match.group(1)}{match.group(2)}{match.group(3)}[REDACTED]"
     return match.group(0)
 
 
