@@ -64,6 +64,7 @@ _JSON_SCALAR_FIELD = re.compile(
     r'(?:-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|true|false|null)'
     r'(?=[ \t]*[,}\]\r\n]|$)'
 )
+_CSV_FORMULA = re.compile(r"^[\s\u200b\ufeff]*[=+\-@]")
 
 
 def _redact_encoded_query_key(match: re.Match[str]) -> str:
@@ -159,7 +160,8 @@ def _write_json(path: Path, payload: Any) -> None:
 
 def _spreadsheet_safe_cell(value: Any) -> Any:
     """Keep untrusted text from becoming a formula when scores.csv is opened."""
-    if isinstance(value, str) and value.lstrip(" \t\r\n").startswith(("=", "+", "-", "@")):
+    # Spreadsheets can ignore leading whitespace and invisible format markers.
+    if isinstance(value, str) and _CSV_FORMULA.match(value):
         return "'" + value
     if isinstance(value, str) and value.startswith(("\t", "\r", "\n")):
         return "'" + value
