@@ -278,7 +278,7 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
 
     # GNU env -S re-tokenizes a single argument into a new command, hiding
     # executable names from the normal shell-token scan.
-    if "env" in {PurePosixPath(token).name for token in executable_tokens}:
+    if "env" in {_package_executable_name(token) for token in executable_tokens}:
         if any(token.startswith(("-S", "--split-string=")) or token == "--split-string"
                for token in executable_tokens):
             return PolicyDecision(False, "dynamic-env-command")
