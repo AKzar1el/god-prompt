@@ -196,6 +196,8 @@ def export_run(
             for key, value in asdict(record).items()
         })
     serialized_scores = scores_buffer.getvalue()
+    # StringIO accepts lone surrogates that the final UTF-8 file cannot encode.
+    serialized_scores.encode("utf-8")
     # Check each existing component before mkdir: a symlinked parent can
     # redirect every public artifact outside the chosen output directory.
     for candidate in (output_dir, *output_dir.parents):

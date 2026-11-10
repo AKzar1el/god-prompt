@@ -146,6 +146,22 @@ def test_late_score_redaction_failure_preserves_existing_exports(tmp_path: Path)
     assert not fresh.exists()
 
 
+def test_unencodable_late_score_preserves_existing_exports(tmp_path: Path):
+    output = tmp_path / 'public'
+    export_run(output, {'run_id': 'previous'}, [record()], [{'event': 'previous'}])
+    before = {path.name: path.read_bytes() for path in output.iterdir()}
+    invalid = replace(record(), infrastructure_error='\ud800')
+
+    with pytest.raises(UnicodeEncodeError):
+        export_run(output, {'run_id': 'next'}, [record(), invalid], [{'event': 'next'}])
+    assert {path.name: path.read_bytes() for path in output.iterdir()} == before
+
+    fresh = tmp_path / 'not-created'
+    with pytest.raises(UnicodeEncodeError):
+        export_run(fresh, {'run_id': 'next'}, [record(), invalid], [{'event': 'next'}])
+    assert not fresh.exists()
+
+
 def test_export_overwrites_only_known_files_not_arbitrary_output(tmp_path: Path):
     marker = tmp_path / 'keep.txt'
     marker.write_text('keep')
