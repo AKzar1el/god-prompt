@@ -81,20 +81,85 @@ def test_redactor_rejects_ambiguous_mapping_keys_after_stringification():
         redact_secrets({1: 'integer', '1': 'string'})
 
 
-def test_export_rejects_invalid_trajectory_before_overwriting_public_artifacts(tmp_path: Path):
+@pytest.mark.parametrize(
+    ('invalid_event', 'expected_error'),
+    [
+        ({'event': {1: 'integer', '1': 'string'}}, ValueError),
+        ({'event': object()}, TypeError),
+    ],
+)
+def test_late_trajectory_serialization_failure_preserves_existing_artifacts(
+    tmp_path: Path, invalid_event: dict, expected_error: type[Exception],
+):
     output = tmp_path / 'public'
-    export_run(output, {'run_id': 'previous'}, [record()], [])
-    original = {path.name: path.read_bytes() for path in output.iterdir()}
-    invalid_trajectories = [{'status': 'valid'}, {'event': {1: 'integer', '1': 'string'}}]
+    export_run(output, {'run_id': 'previous'}, [record()], [{'event': 'previous'}])
+    before = {path.name: path.read_bytes() for path in output.iterdir()}
+    invalid_trajectories = [{'event': 'valid'}, invalid_event]
 
-    with pytest.raises(ValueError, match='ambiguous JSON object key'):
+    with pytest.raises(expected_error):
         export_run(output, {'run_id': 'next'}, [record()], invalid_trajectories)
-    assert {path.name: path.read_bytes() for path in output.iterdir()} == original
+    assert {path.name: path.read_bytes() for path in output.iterdir()} == before
 
-    fresh_output = tmp_path / 'new'
+    fresh = tmp_path / 'not-created'
+    with pytest.raises(expected_error):
+        export_run(fresh, {'run_id': 'next'}, [record()], invalid_trajectories)
+    assert not fresh.exists()
+
+
+@pytest.mark.parametrize(
+    ('invalid_manifest', 'expected_error'),
+    [
+        ({'run_id': 'next', 'diagnostics': {1: 'integer', '1': 'string'}}, ValueError),
+        ({'run_id': 'next', 'diagnostics': object()}, TypeError),
+    ],
+)
+def test_invalid_manifest_preserves_all_existing_exports_before_any_write(
+    tmp_path: Path, invalid_manifest: dict, expected_error: type[Exception],
+):
+    output = tmp_path / 'public'
+    export_run(output, {'run_id': 'previous'}, [record()], [{'event': 'previous'}])
+    before = {path.name: path.read_bytes() for path in output.iterdir()}
+
+    with pytest.raises(expected_error):
+        export_run(output, invalid_manifest, [record()], [{'event': 'next'}])
+    assert {path.name: path.read_bytes() for path in output.iterdir()} == before
+
+    fresh = tmp_path / 'not-created'
+    with pytest.raises(expected_error):
+        export_run(fresh, invalid_manifest, [record()], [{'event': 'next'}])
+    assert not fresh.exists()
+
+
+def test_late_score_redaction_failure_preserves_existing_exports(tmp_path: Path):
+    output = tmp_path / 'public'
+    export_run(output, {'run_id': 'previous'}, [record()], [{'event': 'previous'}])
+    before = {path.name: path.read_bytes() for path in output.iterdir()}
+    invalid = replace(record(), infrastructure_error={1: 'integer', '1': 'string'})
+
     with pytest.raises(ValueError, match='ambiguous JSON object key'):
-        export_run(fresh_output, {'run_id': 'next'}, [record()], invalid_trajectories)
-    assert not fresh_output.exists()
+        export_run(output, {'run_id': 'next'}, [record(), invalid], [{'event': 'next'}])
+    assert {path.name: path.read_bytes() for path in output.iterdir()} == before
+
+    fresh = tmp_path / 'not-created'
+    with pytest.raises(ValueError, match='ambiguous JSON object key'):
+        export_run(fresh, {'run_id': 'next'}, [record(), invalid], [{'event': 'next'}])
+    assert not fresh.exists()
+
+
+def test_unencodable_late_score_preserves_existing_exports(tmp_path: Path):
+    output = tmp_path / 'public'
+    export_run(output, {'run_id': 'previous'}, [record()], [{'event': 'previous'}])
+    before = {path.name: path.read_bytes() for path in output.iterdir()}
+    invalid = replace(record(), infrastructure_error='\ud800')
+
+    with pytest.raises(UnicodeEncodeError):
+        export_run(output, {'run_id': 'next'}, [record(), invalid], [{'event': 'next'}])
+    assert {path.name: path.read_bytes() for path in output.iterdir()} == before
+
+    fresh = tmp_path / 'not-created'
+    with pytest.raises(UnicodeEncodeError):
+        export_run(fresh, {'run_id': 'next'}, [record(), invalid], [{'event': 'next'}])
+    assert not fresh.exists()
 
 
 def test_export_overwrites_only_known_files_not_arbitrary_output(tmp_path: Path):
