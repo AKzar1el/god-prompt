@@ -148,6 +148,19 @@ def test_shell_policy_rejects_windows_network_command_shims_without_execution():
         assert classify_shell_command(command).allowed, command
 
 
+def test_shell_policy_rejects_other_network_transfer_clients_without_execution():
+    for command in (
+        'sftp remote.invalid',
+        'rsync local.txt remote.invalid:backup',
+        'ftp remote.invalid',
+        'tftp remote.invalid',
+        'socat TCP:remote.invalid:443 STDOUT',
+        'env SFTP.EXE remote.invalid',
+        'RSYNC.CMD local.txt remote.invalid:backup',
+    ):
+        assert classify_shell_command(command).reason == 'network-command', command
+
+
 def test_shell_policy_rejects_windows_absolute_launchers_without_execution():
     # Only classify argv; never start these Windows host executables.
     for command in (
@@ -837,6 +850,32 @@ def test_shell_policy_rejects_dynamic_dollar_expansions_without_running_payloads
         r'echo "\$PATH"',
     ):
         assert classify_shell_command(command).allowed, command
+
+
+def test_shell_policy_rejects_dynamic_syntax_in_command_argument_arrays():
+    # Only classify these argv arrays; do not run any shell payloads.
+    for command in (
+        ['echo', '$(echo hidden)'],
+        ['echo', '`echo hidden`'],
+        ['echo', '${HOME}'],
+        ['echo', 'safe\necho hidden'],
+        ['python3', 'test_visible.py', '$(echo hidden)'],
+    ):
+        assert classify_shell_command(command).reason == 'dynamic-shell-syntax', command
+
+    assert classify_shell_command(['python3', 'test_visible.py']).allowed
+    assert classify_shell_command(['echo', 'literal text']).allowed
+
+
+def test_shell_policy_rejects_embedded_compound_operators_in_argument_arrays():
+    # Inspect policy must not trust a shell operator hidden inside one array item.
+    for command in (
+        ['echo', 'first;echo second'],
+        ['echo', 'first&&echo second'],
+        ['echo', 'first|echo second'],
+        ['echo', 'first&echo second'],
+    ):
+        assert classify_shell_command(command).reason == 'compound-shell-command', command
 
 
 def test_shell_policy_rejects_node_inline_data_url_preloads():

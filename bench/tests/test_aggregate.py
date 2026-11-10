@@ -127,6 +127,15 @@ def test_aggregate_ignores_malformed_historical_latency_values():
     json.dumps(summary, allow_nan=False)
 
 
+def test_aggregate_finite_large_latencies_keep_median_json_safe():
+    # statistics.median can overflow when adding two otherwise finite doubles.
+    records = [rec('baseline', True, latency=1e308), rec('baseline', False, latency=1e308)]
+    summary = aggregate(records)
+    assert summary['baseline']['median_latency_seconds'] == 1e308
+    assert summary['by_category']['implementation']['baseline']['median_latency_seconds'] == 1e308
+    json.dumps(summary, allow_nan=False)
+
+
 def test_aggregate_does_not_underreport_missing_token_usage_as_zero():
     valid = rec('baseline', True)
     unavailable = replace(rec('baseline', False), input_tokens=None, output_tokens=None)

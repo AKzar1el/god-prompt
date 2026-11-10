@@ -362,7 +362,10 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                 elif not option.startswith("-"):
                     break
 
-    banned_network = {"curl", "wget", "ssh", "scp", "nc", "ncat", "telnet"}
+    banned_network = {
+        "curl", "wget", "ssh", "scp", "sftp", "ftp", "tftp", "rsync",
+        "nc", "ncat", "socat", "telnet",
+    }
     # Match Windows executable shims (.exe/.cmd/.bat/.com) as well as bare names.
     command_names = {
         _package_executable_name(token)
@@ -431,6 +434,15 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     if any(token in {";", "&&", "||", "|", "&", "|&"} or (token and not token.strip("()"))
            for token in tokens):
         return PolicyDecision(False, "compound-shell-command")
+
+    # Array-form commands have no shell quoting context: reject syntax hidden
+    # inside a single argv element after more specific policy checks.
+    if isinstance(command, list):
+        if any(_has_dynamic_dollar(token) or "`" in token or "\n" in token
+               or "\r" in token or "<<<" in token for token in tokens):
+            return PolicyDecision(False, "dynamic-shell-syntax")
+        if any(any(operator in token for operator in ";&|") for token in tokens):
+            return PolicyDecision(False, "compound-shell-command")
 
     return PolicyDecision(True, "allowed")
 

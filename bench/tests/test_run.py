@@ -322,6 +322,19 @@ def test_sample_record_and_public_trajectory_reject_invalid_epochs(invalid_epoch
         public_trajectory(sample, 'baseline')
 
 
+@pytest.mark.parametrize('invalid_id', (123, True, None, '', '   '))
+def test_sample_record_and_public_trajectory_reject_noncanonical_task_ids(invalid_id):
+    # Coercing an Inspect numeric ID to str can match a different manifest task.
+    sample = SimpleNamespace(
+        id=invalid_id, epoch=1, metadata={}, scores={}, model_usage={},
+        total_time=1.0, error=None, limit=None, messages=[], events=[],
+    )
+    with pytest.raises(ValueError, match='invalid sample task id'):
+        sample_record(sample, 'baseline')
+    with pytest.raises(ValueError, match='invalid sample task id'):
+        public_trajectory(sample, 'baseline')
+
+
 @pytest.mark.parametrize('latency', [
     '1.5', True, -1.0, float('nan'), float('inf'), 10 ** 400,
 ])
@@ -567,6 +580,28 @@ def test_public_trajectory_redacts_provider_reasoning_field_variants():
     assert trajectory['events'][0]['output'] == {'status': 'ok'}
 
 
+def test_public_trajectory_redacts_streaming_private_reasoning_deltas():
+    # Streaming adapters can serialize private thought chunks as delta fields
+    # or content-block types inside otherwise public assistant/tool records.
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[{'role': 'assistant', 'analysis_delta': 'SYNTHETIC_PRIVATE_FIELD',
+                   'content': [
+                       {'type': 'reasoning_delta', 'text': 'SYNTHETIC_PRIVATE_BLOCK'},
+                       {'type': 'thinking.delta', 'text': 'SYNTHETIC_PRIVATE_TYPED'},
+                       {'type': 'text', 'text': 'public answer'},
+                   ]}],
+        events=[{'event': 'tool', 'output': [
+            {'channel': 'thinking_delta', 'text': 'SYNTHETIC_PRIVATE_EVENT'},
+            {'thinkingDelta': 'SYNTHETIC_PRIVATE_NESTED', 'status': 'ok'},
+        ]}],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'][0]['content'] == [{'type': 'text', 'text': 'public answer'}]
+    assert trajectory['events'][0]['output'] == [{'status': 'ok'}]
+
+
 def test_public_trajectory_redacts_delimited_reasoning_and_padded_channels():
     # Provider serializers may use spaced/dotted aliases or padded channel labels.
     # Never export the private content merely because the delimiter differs.
@@ -759,6 +794,41 @@ def test_public_trajectory_excludes_private_channels_even_when_dump_disagrees():
     assert trajectory['events'] == [
         {'event': 'tool', 'status': 'ok'},
         {'event': 'tool', 'channel': 'commentary', 'result': 'public result'},
+    ]
+
+
+def test_public_trajectory_excludes_private_channels_serialized_as_objects():
+    sample = SimpleNamespace(
+        id='synthetic', epoch=1,
+        messages=[
+            {'role': 'assistant', 'channel': {'value': 'analysis'},
+             'content': 'SYNTHETIC_PRIVATE_MESSAGE'},
+            {'role': 'assistant', 'channel': {'name': 'thinking'},
+             'content': 'SYNTHETIC_PRIVATE_NAMED'},
+            {'role': 'assistant', 'channel': {'value': 'final'}, 'content': [
+                {'channel': {'value': 'reasoning'}, 'text': 'SYNTHETIC_PRIVATE_NESTED'},
+                {'type': 'text', 'text': 'public answer'},
+            ]},
+        ],
+        events=[
+            {'event': 'tool', 'channel': {'value': 'analysis'},
+             'result': 'SYNTHETIC_PRIVATE_EVENT'},
+            {'event': 'tool', 'output': [
+                {'channel': {'name': 'thinking'}, 'text': 'SYNTHETIC_PRIVATE_OUTPUT'},
+                {'channel': {'name': 'commentary'}, 'text': 'public output'},
+            ]},
+        ],
+    )
+    trajectory = public_trajectory(sample, 'baseline')
+    assert 'SYNTHETIC_PRIVATE' not in json.dumps(trajectory)
+    assert trajectory['messages'] == [
+        {'role': 'assistant', 'channel': {'value': 'final'},
+         'content': [{'type': 'text', 'text': 'public answer'}]},
+    ]
+    assert trajectory['events'] == [
+        {'event': 'tool', 'output': [
+            {'channel': {'name': 'commentary'}, 'text': 'public output'},
+        ]},
     ]
 
 

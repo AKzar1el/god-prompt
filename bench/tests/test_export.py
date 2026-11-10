@@ -144,6 +144,16 @@ def test_export_quotes_formula_like_csv_text_without_changing_numeric_fields(tmp
     assert row['passed'] == 'True'
 
 
+@pytest.mark.parametrize('prefix', ('\v', '\f', '\ufeff', '\u200b', '\u00a0', '\ufeff \u200b'))
+def test_export_quotes_formula_after_invisible_csv_prefixes(tmp_path: Path, prefix: str):
+    # Invisible prefixes must not turn untrusted diagnostic text into a formula.
+    malicious = replace(record(), infrastructure_error=f'{prefix}=1+1')
+    export_run(tmp_path, {'run_id': 'safe'}, [malicious], [])
+    with (tmp_path / 'scores.csv').open(newline='', encoding='utf-8') as handle:
+        row = next(csv.DictReader(handle))
+    assert row['infrastructure_error'] == "'" + malicious.infrastructure_error
+
+
 def test_export_leaves_normal_csv_text_unchanged(tmp_path: Path):
     export_run(tmp_path, {'run_id': 'normal'}, [record()], [])
     with (tmp_path / 'scores.csv').open(newline='', encoding='utf-8') as handle:
@@ -193,6 +203,48 @@ def test_public_exports_redact_credentials_in_json_encoded_diagnostics(tmp_path:
     manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
     assert json.loads(manifest['diagnostic']) == {'api_key': '[REDACTED]', 'detail': 'safe'}
     assert json.loads(json.loads(manifest['escaped'])) == {'api_key': '[REDACTED]', 'detail': 'safe'}
+
+
+def test_public_exports_redact_numeric_credentials_in_json_encoded_diagnostics(tmp_path: Path):
+    # Synthetic numeric secrets can appear in JSON logs without surrounding quotes.
+    password = 98765432112345
+    token = 24681357913579
+    diagnostic = json.dumps({'password': password, 'nested': {'access_token': token}, 'attempts': 3})
+    escaped = json.dumps(diagnostic)
+    export_run(
+        tmp_path,
+        {'diagnostic': diagnostic, 'escaped': escaped},
+        [replace(record(), infrastructure_error=diagnostic)],
+        [{'output': escaped}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        assert str(password) not in exported, name
+        assert str(token) not in exported, name
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    expected = {'password': '[REDACTED]', 'nested': {'access_token': '[REDACTED]'}, 'attempts': 3}
+    assert json.loads(manifest['diagnostic']) == expected
+    assert json.loads(json.loads(manifest['escaped'])) == expected
+
+
+def test_public_exports_redact_unicode_escaped_json_credential_keys(tmp_path: Path):
+    # A serialized key can spell a sensitive name using JSON Unicode escapes.
+    diagnostic = r'{"\u0061pi_key":"SYNTHETIC_ESCAPED_KEY_123","pass\u0077ord":1234567890123,"attempts":3}'
+    escaped = json.dumps(diagnostic)
+    export_run(
+        tmp_path,
+        {'diagnostic': diagnostic, 'escaped': escaped},
+        [replace(record(), infrastructure_error=diagnostic)],
+        [{'output': escaped}],
+    )
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        assert 'SYNTHETIC_ESCAPED_KEY_123' not in exported, name
+        assert '1234567890123' not in exported, name
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    expected = {'api_key': '[REDACTED]', 'password': '[REDACTED]', 'attempts': 3}
+    assert json.loads(manifest['diagnostic']) == expected
+    assert json.loads(json.loads(manifest['escaped'])) == expected
 
 
 def test_public_exports_redact_short_bearer_credentials(tmp_path: Path):
@@ -451,6 +503,30 @@ def test_public_exports_redact_html_escaped_signed_url_query(tmp_path: Path):
         assert 'partNumber=1' in exported
 
 
+def test_public_exports_redact_percent_encoded_html_escaped_signed_query(tmp_path: Path):
+    # HTML-escaped separators must not prefix decoded query keys during classification.
+    url = (
+        'https://storage.example.invalid/object?partNumber=7'
+        '&amp;X-Amz%2DSignature=FAKE_HTML_ENCODED_SIG_123'
+        '&amp;X-Goog%2DCredential=FAKE_HTML_ENCODED_CRED_456'
+        '&amp;part%5Fnumber=3'
+    )
+    expected = (
+        'https://storage.example.invalid/object?partNumber=7'
+        '&amp;X-Amz%2DSignature=[REDACTED]'
+        '&amp;X-Goog%2DCredential=[REDACTED]'
+        '&amp;part%5Fnumber=3'
+    )
+    assert redact_secrets(url) == expected
+    export_run(tmp_path, {'note': url},
+               [replace(record(), infrastructure_error=url)],
+               [{'output': url}])
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / name).read_text(encoding='utf-8')
+        assert 'FAKE_HTML_ENCODED_' not in exported, name
+        assert expected in exported, name
+
+
 def test_public_exports_redact_provider_prefixed_environment_secrets(tmp_path: Path):
     # All values are made-up placeholders, not credentials; plain text must still be sanitized.
     entries = (
@@ -583,3 +659,27 @@ def test_public_exports_redact_camel_case_auth_tokens_in_text_and_metadata(tmp_p
     assert manifest['authToken'] == '[REDACTED]'
     assert manifest['oauthToken'] == '[REDACTED]'
     assert manifest['token_count'] == 3
+
+
+def test_public_exports_redact_inline_secret_aliases_without_masking_counts(tmp_path: Path):
+    secrets = ('FAKE_CLIENT_SECRET_123', 'FAKE_API_SECRET_456', 'FAKE_ACCESS_KEY_789')
+    note = (
+        f'clientSecret={secrets[0]} apiSecret: {secrets[1]} '
+        f'accessKey="{secrets[2]}" accessKeyCount=3'
+    )
+    export_run(
+        tmp_path,
+        {'note': note, 'clientSecret': secrets[0], 'accessKey': secrets[2],
+         'accessKeyIdentifier': secrets[2], 'accessKeyCount': 3},
+        [replace(record(), infrastructure_error=note)],
+        [{'output': note}],
+    )
+    for filename in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        exported = (tmp_path / filename).read_text(encoding='utf-8')
+        assert all(secret not in exported for secret in secrets), filename
+        assert 'accessKeyCount=3' in exported
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['clientSecret'] == '[REDACTED]'
+    assert manifest['accessKey'] == '[REDACTED]'
+    assert manifest['accessKeyIdentifier'] == '[REDACTED]'
+    assert manifest['accessKeyCount'] == 3
