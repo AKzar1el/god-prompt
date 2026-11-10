@@ -145,6 +145,28 @@ def _uses_env_split_string(tokens: list[str]) -> bool:
     return False
 
 
+def _local_script_with_literal_arguments(tokens: list[str]) -> bool:
+    # Interpreter argv after a validated local script is data. A compound
+    # command or launcher is never granted this narrower interpretation.
+    if len(tokens) < 3 or any(token in {";", "&&", "||", "|", "&", "|&", "(", ")"} for token in tokens):
+        return False
+    script = tokens[1]
+    if not validate_workspace_path(script):
+        return False
+    executable = _package_executable_name(tokens[0])
+    suffix = PurePosixPath(script).suffix.casefold()
+    return any(
+        suffix in suffixes and re.fullmatch(interpreter, executable)
+        for interpreter, suffixes in (
+            (r"(?:python[23]?|pypy[23]?)(?:\.\d+)*", {".py"}),
+            (r"node(?:js)?", {".js", ".mjs", ".cjs"}),
+            (r"perl(?:5(?:\.\d+)*)?", {".pl"}),
+            (r"ruby(?:[23](?:\.\d+)*)?", {".rb"}),
+            (r"php(?:[578](?:\.\d+)*)?", {".php"}),
+        )
+    )
+
+
 def _runs_package_network_command(tokens: list[str]) -> bool:
     # Inspect the actual launched program, not inert script arguments.
     index = 0
@@ -266,14 +288,15 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
     if isinstance(command, list) and any("<<<" in token for token in tokens):
         return PolicyDecision(False, "dynamic-shell-syntax")
 
-    # echo/printf render arguments as data; an argument named "curl" or "bash"
-    # is not a command. Keep the full scan for every command containing shell
-    # control operators so a real chained command can never be overlooked.
+    # Echo/printf and local scripts accept inert arguments named "curl" or
+    # "bash". Preserve full scanning for control operators and launch wrappers.
     literal_output = (
         tokens[0] in {"echo", "printf"}
         and not any(token in {";", "&&", "||", "|", "&", "|&"} for token in tokens)
     )
-    executable_tokens = tokens[:1] if literal_output else tokens
+    executable_tokens = tokens[:1] if literal_output else (
+        tokens[:2] if _local_script_with_literal_arguments(tokens) else tokens
+    )
 
     # Windows drive-rooted and UNC launchers bypass PurePosixPath name checks.
     # Preserve inert echo/printf arguments as data, including escaped dollars.
