@@ -105,6 +105,71 @@ def _package_executable_name(token: str) -> str:
     return name
 
 
+def _git_config_launches_command(config: str) -> bool:
+    # Git can execute helpers supplied through config, including other config files.
+    key = config.split("=", 1)[0].casefold()
+    if key in {
+        "core.pager", "core.editor", "core.fsmonitor", "core.hookspath",
+        "core.sshcommand", "core.askpass", "core.alternaterefscommand",
+        "sequence.editor", "diff.external", "credential.helper",
+        "gpg.program", "gpg.ssh.program", "sendemail.sendmailcmd",
+        "include.path",
+    }:
+        return True
+    parts = key.split(".")
+    return (
+        (len(parts) >= 2 and parts[0] == "pager")
+        or (len(parts) >= 3 and parts[0] == "includeif" and parts[-1] == "path")
+        or (len(parts) >= 3 and parts[0] == "filter" and parts[-1] in {"clean", "smudge", "process"})
+        or (len(parts) >= 3 and parts[0] in {"difftool", "mergetool"} and parts[-1] == "cmd")
+    )
+
+
+def _has_git_helper_environment_override(tokens: list[str]) -> bool:
+    # Only inspect environment assignments in launcher position, not script args.
+    unsafe = {
+        "git_pager", "git_editor", "git_sequence_editor", "git_external_diff",
+        "git_ssh", "git_ssh_command", "git_askpass", "ssh_askpass",
+        "pager", "editor", "visual",
+    }
+    operators = {";", "&&", "||", "|", "&", "|&"}
+    start = 0
+    for end in range(len(tokens) + 1):
+        if end < len(tokens) and tokens[end] not in operators:
+            continue
+        segment = tokens[start:end]
+        start = end + 1
+        index = 0
+        while index < len(segment):
+            token = segment[index]
+            key, equal, _ = token.partition("=")
+            if equal and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+                if key.casefold() in unsafe:
+                    return True
+                index += 1
+                continue
+            launcher = _package_executable_name(token)
+            if launcher == "command":
+                index += 1
+                if index < len(segment) and segment[index] == "-p":
+                    index += 1
+                continue
+            if launcher != "env":
+                break
+            index += 1
+            while index < len(segment):
+                option = segment[index]
+                if option in {"-i", "--ignore-environment", "-0", "--null", "-v", "--debug", "--"}:
+                    index += 1
+                elif option in {"-C", "--chdir", "-u", "--unset", "-a", "--argv0"}:
+                    index += 2
+                elif option.startswith(("--chdir=", "--unset=", "--argv0=")):
+                    index += 1
+                else:
+                    break
+    return False
+
+
 def _uses_env_split_string(tokens: list[str]) -> bool:
     # Only env launchers may interpret -S: script arguments mentioning env are data.
     operators = {";", "&&", "||", "|", "&", "|&"}
@@ -319,6 +384,8 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
         for token in executable_tokens
     ):
         return PolicyDecision(False, "git-environment-override")
+    if _has_git_helper_environment_override(executable_tokens):
+        return PolicyDecision(False, "git-environment-override")
 
     # Language runtimes and native loaders can execute modules from these
     # overrides before the visible script or test command is evaluated.
@@ -446,10 +513,14 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                     config = tail[position + 1]
                 elif option.startswith("-c") and len(option) > 2:
                     config = option[2:]
+                elif option == "--config-env" and position + 1 < len(tail):
+                    config = tail[position + 1]
                 elif option.startswith("--config-env="):
                     config = option.split("=", 1)[1]
                 if config is not None and config.casefold().startswith("alias."):
                     return PolicyDecision(False, "dynamic-git-alias")
+                if config is not None and _git_config_launches_command(config):
+                    return PolicyDecision(False, "dynamic-git-execution-config")
             # Git accepts global flags before the subcommand, including -C/-c.
             offset = 0
             options_with_values = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env"}
@@ -457,6 +528,22 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                 offset += 2 if tail[offset] in options_with_values else 1
             if offset < len(tail):
                 git_command = tail[offset]
+                if git_command == "config" and any(
+                    option in {"--global", "--system"} for option in tail[offset + 1:]
+                ):
+                    return PolicyDecision(False, "global-git-config")
+                if git_command == "config":
+                    # A query is inert; setting a helper can execute it on later calls.
+                    config_args = tail[offset + 1:]
+                    for position, config in enumerate(config_args):
+                        if config.casefold().startswith("alias.") and (
+                            "=" in config or position + 1 < len(config_args)
+                        ):
+                            return PolicyDecision(False, "dynamic-git-alias")
+                        if _git_config_launches_command(config) and (
+                            "=" in config or position + 1 < len(config_args)
+                        ):
+                            return PolicyDecision(False, "dynamic-git-execution-config")
                 # These Git entry points can contact remotes, run configured
                 # transports or launch helpers even without curl/ssh in argv.
                 if git_command in {
@@ -469,10 +556,6 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
                     for option in tail[offset + 1:]
                 )):
                     return PolicyDecision(False, "network-command")
-            if offset < len(tail) and tail[offset] == "config" and any(
-                option in {"--global", "--system"} for option in tail[offset + 1 :]
-            ):
-                return PolicyDecision(False, "global-git-config")
         if executable == "find" and index + 1 < len(executable_tokens) and executable_tokens[index + 1] == "/":
             return PolicyDecision(False, "root-filesystem-search")
 
