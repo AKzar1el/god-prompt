@@ -81,6 +81,14 @@ The benchmark pins `inspect-ai==0.3.260` so a benchmark commit resolves to a spe
 
 Inspect model names include their provider prefix. For example, the current OpenAI flagship model can be addressed as `openai/gpt-5.6-sol`.
 
+Before spending provider tokens, preview the selected profile and verify its fixture files offline:
+
+```bash
+python -m godprompt_bench.run --profile smoke --model openai/gpt-5.6-sol --dry-run
+```
+
+`--dry-run` prints planned sample counts, categories, per-sample limits, requested controls and the selected fixture-bundle fingerprint as JSON. It makes **no model calls**, starts no Docker sandbox and creates no result directory. It does not prove provider credentials, Docker readiness or model compatibility, and deliberately gives no dollar-cost estimate: actual token usage and provider pricing are not known from the profile limits alone. Omit `--dry-run` only when you intend to run a potentially billable evaluation.
+
 Smoke run:
 
 ```bash
