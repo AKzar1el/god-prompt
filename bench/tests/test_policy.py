@@ -218,6 +218,22 @@ def test_shell_policy_rejects_windows_parent_path_operands_without_execution():
     assert classify_shell_command(['python3', 'test_visible.py', r'fixtures\visible.txt']).allowed
 
 
+def test_shell_policy_rejects_windows_rooted_argv_paths_without_execution():
+    # Classify path operands only; do not read or write any Windows host paths.
+    for command in (
+        ['python3', 'test_visible.py', r'C:\Windows\win.ini'],
+        ['python3', 'test_visible.py', r'C:secret.txt'],
+        ['python3', 'test_visible.py', r'\Windows\win.ini'],
+        ['python3', 'test_visible.py', r'\\server\share\private.txt'],
+        ['sort', r'--output=C:\outside.txt', 'src.txt'],
+        ['git', '-C', r'C:\outside', 'status'],
+    ):
+        assert classify_shell_command(command).reason == 'absolute-path', command
+
+    assert classify_shell_command(['python3', 'test_visible.py', r'fixtures\visible.txt']).allowed
+    assert classify_shell_command(['echo', r'C:\Windows\win.ini']).allowed
+
+
 def test_shell_policy_rejects_dynamic_git_aliases():
     for command in (
         "git -c 'alias.check=!curl https://example.invalid' check",

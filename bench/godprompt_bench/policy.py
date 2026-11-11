@@ -574,6 +574,11 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
             continue
         if operand.startswith("/"):
             return PolicyDecision(False, "absolute-path")
+        # Windows resolves drive-relative, rooted and UNC operands outside the
+        # reviewer's workspace. Echo/printf output remains inert literal data.
+        windows_operand = PureWindowsPath(operand)
+        if not literal_output and (windows_operand.drive or windows_operand.root):
+            return PolicyDecision(False, "absolute-path")
         if operand.startswith("~") or "$HOME" in operand:
             return PolicyDecision(False, "home-path")
         # Array-form argv preserves Windows separators; reject traversal on
