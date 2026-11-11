@@ -66,6 +66,8 @@ The full profile is the reference-run shape. Multiple epochs are retained as ind
 
 Python 3.11+ and Docker are required. Node.js is provided inside the task sandbox.
 
+On macOS or Linux:
+
 ```bash
 cd bench
 python -m venv .venv
@@ -73,6 +75,16 @@ python -m venv .venv
 python -m pip install --upgrade pip
 pip install -e '.[test,openai]'
 python -m pytest -q
+```
+
+On Windows PowerShell, use the virtual environment's Python directly. This does not require activating a script or changing PowerShell's execution policy:
+
+```powershell
+cd bench
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e '.[test,openai]'
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
 The benchmark pins `inspect-ai==0.3.260` so a benchmark commit resolves to a specific evaluation framework version.
