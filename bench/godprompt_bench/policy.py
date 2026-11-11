@@ -576,7 +576,9 @@ def classify_shell_command(command: str | list[str]) -> PolicyDecision:
             return PolicyDecision(False, "absolute-path")
         if operand.startswith("~") or "$HOME" in operand:
             return PolicyDecision(False, "home-path")
-        if operand.startswith("../") or "/../" in operand or operand == "..":
+        # Array-form argv preserves Windows separators; reject traversal on
+        # either platform rather than checking only POSIX slash spellings.
+        if ".." in PureWindowsPath(operand).parts or ".." in PurePosixPath(operand).parts:
             return PolicyDecision(False, "parent-path")
 
     if any(token in {";", "&&", "||", "|", "&", "|&"} or (token and not token.strip("()"))
