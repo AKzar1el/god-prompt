@@ -566,6 +566,7 @@ def execute_benchmark(
 
 
 def main() -> None:
+    bench_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description="Run the GodPrompt baseline-vs-GodPrompt benchmark")
     parser.add_argument("--profile", choices=("smoke", "half", "full"), default="smoke")
     parser.add_argument("--model", required=True, help="Inspect model name, e.g. openai/gpt-5.6")
@@ -573,10 +574,9 @@ def main() -> None:
     parser.add_argument("--seed", type=int)
     parser.add_argument("--reasoning-effort", choices=("none", "minimal", "low", "medium", "high", "xhigh", "max"))
     parser.add_argument("--reasoning-mode", choices=("standard", "pro"))
-    parser.add_argument("--output", type=Path, default=Path("bench/results"))
+    parser.add_argument("--output", type=Path, default=bench_root / "results")
     args = parser.parse_args()
 
-    bench_root = Path(__file__).resolve().parents[1]
     repo_root = bench_root.parent
     profile = load_profile(bench_root / "configs" / f"{args.profile}.json")
     result = execute_benchmark(
