@@ -205,6 +205,19 @@ def test_shell_policy_rejects_paths_hidden_in_option_assignments():
     assert classify_shell_command('git -c color.ui=always status').allowed
 
 
+def test_shell_policy_rejects_windows_parent_path_operands_without_execution():
+    # Windows resolves backslashes as separators even for array-form argv.
+    for command in (
+        ['python3', 'test_visible.py', r'..\secret.txt'],
+        ['sort', r'--output=..\outside.txt', 'src.txt'],
+        ['cat', r'data\..\..\private.txt'],
+        ['git', '-C', r'repo\..\..\outside', 'status'],
+    ):
+        assert classify_shell_command(command).reason == 'parent-path', command
+
+    assert classify_shell_command(['python3', 'test_visible.py', r'fixtures\visible.txt']).allowed
+
+
 def test_shell_policy_rejects_dynamic_git_aliases():
     for command in (
         "git -c 'alias.check=!curl https://example.invalid' check",
