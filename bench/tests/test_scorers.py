@@ -65,6 +65,28 @@ def test_scope_violation_uses_before_after_hashes(tmp_path: Path):
     assert detect_scope_violation(before, after_forbidden, ('src/target.py',)) is True
 
 
+def test_allowed_file_cannot_be_replaced_with_unrestricted_directory(tmp_path: Path):
+    (tmp_path / 'src').mkdir()
+    target = tmp_path / 'src' / 'target.py'
+    target.write_text('starter')
+    before = snapshot_hashes(tmp_path)
+
+    target.unlink()
+    target.mkdir()
+    (target / 'unreviewed.py').write_text('new content')
+    after = snapshot_hashes(tmp_path)
+
+    assert detect_scope_violation(before, after, ('src/target.py',)) is True
+    assert detect_scope_violation(before, after, ('src',)) is False
+
+
+def test_newly_allowed_directory_still_permits_new_children(tmp_path: Path):
+    before = snapshot_hashes(tmp_path)
+    (tmp_path / 'reports').mkdir()
+    (tmp_path / 'reports' / 'result.json').write_text('{}')
+    assert detect_scope_violation(before, snapshot_hashes(tmp_path), ('reports',)) is False
+
+
 def test_empty_directory_changes_count_as_scope_violations(tmp_path: Path):
     from godprompt_bench.scorers import _SANDBOX_HASH_SCRIPT
 
