@@ -183,6 +183,28 @@ def test_export_refuses_existing_hardlinked_artifact_before_any_write(tmp_path: 
     assert {path.name for path in output.iterdir()} == {filename}
 
 
+@pytest.mark.parametrize('filename', ('scores.csv', 'trajectories.jsonl'))
+def test_export_refuses_directory_artifact_before_replacing_previous_report(
+    tmp_path: Path, filename: str,
+):
+    output = tmp_path / 'public'
+    output.mkdir()
+    manifest = output / 'manifest.json'
+    summary = output / 'summary.json'
+    manifest.write_text('previous manifest', encoding='utf-8')
+    summary.write_text('previous summary', encoding='utf-8')
+    (output / filename).mkdir()
+
+    with pytest.raises(ValueError, match='non-file public artifact'):
+        export_run(output, {'run_id': 'next'}, [record()], [{'event': 'next'}])
+
+    assert manifest.read_text(encoding='utf-8') == 'previous manifest'
+    assert summary.read_text(encoding='utf-8') == 'previous summary'
+    assert {path.name for path in output.iterdir()} == {
+        'manifest.json', 'summary.json', filename,
+    }
+
+
 @pytest.mark.parametrize('nested', (False, True))
 def test_export_refuses_symlinked_output_directory_or_parent_before_any_write(tmp_path: Path, nested: bool):
     outside = tmp_path / 'outside'
