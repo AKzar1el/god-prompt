@@ -103,6 +103,15 @@ python -m godprompt_bench.run \
   --reasoning-mode standard
 ```
 
+For Windows PowerShell, run from `bench/` with the virtual environment at `.venv`:
+
+```powershell
+.\.venv\Scripts\python.exe -m godprompt_bench.run --profile smoke --model openai/gpt-5.6-sol --seed 7 --reasoning-effort medium --reasoning-mode standard
+.\.venv\Scripts\python.exe -m godprompt_bench.run --profile full --model openai/gpt-5.6-sol --seed 7 --reasoning-effort medium --reasoning-mode standard
+```
+
+The backslashes ending the Bash examples are not PowerShell line continuations. These commands run a model evaluation and may incur provider charges; checking their syntax does not execute them.
+
 Generation controls are optional because providers do not expose identical knobs. Unspecified/unsupported controls are recorded as null rather than falsely described as frozen. For a reference run, choose supported controls explicitly and keep them unchanged across both conditions.
 
 The runner disables Inspect response caching and provider prompt caching where the provider exposes that control. It also serializes samples (`max_samples=1`, `max_connections=1`) to reduce cross-sample timing interference. Latency remains infrastructure-sensitive.
