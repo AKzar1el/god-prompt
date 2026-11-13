@@ -148,7 +148,7 @@ def redact_secrets(value: Any) -> Any:
             if safe_key in normalized:
                 raise ValueError("ambiguous JSON object key after redaction")
             normalized[safe_key] = (
-                "[REDACTED]" if _SECRET_KEY.search(raw_key) else redact_secrets(item)
+                "[REDACTED]" if _json_key_is_secret(raw_key) else redact_secrets(item)
             )
         return normalized
     if isinstance(value, list):

@@ -308,6 +308,26 @@ def test_public_exports_redact_numeric_credentials_in_json_encoded_diagnostics(t
     assert json.loads(json.loads(manifest['escaped'])) == expected
 
 
+def test_public_exports_redact_unicode_escaped_structured_credential_keys(tmp_path: Path):
+    # Structured telemetry can contain literal Unicode escapes in member names.
+    api_key = r'api\u005fkey'
+    password_key = r'pass\u0077ord'
+    harmless_key = r'progress\u005fstate'
+    secret = 'SYNTHETIC_STRUCTURED_SECRET_123'
+    source = {api_key: secret, password_key: 1234567890123, harmless_key: 'ready'}
+    export_run(tmp_path, {'telemetry': source}, [record()], [{'telemetry': source}])
+
+    for name in ('manifest.json', 'trajectories.jsonl'):
+        content = (tmp_path / name).read_text(encoding='utf-8')
+        assert secret not in content, name
+        assert '1234567890123' not in content, name
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    trajectory = json.loads((tmp_path / 'trajectories.jsonl').read_text(encoding='utf-8'))
+    expected = {api_key: '[REDACTED]', password_key: '[REDACTED]', harmless_key: 'ready'}
+    assert manifest['telemetry'] == expected
+    assert trajectory['telemetry'] == expected
+
+
 def test_public_exports_redact_unicode_escaped_json_credential_keys(tmp_path: Path):
     # A serialized key can spell a sensitive name using JSON Unicode escapes.
     diagnostic = r'{"\u0061pi_key":"SYNTHETIC_ESCAPED_KEY_123","pass\u0077ord":1234567890123,"attempts":3}'
