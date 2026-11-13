@@ -455,6 +455,50 @@ def condition_batches(task_ids: tuple[str, ...]) -> list[tuple[str, tuple[str, .
     return batches
 
 
+def preview_benchmark(
+    bench_root: Path,
+    profile: RunProfile,
+    *,
+    model: str,
+    temperature: float | None = None,
+    seed: int | None = None,
+    reasoning_effort: str | None = None,
+    reasoning_mode: str | None = None,
+) -> dict[str, Any]:
+    """Validate the selected fixtures and show run size without starting a model."""
+    if temperature is not None and not isfinite(temperature):
+        raise ValueError("temperature must be finite")
+    tasks = load_manifest(bench_root / "tasks" / "manifest.json")
+    validate_manifest(tasks)
+    categories = {task.id: task.category for task in tasks}
+    missing = sorted(set(profile.task_ids) - categories.keys())
+    if missing:
+        raise ValueError(f"profile contains unknown task IDs: {missing}")
+    fingerprints = fixture_fingerprints(bench_root, profile.task_ids)
+    return {
+        "preview_only": True,
+        "profile": profile.name,
+        "model": model,
+        "conditions": ["baseline", "godprompt"],
+        "tasks_per_condition": len(profile.task_ids),
+        "epochs": profile.epochs,
+        "planned_samples": 2 * len(profile.task_ids) * profile.epochs,
+        "categories": dict(sorted(Counter(categories[task_id] for task_id in profile.task_ids).items())),
+        "max_messages_per_sample": profile.max_messages,
+        "max_time_seconds_per_sample": profile.max_time_seconds,
+        "max_output_tokens_per_sample": profile.max_output_tokens,
+        "requested_controls": {
+            "temperature": temperature,
+            "seed": seed,
+            "reasoning_effort": reasoning_effort,
+            "reasoning_mode": reasoning_mode,
+        },
+        "fixture_bundles_sha256": fingerprints["fixture_bundles_sha256"],
+        "cost_estimate_usd": None,
+        "cost_note": "Actual provider cost cannot be inferred from configured sample limits.",
+    }
+
+
 def execute_benchmark(
     repo_root: Path,
     bench_root: Path,
@@ -574,11 +618,24 @@ def main() -> None:
     parser.add_argument("--reasoning-effort", choices=("none", "minimal", "low", "medium", "high", "xhigh", "max"))
     parser.add_argument("--reasoning-mode", choices=("standard", "pro"))
     parser.add_argument("--output", type=Path, default=Path("bench/results"))
+    parser.add_argument("--dry-run", action="store_true", help="Validate fixtures and print planned samples without model calls")
     args = parser.parse_args()
 
     bench_root = Path(__file__).resolve().parents[1]
     repo_root = bench_root.parent
     profile = load_profile(bench_root / "configs" / f"{args.profile}.json")
+    if args.dry_run:
+        plan = preview_benchmark(
+            bench_root,
+            profile,
+            model=args.model,
+            temperature=args.temperature,
+            seed=args.seed,
+            reasoning_effort=args.reasoning_effort,
+            reasoning_mode=args.reasoning_mode,
+        )
+        print(json.dumps(plan, indent=2, sort_keys=True))
+        return
     result = execute_benchmark(
         repo_root,
         bench_root,
