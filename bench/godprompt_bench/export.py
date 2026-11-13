@@ -218,7 +218,13 @@ def export_run(
     # a linked output filename can overwrite a file outside the export folder.
     for name in ("manifest.json", "summary.json", "scores.csv", "trajectories.jsonl"):
         target = output_dir / name
-        if target.is_symlink() or (target.exists() and target.stat().st_nlink > 1):
+        if target.is_symlink():
+            raise ValueError(f"refusing linked public artifact: {name}")
+        if target.exists() and not target.is_file():
+            # A directory at a later filename must not leave earlier report
+            # files overwritten before the export fails.
+            raise ValueError(f"refusing non-file public artifact: {name}")
+        if target.exists() and target.stat().st_nlink > 1:
             raise ValueError(f"refusing linked public artifact: {name}")
 
     (output_dir / "manifest.json").write_text(serialized_manifest, encoding="utf-8")
