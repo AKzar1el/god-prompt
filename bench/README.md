@@ -79,7 +79,7 @@ The benchmark pins `inspect-ai==0.3.260` so a benchmark commit resolves to a spe
 
 ## Run
 
-Inspect model names include their provider prefix. For example, the current OpenAI flagship model can be addressed as `openai/gpt-5.6-sol`.
+Inspect model names include their provider prefix, such as `openai/gpt-5.6-sol`. This is an example model ID, not a claim that it is the latest flagship model. Confirm that your account has access to the selected model before a live evaluation; smoke and full runs may incur provider charges.
 
 Smoke run:
 

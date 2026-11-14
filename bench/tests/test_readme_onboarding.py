@@ -11,6 +11,15 @@ from godprompt_bench import run as benchmark_runner
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_benchmark_readme_model_example_is_not_misrepresented_as_current_flagship():
+    readme = (ROOT / "bench" / "README.md").read_text(encoding="utf-8")
+    run_section = readme.split("## Run", 1)[1].split("## Output", 1)[0]
+
+    assert "current OpenAI flagship" not in run_section
+    assert "Confirm that your account has access" in run_section
+    assert "may incur provider charges" in run_section
+
+
 def test_chatgpt_onboarding_does_not_require_oversized_custom_instructions():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     section = readme.split("**Option D", 1)[1].split("**Option E", 1)[0]
