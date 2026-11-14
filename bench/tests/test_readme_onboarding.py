@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from godprompt_bench import run as benchmark_runner
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -77,3 +78,33 @@ def test_benchmark_readme_powershell_help_is_free_preflight():
     )
     assert "--profile" in result.stdout
     assert "--model" in result.stdout
+
+
+@pytest.mark.parametrize("profile", ("smoke", "full"))
+def test_benchmark_readme_powershell_model_examples_parse_without_provider_calls(profile, monkeypatch):
+    readme = (ROOT / "bench" / "README.md").read_text(encoding="utf-8")
+    match = re.search(r"For Windows PowerShell[^\n]*\n+```powershell\n(.*?)\n```", readme, re.DOTALL)
+    assert match is not None
+    commands = [line.strip() for line in match.group(1).splitlines() if line.strip()]
+    parts = commands[1 + ("smoke", "full").index(profile)].split()
+    assert parts[:3] == [r".\.venv\Scripts\python.exe", "-m", "godprompt_bench.run"]
+
+    captured = []
+
+    def capture_without_evaluating(repo_root, bench_root, loaded_profile, **kwargs):
+        captured.append((repo_root, bench_root, loaded_profile, kwargs))
+        return Path("NO_PROVIDER_EXECUTION")
+
+    monkeypatch.setattr(benchmark_runner, "execute_benchmark", capture_without_evaluating)
+    monkeypatch.setattr(sys, "argv", ["godprompt_bench.run", *parts[3:]])
+    benchmark_runner.main()
+
+    assert len(captured) == 1
+    repo_root, bench_root, loaded_profile, options = captured[0]
+    assert repo_root == ROOT
+    assert bench_root == ROOT / "bench"
+    assert loaded_profile.name == profile
+    assert options["model"] == parts[parts.index("--model") + 1]
+    assert options["seed"] == int(parts[parts.index("--seed") + 1])
+    assert options["reasoning_effort"] == parts[parts.index("--reasoning-effort") + 1]
+    assert options["reasoning_mode"] == parts[parts.index("--reasoning-mode") + 1]
