@@ -29,8 +29,8 @@ def test_benchmark_readme_powershell_run_examples_are_copyable_without_executing
     match = re.search(r"For Windows PowerShell[^\n]*\n+```powershell\n(.*?)\n```", readme, re.DOTALL)
     assert match is not None
     commands = [line.strip() for line in match.group(1).splitlines() if line.strip()]
-    assert len(commands) == 2
-    command = commands[("smoke", "full").index(profile)]
+    assert len(commands) == 3
+    command = commands[1 + ("smoke", "full").index(profile)]
     parts = command.split()
     assert parts[:3] == [r".\.venv\Scripts\python.exe", "-m", "godprompt_bench.run"]
     for flag in ("--profile", "--model", "--seed", "--reasoning-effort", "--reasoning-mode"):
@@ -56,3 +56,24 @@ def test_benchmark_readme_powershell_run_examples_are_copyable_without_executing
             text=True,
             timeout=15,
         )
+
+
+def test_benchmark_readme_powershell_help_is_free_preflight():
+    readme = (ROOT / "bench" / "README.md").read_text(encoding="utf-8")
+    match = re.search(r"For Windows PowerShell[^\n]*\n+```powershell\n(.*?)\n```", readme, re.DOTALL)
+    assert match is not None
+    commands = [line.strip() for line in match.group(1).splitlines() if line.strip()]
+    assert commands[0] == r".\.venv\Scripts\python.exe -m godprompt_bench.run --help"
+    assert "--model" not in commands[0]
+
+    # Run --help using the installed interpreter; argparse exits before any evaluation.
+    result = subprocess.run(
+        [sys.executable, "-B", "-m", "godprompt_bench.run", "--help"],
+        cwd=ROOT / "bench",
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert "--profile" in result.stdout
+    assert "--model" in result.stdout

@@ -106,11 +106,12 @@ python -m godprompt_bench.run \
 For Windows PowerShell, run from `bench/` with the virtual environment at `.venv`:
 
 ```powershell
+.\.venv\Scripts\python.exe -m godprompt_bench.run --help
 .\.venv\Scripts\python.exe -m godprompt_bench.run --profile smoke --model openai/gpt-5.6-sol --seed 7 --reasoning-effort medium --reasoning-mode standard
 .\.venv\Scripts\python.exe -m godprompt_bench.run --profile full --model openai/gpt-5.6-sol --seed 7 --reasoning-effort medium --reasoning-mode standard
 ```
 
-The backslashes ending the Bash examples are not PowerShell line continuations. These commands run a model evaluation and may incur provider charges; checking their syntax does not execute them.
+The `--help` preflight lists CLI options without making a model request or incurring provider charges; it does not verify Docker or provider credentials. The backslashes ending the Bash examples are not PowerShell line continuations. The smoke and full commands run model evaluations and may incur provider charges; checking their syntax does not execute them.
 
 Generation controls are optional because providers do not expose identical knobs. Unspecified/unsupported controls are recorded as null rather than falsely described as frozen. For a reference run, choose supported controls explicitly and keep them unchanged across both conditions.
 
