@@ -75,6 +75,15 @@ pip install -e '.[test,openai]'
 python -m pytest -q
 ```
 
+On Windows PowerShell, run this setup from `bench/` without activating scripts or changing execution policy:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e '.[test,openai]'
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
 The benchmark pins `inspect-ai==0.3.260` so a benchmark commit resolves to a specific evaluation framework version.
 
 ## Run

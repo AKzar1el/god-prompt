@@ -20,6 +20,40 @@ def test_benchmark_readme_model_example_is_not_misrepresented_as_current_flagshi
     assert "may incur provider charges" in run_section
 
 
+def test_benchmark_readme_windows_install_uses_direct_venv_python():
+    readme = (ROOT / "bench" / "README.md").read_text(encoding="utf-8")
+    install_section = readme.split("## Install", 1)[1].split("## Run", 1)[0]
+    match = re.search(r"```powershell\n(.*?)\n```", install_section, re.DOTALL)
+    assert match is not None
+    commands = [line.strip() for line in match.group(1).splitlines() if line.strip()]
+    assert commands == [
+        "python -m venv .venv",
+        r".\.venv\Scripts\python.exe -m pip install --upgrade pip",
+        r".\.venv\Scripts\python.exe -m pip install -e '.[test,openai]'",
+        r".\.venv\Scripts\python.exe -m pytest -q",
+    ]
+
+    if sys.platform == "win32":
+        # Syntax-only validation; never install packages or execute model runs.
+        script = (
+            "$lines=@('"
+            + "','".join(base64.b64encode(line.encode("utf-8")).decode("ascii") for line in commands)
+            + "');foreach($b64 in $lines){"
+            "$line=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64));"
+            "$tokens=$null;$errors=$null;"
+            "[Management.Automation.Language.Parser]::ParseInput("
+            "$line,[ref]$tokens,[ref]$errors)|Out-Null;"
+            "if($errors.Count -ne 0){exit 2}}"
+        )
+        subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+
+
 def test_chatgpt_onboarding_does_not_require_oversized_custom_instructions():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     section = readme.split("**Option D", 1)[1].split("**Option E", 1)[0]
