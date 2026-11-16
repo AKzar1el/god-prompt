@@ -13,6 +13,43 @@ from godprompt_bench.models import RunProfile
 ROOT = Path(__file__).parents[1]
 
 
+@pytest.mark.parametrize('from_repo_root', (False, True))
+def test_main_default_output_is_bench_results_from_any_working_directory(monkeypatch, from_repo_root):
+    import sys
+    import godprompt_bench.run as run_module
+
+    captured = []
+    monkeypatch.chdir(ROOT.parent if from_repo_root else ROOT)
+    monkeypatch.setattr(sys, 'argv', ['godprompt-bench', '--model', 'mockllm/model'])
+    monkeypatch.setattr(
+        run_module,
+        'execute_benchmark',
+        lambda *args, **kwargs: captured.append(kwargs['output_dir']) or Path('mock-result'),
+    )
+
+    run_module.main()
+
+    assert captured == [ROOT / 'results']
+
+
+def test_main_preserves_explicit_relative_output_directory(monkeypatch, tmp_path):
+    import sys
+    import godprompt_bench.run as run_module
+
+    captured = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, 'argv', ['godprompt-bench', '--model', 'mockllm/model', '--output', 'my-results'])
+    monkeypatch.setattr(
+        run_module,
+        'execute_benchmark',
+        lambda *args, **kwargs: captured.append(kwargs['output_dir']) or Path('mock-result'),
+    )
+
+    run_module.main()
+
+    assert captured == [Path('my-results')]
+
+
 def test_cli_dry_run_reports_offline_plan_without_executing_or_writing(monkeypatch, capsys, tmp_path):
     import godprompt_bench.run as run_module
 
