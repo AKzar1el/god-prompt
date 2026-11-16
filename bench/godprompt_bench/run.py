@@ -459,7 +459,7 @@ def preview_benchmark(
     bench_root: Path,
     profile: RunProfile,
     *,
-    model: str,
+    model: str | None = None,
     temperature: float | None = None,
     seed: int | None = None,
     reasoning_effort: str | None = None,
@@ -613,7 +613,7 @@ def main() -> None:
     bench_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description="Run the GodPrompt baseline-vs-GodPrompt benchmark")
     parser.add_argument("--profile", choices=("smoke", "half", "full"), default="smoke")
-    parser.add_argument("--model", required=True, help="Inspect model name, e.g. openai/gpt-5.6")
+    parser.add_argument("--model", help="Inspect model name (required for a live evaluation, optional for --dry-run)")
     parser.add_argument("--temperature", type=float)
     parser.add_argument("--seed", type=int)
     parser.add_argument("--reasoning-effort", choices=("none", "minimal", "low", "medium", "high", "xhigh", "max"))
@@ -621,6 +621,8 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=bench_root / "results")
     parser.add_argument("--dry-run", action="store_true", help="Validate fixtures and print planned samples without model calls")
     args = parser.parse_args()
+    if not args.dry_run and args.model is None:
+        parser.error("--model is required unless --dry-run is specified")
 
     repo_root = bench_root.parent
     profile = load_profile(bench_root / "configs" / f"{args.profile}.json")
