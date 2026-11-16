@@ -103,7 +103,40 @@ def test_cli_paid_run_still_requires_explicit_model(monkeypatch, capsys):
     with pytest.raises(SystemExit) as exc:
         run_module.main()
     assert exc.value.code == 2
-    assert '--model is required unless --dry-run is specified' in capsys.readouterr().err
+    assert '--model is required unless --dry-run or --list-profiles is specified' in capsys.readouterr().err
+
+
+def test_cli_lists_validated_profiles_offline_without_model_or_output(monkeypatch, capsys, tmp_path):
+    import godprompt_bench.run as run_module
+
+    output_dir = tmp_path / 'must-not-exist'
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--list-profiles', '--output', str(output_dir),
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('profile list must not execute the evaluator'))
+
+    run_module.main()
+    report = json.loads(capsys.readouterr().out)
+    assert report['preview_only'] is True
+    assert [(p['profile'], p['tasks_per_condition'], p['epochs'], p['planned_samples'])
+            for p in report['profiles']] == [
+                ('smoke', 6, 1, 12), ('half', 20, 3, 120), ('full', 40, 3, 240),
+            ]
+    assert report['profiles'][1]['profile_id'] == 'half-frozen-2026-08-29'
+    assert all(sum(p['categories'].values()) == p['tasks_per_condition']
+               and len(p['fixture_bundles_sha256']) == 64 for p in report['profiles'])
+    assert not output_dir.exists()
+
+
+def test_cli_rejects_combining_profile_list_with_dry_run(monkeypatch, capsys):
+    import godprompt_bench.run as run_module
+
+    monkeypatch.setattr(sys, 'argv', ['godprompt_bench.run', '--list-profiles', '--dry-run'])
+    with pytest.raises(SystemExit) as exc:
+        run_module.main()
+    assert exc.value.code == 2
+    assert 'not allowed with argument' in capsys.readouterr().err
 
 
 def test_offline_preview_rejects_unknown_profile_task():

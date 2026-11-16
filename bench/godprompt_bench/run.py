@@ -612,19 +612,36 @@ def execute_benchmark(
 def main() -> None:
     bench_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description="Run the GodPrompt baseline-vs-GodPrompt benchmark")
-    parser.add_argument("--profile", choices=("smoke", "half", "full"), default="smoke")
+    profile_names = ("smoke", "half", "full")
+    parser.add_argument("--profile", choices=profile_names, default="smoke")
     parser.add_argument("--model", help="Inspect model name (required for a live evaluation, optional for --dry-run)")
     parser.add_argument("--temperature", type=float)
     parser.add_argument("--seed", type=int)
     parser.add_argument("--reasoning-effort", choices=("none", "minimal", "low", "medium", "high", "xhigh", "max"))
     parser.add_argument("--reasoning-mode", choices=("standard", "pro"))
     parser.add_argument("--output", type=Path, default=bench_root / "results")
-    parser.add_argument("--dry-run", action="store_true", help="Validate fixtures and print planned samples without model calls")
+    offline_actions = parser.add_mutually_exclusive_group()
+    offline_actions.add_argument("--dry-run", action="store_true", help="Validate fixtures and print planned samples without model calls")
+    offline_actions.add_argument("--list-profiles", action="store_true", help="Compare validated bundled profile sizes offline without model calls")
     args = parser.parse_args()
-    if not args.dry_run and args.model is None:
-        parser.error("--model is required unless --dry-run is specified")
+    if not (args.dry_run or args.list_profiles) and args.model is None:
+        parser.error("--model is required unless --dry-run or --list-profiles is specified")
 
     repo_root = bench_root.parent
+    if args.list_profiles:
+        profiles = []
+        for name in profile_names:
+            plan = preview_benchmark(bench_root, load_profile(bench_root / "configs" / f"{name}.json"))
+            profiles.append({
+                "profile": name,
+                "profile_id": plan["profile"],
+                **{key: plan[key] for key in (
+                    "tasks_per_condition", "epochs", "planned_samples",
+                    "categories", "fixture_bundles_sha256",
+                )},
+            })
+        print(json.dumps({"preview_only": True, "profiles": profiles}, indent=2, sort_keys=True))
+        return
     profile = load_profile(bench_root / "configs" / f"{args.profile}.json")
     if args.dry_run:
         plan = preview_benchmark(
