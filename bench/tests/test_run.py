@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,6 +11,41 @@ from godprompt_bench.run import execute_benchmark, load_profile, public_trajecto
 from godprompt_bench.models import RunProfile
 
 ROOT = Path(__file__).parents[1]
+
+
+def test_cli_dry_run_reports_offline_plan_without_executing_or_writing(monkeypatch, capsys, tmp_path):
+    import godprompt_bench.run as run_module
+
+    output_dir = tmp_path / 'not-created'
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--profile', 'smoke', '--model', 'mockllm/test',
+        '--output', str(output_dir), '--dry-run',
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('dry run must not execute a model'))
+
+    run_module.main()
+    plan = json.loads(capsys.readouterr().out)
+    assert plan['preview_only'] is True
+    assert plan['profile'] == 'smoke'
+    assert plan['model'] == 'mockllm/test'
+    assert plan['tasks_per_condition'] == 6
+    assert plan['planned_samples'] == 12
+    assert sum(plan['categories'].values()) == 6
+    assert len(plan['fixture_bundles_sha256']) == 64
+    assert plan['cost_estimate_usd'] is None
+    assert not output_dir.exists()
+
+
+def test_offline_preview_rejects_unknown_profile_task():
+    from godprompt_bench.run import preview_benchmark
+
+    profile = RunProfile(
+        name='unrecognized', task_ids=('not-in-manifest',), epochs=1,
+        max_messages=10, max_time_seconds=30, max_output_tokens=1000,
+    )
+    with pytest.raises(ValueError, match='unknown task IDs.*not-in-manifest'):
+        preview_benchmark(ROOT, profile, model='mockllm/test')
 
 
 @pytest.mark.parametrize('nested', (False, True))
