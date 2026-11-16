@@ -103,7 +103,7 @@ def test_cli_paid_run_still_requires_explicit_model(monkeypatch, capsys):
     with pytest.raises(SystemExit) as exc:
         run_module.main()
     assert exc.value.code == 2
-    assert '--model is required unless --dry-run or --list-profiles is specified' in capsys.readouterr().err
+    assert '--model is required unless --dry-run, --list-profiles, or --list-tasks is specified' in capsys.readouterr().err
 
 
 def test_cli_lists_validated_profiles_offline_without_model_or_output(monkeypatch, capsys, tmp_path):
@@ -133,6 +133,51 @@ def test_cli_rejects_combining_profile_list_with_dry_run(monkeypatch, capsys):
     import godprompt_bench.run as run_module
 
     monkeypatch.setattr(sys, 'argv', ['godprompt_bench.run', '--list-profiles', '--dry-run'])
+    with pytest.raises(SystemExit) as exc:
+        run_module.main()
+    assert exc.value.code == 2
+    assert 'not allowed with argument' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(('profile_name', 'expected_count'), (
+    ('smoke', 6), ('half', 20), ('full', 40),
+))
+def test_cli_lists_selected_task_metadata_offline_without_model_or_output(
+    monkeypatch, capsys, tmp_path, profile_name, expected_count,
+):
+    import godprompt_bench.run as run_module
+
+    output_dir = tmp_path / 'must-not-exist'
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--profile', profile_name, '--list-tasks',
+        '--output', str(output_dir),
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('task discovery must not execute the evaluator'))
+
+    run_module.main()
+    report = json.loads(capsys.readouterr().out)
+    profile = load_profile(ROOT / 'configs' / f'{profile_name}.json')
+    assert report['preview_only'] is True
+    assert report['profile'] == profile_name
+    assert report['profile_id'] == profile.name
+    assert report['tasks_per_condition'] == expected_count
+    assert len(report['fixture_bundles_sha256']) == 64
+    assert [task['id'] for task in report['tasks']] == list(profile.task_ids)
+    assert {task['category'] for task in report['tasks']} == {
+        'implementation', 'debugging', 'refactor', 'scope-control', 'verification', 'tool-discipline',
+    }
+    assert {task['runtime'] for task in report['tasks']} == {'python', 'javascript'}
+    assert all(set(task) == {'id', 'category', 'runtime'} for task in report['tasks'])
+    assert 'hidden_verifier' not in json.dumps(report)
+    assert not output_dir.exists()
+
+
+@pytest.mark.parametrize('conflicting', ('--dry-run', '--list-profiles'))
+def test_cli_task_discovery_is_exclusive_with_other_offline_actions(monkeypatch, capsys, conflicting):
+    import godprompt_bench.run as run_module
+
+    monkeypatch.setattr(sys, 'argv', ['godprompt_bench.run', '--list-tasks', conflicting])
     with pytest.raises(SystemExit) as exc:
         run_module.main()
     assert exc.value.code == 2

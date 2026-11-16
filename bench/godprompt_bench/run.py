@@ -623,9 +623,10 @@ def main() -> None:
     offline_actions = parser.add_mutually_exclusive_group()
     offline_actions.add_argument("--dry-run", action="store_true", help="Validate fixtures and print planned samples without model calls")
     offline_actions.add_argument("--list-profiles", action="store_true", help="Compare validated bundled profile sizes offline without model calls")
+    offline_actions.add_argument("--list-tasks", action="store_true", help="List task IDs, categories and runtimes for a selected profile offline")
     args = parser.parse_args()
-    if not (args.dry_run or args.list_profiles) and args.model is None:
-        parser.error("--model is required unless --dry-run or --list-profiles is specified")
+    if not (args.dry_run or args.list_profiles or args.list_tasks) and args.model is None:
+        parser.error("--model is required unless --dry-run, --list-profiles, or --list-tasks is specified")
 
     repo_root = bench_root.parent
     if args.list_profiles:
@@ -643,6 +644,22 @@ def main() -> None:
         print(json.dumps({"preview_only": True, "profiles": profiles}, indent=2, sort_keys=True))
         return
     profile = load_profile(bench_root / "configs" / f"{args.profile}.json")
+    if args.list_tasks:
+        plan = preview_benchmark(bench_root, profile)
+        canonical_tasks = {task.id: task for task in load_manifest(bench_root / "tasks" / "manifest.json")}
+        print(json.dumps({
+            "preview_only": True,
+            "profile": args.profile,
+            "profile_id": plan["profile"],
+            "tasks_per_condition": plan["tasks_per_condition"],
+            "fixture_bundles_sha256": plan["fixture_bundles_sha256"],
+            "tasks": [
+                {"id": task_id, "category": canonical_tasks[task_id].category,
+                 "runtime": canonical_tasks[task_id].runtime}
+                for task_id in profile.task_ids
+            ],
+        }, indent=2, sort_keys=True))
+        return
     if args.dry_run:
         plan = preview_benchmark(
             bench_root,

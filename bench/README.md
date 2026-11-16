@@ -99,10 +99,13 @@ Before spending provider tokens, preview the selected profile and verify its fix
 
 ```bash
 python -m godprompt_bench.run --list-profiles
+python -m godprompt_bench.run --profile smoke --list-tasks
 python -m godprompt_bench.run --profile smoke --dry-run
 ```
 
 `--list-profiles` compares the bundled smoke, half and full profiles in one validated JSON report: task counts, epochs, total planned samples, category coverage and a fixture fingerprint for each. It does not require a model, start Docker, call a provider or write result files. Use it to choose a profile before running the more detailed `--dry-run` preview.
+
+`--list-tasks` shows the selected profile's task IDs, categories and runtimes in their configured order, plus its validated fixture fingerprint. It helps you inspect the task mix before choosing a potentially paid evaluation. Only public task metadata is shown, never fixture contents or hidden verifiers; like the other preview commands, it makes no model or Docker calls and writes no results. Choose another set with `--profile half` or `--profile full`.
 
 `--dry-run` does not require a model; its JSON `model` field is `null` until you optionally supply `--model` to preview a particular selection. It prints planned sample counts, categories, per-sample limits, requested controls and the selected fixture-bundle fingerprint. It makes **no model calls**, starts no Docker sandbox and creates no result directory. It does not prove provider credentials, Docker readiness or model compatibility, and deliberately gives no dollar-cost estimate: actual token usage and provider pricing are not known from the profile limits alone. A live evaluation still requires an explicit `--model` and may incur provider charges.
 
