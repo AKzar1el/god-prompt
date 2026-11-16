@@ -54,6 +54,8 @@ Tool-policy rejection is itself measured; it does not silently disappear from th
 
 `configs/smoke.json` runs six representative tasks once per condition for operational validation.
 
+`configs/half.json` runs 20 tasks for three epochs per condition (120 samples).
+
 `configs/full.json` runs all 40 tasks for three epochs per condition:
 
 ```text
@@ -96,8 +98,11 @@ Inspect model names include their provider prefix, such as `openai/gpt-5.6-sol`.
 Before spending provider tokens, preview the selected profile and verify its fixture files offline:
 
 ```bash
+python -m godprompt_bench.run --list-profiles
 python -m godprompt_bench.run --profile smoke --dry-run
 ```
+
+`--list-profiles` compares the bundled smoke, half and full profiles in one validated JSON report: task counts, epochs, total planned samples, category coverage and a fixture fingerprint for each. It does not require a model, start Docker, call a provider or write result files. Use it to choose a profile before running the more detailed `--dry-run` preview.
 
 `--dry-run` does not require a model; its JSON `model` field is `null` until you optionally supply `--model` to preview a particular selection. It prints planned sample counts, categories, per-sample limits, requested controls and the selected fixture-bundle fingerprint. It makes **no model calls**, starts no Docker sandbox and creates no result directory. It does not prove provider credentials, Docker readiness or model compatibility, and deliberately gives no dollar-cost estimate: actual token usage and provider pricing are not known from the profile limits alone. A live evaluation still requires an explicit `--model` and may incur provider charges.
 
