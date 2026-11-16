@@ -74,6 +74,38 @@ def test_cli_dry_run_reports_offline_plan_without_executing_or_writing(monkeypat
     assert not output_dir.exists()
 
 
+def test_cli_dry_run_without_model_previews_fixtures_offline(monkeypatch, capsys, tmp_path):
+    import godprompt_bench.run as run_module
+
+    output_dir = tmp_path / 'never-created'
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--profile', 'smoke', '--output', str(output_dir), '--dry-run',
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('preview must not execute the evaluator'))
+
+    run_module.main()
+    plan = json.loads(capsys.readouterr().out)
+    assert plan['preview_only'] is True
+    assert plan['model'] is None
+    assert plan['planned_samples'] == 12
+    assert len(plan['fixture_bundles_sha256']) == 64
+    assert not output_dir.exists()
+
+
+def test_cli_paid_run_still_requires_explicit_model(monkeypatch, capsys):
+    import godprompt_bench.run as run_module
+
+    monkeypatch.setattr(sys, 'argv', ['godprompt_bench.run', '--profile', 'smoke'])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('no model must never start evaluator'))
+
+    with pytest.raises(SystemExit) as exc:
+        run_module.main()
+    assert exc.value.code == 2
+    assert '--model is required unless --dry-run is specified' in capsys.readouterr().err
+
+
 def test_offline_preview_rejects_unknown_profile_task():
     from godprompt_bench.run import preview_benchmark
 
