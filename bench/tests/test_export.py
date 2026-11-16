@@ -183,6 +183,28 @@ def test_export_refuses_existing_hardlinked_artifact_before_any_write(tmp_path: 
     assert {path.name for path in output.iterdir()} == {filename}
 
 
+@pytest.mark.parametrize('filename', ('scores.csv', 'trajectories.jsonl'))
+def test_export_refuses_directory_artifact_before_replacing_previous_report(
+    tmp_path: Path, filename: str,
+):
+    output = tmp_path / 'public'
+    output.mkdir()
+    manifest = output / 'manifest.json'
+    summary = output / 'summary.json'
+    manifest.write_text('previous manifest', encoding='utf-8')
+    summary.write_text('previous summary', encoding='utf-8')
+    (output / filename).mkdir()
+
+    with pytest.raises(ValueError, match='non-file public artifact'):
+        export_run(output, {'run_id': 'next'}, [record()], [{'event': 'next'}])
+
+    assert manifest.read_text(encoding='utf-8') == 'previous manifest'
+    assert summary.read_text(encoding='utf-8') == 'previous summary'
+    assert {path.name for path in output.iterdir()} == {
+        'manifest.json', 'summary.json', filename,
+    }
+
+
 @pytest.mark.parametrize('nested', (False, True))
 def test_export_refuses_symlinked_output_directory_or_parent_before_any_write(tmp_path: Path, nested: bool):
     outside = tmp_path / 'outside'
@@ -306,6 +328,26 @@ def test_public_exports_redact_numeric_credentials_in_json_encoded_diagnostics(t
     expected = {'password': '[REDACTED]', 'nested': {'access_token': '[REDACTED]'}, 'attempts': 3}
     assert json.loads(manifest['diagnostic']) == expected
     assert json.loads(json.loads(manifest['escaped'])) == expected
+
+
+def test_public_exports_redact_unicode_escaped_structured_credential_keys(tmp_path: Path):
+    # Structured telemetry can contain literal Unicode escapes in member names.
+    api_key = r'api\u005fkey'
+    password_key = r'pass\u0077ord'
+    harmless_key = r'progress\u005fstate'
+    secret = 'SYNTHETIC_STRUCTURED_SECRET_123'
+    source = {api_key: secret, password_key: 1234567890123, harmless_key: 'ready'}
+    export_run(tmp_path, {'telemetry': source}, [record()], [{'telemetry': source}])
+
+    for name in ('manifest.json', 'trajectories.jsonl'):
+        content = (tmp_path / name).read_text(encoding='utf-8')
+        assert secret not in content, name
+        assert '1234567890123' not in content, name
+    manifest = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))
+    trajectory = json.loads((tmp_path / 'trajectories.jsonl').read_text(encoding='utf-8'))
+    expected = {api_key: '[REDACTED]', password_key: '[REDACTED]', harmless_key: 'ready'}
+    assert manifest['telemetry'] == expected
+    assert trajectory['telemetry'] == expected
 
 
 def test_public_exports_redact_unicode_escaped_json_credential_keys(tmp_path: Path):
