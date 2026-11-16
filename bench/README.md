@@ -66,6 +66,8 @@ The full profile is the reference-run shape. Multiple epochs are retained as ind
 
 Python 3.11+ and Docker are required. Node.js is provided inside the task sandbox.
 
+On macOS or Linux:
+
 ```bash
 cd bench
 python -m venv .venv
@@ -75,9 +77,10 @@ pip install -e '.[test,openai]'
 python -m pytest -q
 ```
 
-On Windows PowerShell, run this setup from `bench/` without activating scripts or changing execution policy:
+On Windows PowerShell, start at the repository root and use the virtual environment's Python directly. No script activation or execution-policy change is required:
 
 ```powershell
+cd bench
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -e '.[test,openai]'
@@ -89,6 +92,14 @@ The benchmark pins `inspect-ai==0.3.260` so a benchmark commit resolves to a spe
 ## Run
 
 Inspect model names include their provider prefix, such as `openai/gpt-5.6-sol`. This is an example model ID, not a claim that it is the latest flagship model. Confirm that your account has access to the selected model before a live evaluation; smoke and full runs may incur provider charges.
+
+Before spending provider tokens, preview the selected profile and verify its fixture files offline:
+
+```bash
+python -m godprompt_bench.run --profile smoke --model openai/gpt-5.6-sol --dry-run
+```
+
+`--dry-run` prints planned sample counts, categories, per-sample limits, requested controls and the selected fixture-bundle fingerprint as JSON. It makes **no model calls**, starts no Docker sandbox and creates no result directory. It does not prove provider credentials, Docker readiness or model compatibility, and deliberately gives no dollar-cost estimate: actual token usage and provider pricing are not known from the profile limits alone. Omit `--dry-run` only when you intend to run a potentially billable evaluation.
 
 Smoke run:
 

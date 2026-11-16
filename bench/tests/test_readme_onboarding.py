@@ -27,6 +27,7 @@ def test_benchmark_readme_windows_install_uses_direct_venv_python():
     assert match is not None
     commands = [line.strip() for line in match.group(1).splitlines() if line.strip()]
     assert commands == [
+        "cd bench",
         "python -m venv .venv",
         r".\.venv\Scripts\python.exe -m pip install --upgrade pip",
         r".\.venv\Scripts\python.exe -m pip install -e '.[test,openai]'",
