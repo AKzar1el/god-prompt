@@ -231,3 +231,48 @@ def test_offline_comparison_cli_prints_json_without_provider_calls(
     report = json.loads(capsys.readouterr().out)
     assert report["metadata_aligned"] is True
     assert report["before"]["run_id"] == "sample-run"
+
+
+@pytest.mark.parametrize("changed_field", ["task_id", "category"])
+def test_offline_comparison_suppresses_delta_for_different_scored_samples(
+    comparable_exports: tuple[Path, Path], tmp_path: Path, changed_field: str,
+):
+    from godprompt_bench.review import compare_results
+
+    before, after = comparable_exports
+    manifest = json.loads((after / "manifest.json").read_text(encoding="utf-8"))
+    replacement = "other-task" if changed_field == "task_id" else "other-category"
+    changed = {changed_field: replacement}
+    different = tmp_path / "different-scored-samples"
+    export_run(different, {**manifest, "run_id": "different-scored-samples"}, [
+        replace(record("baseline", passed=False), **changed),
+        replace(record("godprompt"), **changed),
+        replace(record("godprompt", infra="sandbox unavailable"), epoch=2, **changed),
+    ], [])
+
+    report = compare_results(before, different)
+    assert report["metadata_aligned"] is False
+    assert "different:scored_samples" in report["comparison_cautions"]
+    assert report["condition_pass_rate_delta"] is None
+
+
+def test_offline_comparison_suppresses_delta_for_different_evaluable_samples(
+    comparable_exports: tuple[Path, Path], tmp_path: Path,
+):
+    from godprompt_bench.review import compare_results
+
+    before, after = comparable_exports
+    manifest = json.loads((after / "manifest.json").read_text(encoding="utf-8"))
+    different = tmp_path / "different-model-coverage"
+    export_run(different, {
+        **manifest, "run_id": "different-model-coverage",
+        "completed_samples": 3, "infrastructure_failures": 0,
+    }, [
+        record("baseline", passed=False), record("godprompt"),
+        replace(record("godprompt"), epoch=2),
+    ], [])
+
+    report = compare_results(before, different)
+    assert report["metadata_aligned"] is False
+    assert "different:model_sample_coverage" in report["comparison_cautions"]
+    assert report["condition_pass_rate_delta"] is None

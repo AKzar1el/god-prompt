@@ -198,7 +198,7 @@ To compare two saved runs without another model call:
 python -m godprompt_bench.review results/<earlier-run-id> --compare results/<later-run-id>
 ```
 
-Both exports are checked independently. A mismatch in selected fixtures, model, evaluation controls, sandbox, baseline prompt or coverage (or missing required metadata) suppresses pass-rate deltas and appears in `comparison_cautions`. With aligned metadata, condition-level differences are descriptive only, not proof of a causal improvement; mocked and non-full runs retain their cautions. The comparison does not modify artifacts, start Docker or call providers.
+Both exports are checked independently. A mismatch in selected fixtures, model, evaluation controls, sandbox, baseline prompt, scored task/condition/epoch/category identities, model-evaluable sample coverage or required metadata suppresses pass-rate deltas and appears in `comparison_cautions`. Matching manifest fingerprints alone do not establish that the same samples were scored. With aligned metadata and samples, condition-level differences are descriptive only, not proof of a causal improvement; mocked and non-full runs retain their cautions. The comparison does not modify artifacts, start Docker or call providers.
 
 ## Publishing results
 

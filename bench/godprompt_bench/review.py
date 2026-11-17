@@ -226,9 +226,28 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
     before_manifest = _read_json(before_folder, "manifest.json")
     after_manifest = _read_json(after_folder, "manifest.json")
 
+    # Matching manifest fingerprints alone cannot establish which rows were scored.
+    before_samples = {
+        (row.task_id, row.condition, row.epoch):
+        (row.category, row.infrastructure_error is None)
+        for row in _read_scores(before_folder)
+    }
+    after_samples = {
+        (row.task_id, row.condition, row.epoch):
+        (row.category, row.infrastructure_error is None)
+        for row in _read_scores(after_folder)
+    }
+
     cautions: list[str] = []
     if before["run_id"] == after["run_id"]:
         cautions.append("same_run_id")
+    if before_samples.keys() != after_samples.keys() or any(
+        before_samples[key][0] != after_samples[key][0]
+        for key in before_samples.keys() & after_samples.keys()
+    ):
+        cautions.append("different:scored_samples")
+    elif any(before_samples[key][1] != after_samples[key][1] for key in before_samples):
+        cautions.append("different:model_sample_coverage")
     for field in _COMPARISON_FIELDS:
         if field not in before_manifest or field not in after_manifest:
             cautions.append(f"missing:{field}")
