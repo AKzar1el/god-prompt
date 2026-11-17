@@ -192,6 +192,51 @@ def test_offline_comparison_reports_condition_deltas_and_no_performance_claim(
     assert {p.name: p.read_bytes() for p in after.iterdir()} == after_files
 
 
+def test_offline_comparison_resource_deltas_keep_unknown_tokens_unknown(
+    comparable_exports: tuple[Path, Path], tmp_path: Path,
+):
+    from godprompt_bench.review import compare_results, render_markdown
+
+    before, later = comparable_exports
+    manifest = json.loads((later / "manifest.json").read_text(encoding="utf-8"))
+    changed = tmp_path / "resource-later"
+    export_run(changed, {**manifest, "run_id": "resource-later"}, [
+        replace(record("baseline", passed=False), input_tokens=25,
+                output_tokens=None, failed_tool_calls=2, retries=1),
+        record("godprompt"),
+        replace(record("godprompt", infra="sandbox unavailable"), epoch=2),
+    ], [])
+
+    report = compare_results(before, changed)
+    assert report["metadata_aligned"] is True
+    assert report["condition_resource_delta"] == {
+        "baseline": {"input_tokens": 15, "output_tokens": None,
+                     "failed_tool_calls": 2, "retries": 1},
+        "godprompt": {"input_tokens": 0, "output_tokens": 0,
+                      "failed_tool_calls": 0, "retries": 0},
+    }
+    rendered = render_markdown(report)
+    assert "Observed resource deltas" in rendered
+    assert "+15" in rendered and "n/a" in rendered and "+2" in rendered
+    assert "not a performance claim" in rendered.lower()
+
+
+def test_offline_comparison_suppresses_resource_deltas_when_unaligned(
+    comparable_exports: tuple[Path, Path],
+):
+    from godprompt_bench.review import compare_results, render_markdown
+
+    before, after = comparable_exports
+    path = after / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["seed"] = 42
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    report = compare_results(before, after)
+    assert report["metadata_aligned"] is False
+    assert report["condition_resource_delta"] is None
+    assert "Observed resource deltas" not in render_markdown(report)
+
+
 def test_offline_comparison_suppresses_delta_for_different_fixtures(
     comparable_exports: tuple[Path, Path],
 ):

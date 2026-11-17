@@ -41,6 +41,7 @@ _COMPARISON_DISQUALIFIERS = {
     "missing_actual_model_identity", "incomplete_commit_provenance",
     "unverified_clean_source",
 }
+_RESOURCE_FIELDS = ("input_tokens", "output_tokens", "failed_tool_calls", "retries")
 
 
 def _no_nonfinite(value: str) -> Any:
@@ -265,6 +266,7 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
     aligned = not cautions
     delta = None
     category_delta = None
+    resource_delta = None
     if aligned:
         delta = {
             condition: after["conditions"][condition]["pass_rate"]
@@ -281,6 +283,16 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
                 category_delta[category][condition] = (
                     later - earlier if earlier is not None and later is not None else None
                 )
+        resource_delta = {}
+        for condition in ("baseline", "godprompt"):
+            resource_delta[condition] = {}
+            for field in _RESOURCE_FIELDS:
+                earlier = before["conditions"][condition][field]
+                later = after["conditions"][condition][field]
+                # A missing or malformed provider count is not zero usage.
+                resource_delta[condition][field] = (
+                    later - earlier if type(earlier) is int and type(later) is int else None
+                )
     return {
         "comparison_only": True,
         "metadata_aligned": aligned,
@@ -290,6 +302,7 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
         "comparison_cautions": cautions,
         "condition_pass_rate_delta": delta,
         "category_pass_rate_delta": category_delta,
+        "condition_resource_delta": resource_delta,
         "note": "Rate differences are descriptive, not a causal effect or verified performance claim. "
                 "Metadata alignment does not independently authenticate model runs; "
                 "non-full or mock results are not publication evidence.",
@@ -308,6 +321,10 @@ def _percent(rate: float | None) -> str:
 
 def _percentage_points(delta: float | None) -> str:
     return f"{100 * delta:+.1f} pp" if delta is not None else "n/a"
+
+
+def _count_change(delta: int | None) -> str:
+    return f"{delta:+d}" if delta is not None else "n/a"
 
 
 def _markdown_cautions(label: str, cautions: list[str]) -> list[str]:
@@ -366,6 +383,18 @@ def render_markdown(report: dict[str, Any]) -> str:
                     f"| {_markdown_text(category)} | "
                     f"{_percentage_points(conditions['baseline'])} | "
                     f"{_percentage_points(conditions['godprompt'])} |"
+                )
+            lines += [
+                "", "**Observed resource deltas:** Later minus earlier; provider tokens may be "
+                "unreported (n/a). No price or efficiency claim is implied.",
+                "", "| Condition | Input tokens | Output tokens | Failed tool calls | Retries |",
+                "| --- | ---: | ---: | ---: | ---: |",
+            ]
+            for condition, counts in report["condition_resource_delta"].items():
+                lines.append(
+                    f"| {condition} | " + " | ".join(
+                        _count_change(counts[field]) for field in _RESOURCE_FIELDS
+                    ) + " |"
                 )
     else:
         lines += [
