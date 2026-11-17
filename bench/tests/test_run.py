@@ -379,6 +379,38 @@ def test_execute_benchmark_rejects_wrong_category_before_export(monkeypatch, tmp
         execute_benchmark(ROOT.parent, ROOT, profile, model='mockllm/model', output_dir=tmp_path)
 
 
+def test_execute_benchmark_refuses_fixture_drift_before_public_export(monkeypatch, tmp_path):
+    import inspect_ai
+    import godprompt_bench.run as run_module
+
+    profile = load_profile(ROOT / 'configs' / 'smoke.json')
+    before, after = 'a' * 64, 'b' * 64
+    current = {'fingerprint': before}
+    events = []
+
+    def snapshot(*args):
+        events.append(('snapshot', current['fingerprint']))
+        return {'fixture_bundles_sha256': current['fingerprint'], 'fixture_bundle_sha256': {}}
+
+    def fake_eval(*args, **kwargs):
+        events.append(('evaluate', None))
+        current['fingerprint'] = after
+        return []
+
+    monkeypatch.setattr(run_module, 'fixture_fingerprints', snapshot)
+    monkeypatch.setattr(run_module, 'build_task', lambda *args, **kwargs: object())
+    monkeypatch.setattr(run_module, 'validate_sample_coverage', lambda *args: None)
+    monkeypatch.setattr(inspect_ai, 'eval', fake_eval)
+    monkeypatch.setattr(run_module, 'build_manifest',
+                        lambda *args, **kwargs: pytest.fail('drifted fixture must not enter public manifest'))
+    monkeypatch.setattr(run_module, 'export_run',
+                        lambda *args, **kwargs: pytest.fail('drifted fixture must not be exported'))
+
+    with pytest.raises(ValueError, match='fixture.*changed during evaluation'):
+        execute_benchmark(ROOT.parent, ROOT, profile, model='mockllm/model', output_dir=tmp_path)
+    assert events == [('snapshot', before), ('evaluate', None), ('snapshot', after)]
+
+
 def test_profiles_are_frozen_and_full_is_240_samples():
     smoke = load_profile(ROOT / 'configs' / 'smoke.json')
     full = load_profile(ROOT / 'configs' / 'full.json')
