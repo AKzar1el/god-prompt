@@ -386,10 +386,13 @@ def build_manifest(
     benchmark_commit_sha: str,
     godprompt_commit_sha: str,
     working_tree_dirty: bool,
+    evaluated_godprompt_sha256: str | None = None,
 ) -> dict[str, Any]:
     manifest_path = bench_root / "tasks" / "manifest.json"
     baseline_hash = hashlib.sha256(condition_prompt("baseline", repo_root).encode()).hexdigest()
-    godprompt_hash = hashlib.sha256(condition_prompt("godprompt", repo_root).encode()).hexdigest()
+    godprompt_hash = evaluated_godprompt_sha256 or hashlib.sha256(
+        condition_prompt("godprompt", repo_root).encode()
+    ).hexdigest()
     infrastructure_failures = sum(record.infrastructure_error is not None for record in records)
     return {
         "run_id": f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}",
@@ -534,6 +537,8 @@ def execute_benchmark(
     canonical_tasks = load_manifest(bench_root / "tasks" / "manifest.json")
     validate_manifest(canonical_tasks)
     task_categories = {task.id: task.category for task in canonical_tasks}
+    evaluated_prompt = condition_prompt("godprompt", repo_root)
+    evaluated_prompt_sha256 = hashlib.sha256(evaluated_prompt.encode()).hexdigest()
 
     tasks = [
         build_task(
@@ -548,6 +553,8 @@ def execute_benchmark(
         )
         for condition, batch_ids in condition_batches(profile.task_ids)
     ]
+    if condition_prompt("godprompt", repo_root) != evaluated_prompt:
+        raise ValueError("GodPrompt instructions changed during task construction; refusing evaluation")
     # A mid-run fixture edit must not be attributed to the files used to build
     # the evaluation tasks in the published benchmark provenance.
     evaluated_fixtures = fixture_fingerprints(bench_root, profile.task_ids)
@@ -594,6 +601,8 @@ def execute_benchmark(
 
     if fixture_fingerprints(bench_root, profile.task_ids) != evaluated_fixtures:
         raise ValueError("benchmark fixture files changed during evaluation; refusing public export")
+    if condition_prompt("godprompt", repo_root) != evaluated_prompt:
+        raise ValueError("GodPrompt instructions changed during evaluation; refusing public export")
 
     manifest = build_manifest(
         repo_root,
@@ -609,6 +618,7 @@ def execute_benchmark(
         benchmark_commit_sha=benchmark_commit_sha,
         godprompt_commit_sha=godprompt_commit_sha,
         working_tree_dirty=working_tree_dirty,
+        evaluated_godprompt_sha256=evaluated_prompt_sha256,
     )
     public_dir = output_dir / manifest["run_id"]
     export_run(public_dir, manifest, records, trajectories)

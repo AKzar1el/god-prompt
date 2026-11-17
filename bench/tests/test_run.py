@@ -251,6 +251,20 @@ def test_run_manifest_fingerprints_actual_compose_isolation_configuration():
     assert manifest['sandbox_compose_sha256'] != manifest['sandbox_dockerfile_sha256']
 
 
+def test_run_manifest_uses_evaluated_prompt_fingerprint():
+    profile = load_profile(ROOT / 'configs' / 'smoke.json')
+    evaluated_hash = 'f' * 64
+    manifest = build_manifest(
+        ROOT.parent, ROOT, profile,
+        requested_model='mockllm/model', actual_models=['mockllm/model'],
+        temperature=None, seed=7, reasoning_effort=None, reasoning_mode=None,
+        records=[], benchmark_commit_sha='benchmark-sha',
+        godprompt_commit_sha='prompt-sha', working_tree_dirty=False,
+        evaluated_godprompt_sha256=evaluated_hash,
+    )
+    assert manifest['godprompt_system_prompt_sha256'] == evaluated_hash
+
+
 def test_condition_batches_counterbalance_order_without_additional_samples():
     task_ids = tuple(f'task-{i}' for i in range(6))
     batches = condition_batches(task_ids)
@@ -409,6 +423,60 @@ def test_execute_benchmark_refuses_fixture_drift_before_public_export(monkeypatc
     with pytest.raises(ValueError, match='fixture.*changed during evaluation'):
         execute_benchmark(ROOT.parent, ROOT, profile, model='mockllm/model', output_dir=tmp_path)
     assert events == [('snapshot', before), ('evaluate', None), ('snapshot', after)]
+
+
+def test_execute_benchmark_refuses_prompt_drift_before_public_export(monkeypatch, tmp_path):
+    import inspect_ai
+    import godprompt_bench.run as run_module
+
+    profile = load_profile(ROOT / 'configs' / 'smoke.json')
+    prompt = {'value': 'GodPrompt before evaluation'}
+    observed_prompts = []
+
+    def read_prompt(condition, _repo_root):
+        if condition == 'godprompt':
+            observed_prompts.append(prompt['value'])
+            return prompt['value']
+        return 'baseline'
+
+    def fake_eval(*args, **kwargs):
+        prompt['value'] = 'GodPrompt after evaluation'
+        return []
+
+    monkeypatch.setattr(run_module, 'condition_prompt', read_prompt)
+    monkeypatch.setattr(run_module, 'build_task', lambda *args, **kwargs: object())
+    monkeypatch.setattr(run_module, 'validate_sample_coverage', lambda *args: None)
+    monkeypatch.setattr(inspect_ai, 'eval', fake_eval)
+    monkeypatch.setattr(run_module, 'build_manifest',
+                        lambda *args, **kwargs: pytest.fail('changed prompt must not enter public manifest'))
+    monkeypatch.setattr(run_module, 'export_run',
+                        lambda *args, **kwargs: pytest.fail('changed prompt must not be exported'))
+
+    with pytest.raises(ValueError, match='GodPrompt.*changed during evaluation'):
+        execute_benchmark(ROOT.parent, ROOT, profile, model='mockllm/model', output_dir=tmp_path)
+    assert observed_prompts[0] == 'GodPrompt before evaluation'
+    assert observed_prompts[-1] == 'GodPrompt after evaluation'
+
+
+def test_execute_benchmark_refuses_prompt_change_during_task_construction(monkeypatch, tmp_path):
+    import inspect_ai
+    import godprompt_bench.run as run_module
+
+    profile = load_profile(ROOT / 'configs' / 'smoke.json')
+    prompt = {'value': 'before'}
+
+    def fake_build_task(*args, **kwargs):
+        prompt['value'] = 'after'
+        return object()
+
+    monkeypatch.setattr(run_module, 'condition_prompt', lambda condition, root: (
+        prompt['value'] if condition == 'godprompt' else 'baseline'))
+    monkeypatch.setattr(run_module, 'build_task', fake_build_task)
+    monkeypatch.setattr(inspect_ai, 'eval',
+                        lambda *args, **kwargs: pytest.fail('changed prompt must not call provider'))
+
+    with pytest.raises(ValueError, match='GodPrompt.*changed during task construction'):
+        execute_benchmark(ROOT.parent, ROOT, profile, model='mockllm/model', output_dir=tmp_path)
 
 
 def test_profiles_are_frozen_and_full_is_240_samples():
