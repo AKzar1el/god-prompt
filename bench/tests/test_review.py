@@ -137,3 +137,97 @@ def test_offline_review_cli_prints_json_without_writing_or_running_model(
     report = json.loads(capsys.readouterr().out)
     assert report["artifact_consistency"] == "verified"
     assert {p.name: p.read_bytes() for p in exported.iterdir()} == before
+
+
+@pytest.fixture
+def comparable_exports(exported: Path, tmp_path: Path) -> tuple[Path, Path]:
+    common = {
+        "task_manifest_sha256": "c" * 64,
+        "fixture_bundles_sha256": "d" * 64,
+        "baseline_system_prompt_sha256": "e" * 64,
+        "sandbox_dockerfile_sha256": "f" * 64,
+        "sandbox_compose_sha256": "1" * 64,
+        "epochs": 2,
+        "max_messages": 20,
+        "max_time_seconds": 120,
+        "max_output_tokens": 1000,
+        "temperature": None,
+        "seed": 7,
+        "reasoning_effort": None,
+        "reasoning_mode": "standard",
+        "inspect_ai_version": "test-only",
+    }
+    original = json.loads((exported / "manifest.json").read_text(encoding="utf-8"))
+    original.update(common)
+    (exported / "manifest.json").write_text(json.dumps(original), encoding="utf-8")
+    after = tmp_path / "later-run"
+    export_run(after, {**original, "run_id": "later-run", "godprompt_commit_sha": "3" * 40}, [
+        record("baseline", passed=False), record("godprompt"),
+        replace(record("godprompt", infra="sandbox unavailable"), epoch=2),
+    ], [])
+    return exported, after
+
+
+def test_offline_comparison_reports_condition_deltas_and_no_performance_claim(
+    comparable_exports: tuple[Path, Path],
+):
+    from godprompt_bench.review import compare_results
+
+    before, after = comparable_exports
+    before_files = {p.name: p.read_bytes() for p in before.iterdir()}
+    after_files = {p.name: p.read_bytes() for p in after.iterdir()}
+    report = compare_results(before, after)
+    assert report["comparison_only"] is True
+    assert report["metadata_aligned"] is True
+    assert report["performance_claim_verified"] is False
+    assert report["condition_pass_rate_delta"]["baseline"] == -1.0
+    assert report["condition_pass_rate_delta"]["godprompt"] == 1.0
+    assert report["before"]["run_id"] == "sample-run"
+    assert report["after"]["run_id"] == "later-run"
+    assert "mock_model" in report["before"]["cautions"]
+    assert {p.name: p.read_bytes() for p in before.iterdir()} == before_files
+    assert {p.name: p.read_bytes() for p in after.iterdir()} == after_files
+
+
+def test_offline_comparison_suppresses_delta_for_different_fixtures(
+    comparable_exports: tuple[Path, Path],
+):
+    from godprompt_bench.review import compare_results
+
+    before, after = comparable_exports
+    manifest_path = after / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["fixture_bundles_sha256"] = "9" * 64
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    report = compare_results(before, after)
+    assert report["metadata_aligned"] is False
+    assert "different:fixture_bundles_sha256" in report["comparison_cautions"]
+    assert report["condition_pass_rate_delta"] is None
+
+
+def test_offline_comparison_requires_metadata_and_complete_exports(exported: Path, tmp_path: Path):
+    from godprompt_bench.review import compare_results
+
+    after = tmp_path / "later-run"
+    manifest = json.loads((exported / "manifest.json").read_text(encoding="utf-8"))
+    export_run(after, {**manifest, "run_id": "later-run"}, [
+        record("baseline"), record("godprompt", passed=False),
+        replace(record("godprompt", infra="sandbox unavailable"), epoch=2),
+    ], [])
+    report = compare_results(exported, after)
+    assert report["metadata_aligned"] is False
+    assert "missing:fixture_bundles_sha256" in report["comparison_cautions"]
+    assert report["condition_pass_rate_delta"] is None
+
+
+def test_offline_comparison_cli_prints_json_without_provider_calls(
+    comparable_exports: tuple[Path, Path], monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    before, after = comparable_exports
+    monkeypatch.setattr(sys, "argv", ["godprompt_bench.review", str(before), "--compare", str(after)])
+    review.main()
+    report = json.loads(capsys.readouterr().out)
+    assert report["metadata_aligned"] is True
+    assert report["before"]["run_id"] == "sample-run"

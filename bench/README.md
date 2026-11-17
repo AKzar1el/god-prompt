@@ -192,6 +192,16 @@ It performs **no paid model calls**.
 
 `.github/workflows/bench-run.yml` is `workflow_dispatch` only. It requires a configured provider credential and uploads all run output even when the benchmark command fails, so failed runs remain inspectable.
 
+## Comparing saved results offline
+
+To compare two saved runs without another model call:
+
+```bash
+python -m godprompt_bench.review results/<earlier-run-id> --compare results/<later-run-id>
+```
+
+Both exports are checked independently. A mismatch in selected fixtures, model, evaluation controls, sandbox, baseline prompt or coverage (or missing required metadata) suppresses pass-rate deltas and appears in `comparison_cautions`. With aligned metadata, condition-level differences are descriptive only, not proof of a causal improvement; mocked and non-full runs retain their cautions. The comparison does not modify artifacts, start Docker or call providers.
+
 ## Publishing results
 
 Do not publish a claim such as “GodPrompt beats baseline” from harness tests, mocked data, a smoke run, or a selectively filtered run. A published performance claim must identify and link the corresponding full run, model/configuration, commit SHA, raw scores, and run manifest.
