@@ -189,6 +189,8 @@ For a concise, copyable Markdown evidence summary, add `--format markdown` to th
 
 For an automated offline coverage check, add `--require-evaluable` to review one saved run. This opt-in gate prints the same JSON or Markdown diagnostics and exits 1 if any requested sample is missing or has an infrastructure failure; otherwise it exits 0. With `--compare`, it checks **both** saved runs and can be combined with `--require-aligned`. Default read-only review remains diagnostic and exits 0 for internally consistent partial results. Passing either gate establishes only local artifact coverage/comparability, not authentic model execution, release readiness or performance superiority.
 
+For a conservative, opt-in **within-run CI signal** use `python -m godprompt_bench.review results/<run-id> --require-nondegrading-pairs`. This prints the normal diagnostics and exits 1 if requested samples are missing, an infrastructure error occurred, a task/epoch lacks a matched baseline/GodPrompt pair, no pairs are evaluable, or baseline-only passes outnumber GodPrompt-only passes. An equal number of one-sided wins passes; both-pass/both-fail pairs are neutral. This flag is for **one** saved run, not `--compare`. It is an observed paired-outcome check, not a statistical significance test, an authenticated run, a causal improvement claim or permission to publish benchmarks; mock/non-full runs retain their explicit cautions. No provider calls or result writes occur.
+
 Credential-like fields are recursively redacted from public JSON/JSONL exports.
 
 ## CI

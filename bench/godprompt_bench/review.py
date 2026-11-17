@@ -648,6 +648,19 @@ def _fully_model_evaluable(report: dict[str, Any]) -> bool:
     )
 
 
+def _nondegrading_condition_pairs(report: dict[str, Any]) -> bool:
+    """Require complete matched evidence and no net baseline-only advantage."""
+    if not _fully_model_evaluable(report):
+        return False
+    pairs = report["within_run_condition_pairs"]
+    return (
+        pairs["paired_task_epochs"] > 0
+        and pairs["unpaired_task_epochs"] == 0
+        and pairs["baseline_pass_godprompt_fail"]
+        <= pairs["baseline_fail_godprompt_pass"]
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Review an existing GodPrompt benchmark export offline; never calls a model"
@@ -661,9 +674,13 @@ def main() -> None:
                         help="With --compare, exit 1 on unaligned results after printing diagnostics")
     parser.add_argument("--require-evaluable", action="store_true",
                         help="Exit 1 unless all requested samples in each reviewed run were model-evaluable")
+    parser.add_argument("--require-nondegrading-pairs", action="store_true",
+                        help="For one run, exit 1 on missing/unpaired evidence or more baseline-only wins")
     args = parser.parse_args()
     if args.require_aligned and args.compare is None:
         parser.error("--require-aligned requires --compare")
+    if args.require_nondegrading_pairs and args.compare is not None:
+        parser.error("--require-nondegrading-pairs reviews one run; omit --compare")
     try:
         report = compare_results(args.result_dir, args.compare) if args.compare else review_result(args.result_dir)
     except (OSError, ValueError) as exc:
@@ -678,6 +695,8 @@ def main() -> None:
         reviewed = (report["before"], report["after"]) if args.compare else (report,)
         if not all(_fully_model_evaluable(item) for item in reviewed):
             raise SystemExit(1)
+    if args.require_nondegrading_pairs and not _nondegrading_condition_pairs(report):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

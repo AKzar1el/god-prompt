@@ -313,6 +313,78 @@ def test_offline_review_cli_require_evaluable_succeeds_for_all_model_samples(
     assert coverage["model_samples"] == coverage["requested_samples"] == 2
 
 
+@pytest.mark.parametrize("output_format", ["json", "markdown"])
+@pytest.mark.parametrize(
+    ("outcomes", "missing", "exit_code"),
+    [
+        ([(False, True)], False, 0),
+        ([(True, False)], False, 1),
+        ([(True, True)], False, 0),
+        ([(False, True), (True, False)], False, 0),
+        ([(True, None)], False, 1),
+        ([(True, "infra")], False, 1),
+        ([(True, True)], True, 1),
+    ],
+)
+def test_offline_review_cli_require_nondegrading_pairs(
+    exported: Path, tmp_path: Path, monkeypatch, capsys,
+    outcomes, missing: bool, exit_code: int, output_format: str,
+):
+    from godprompt_bench import review
+
+    rows = []
+    for index, (baseline_passed, godprompt_passed) in enumerate(outcomes):
+        task_id = f"private-{index}"
+        rows.append(replace(record("baseline", passed=baseline_passed), task_id=task_id))
+        if godprompt_passed == "infra":
+            rows.append(replace(record("godprompt", infra="sandbox unavailable"), task_id=task_id))
+        elif godprompt_passed is not None:
+            rows.append(replace(record("godprompt", passed=godprompt_passed), task_id=task_id))
+    infra_count = sum(row.infrastructure_error is not None for row in rows)
+    manifest = json.loads((exported / "manifest.json").read_text(encoding="utf-8"))
+    manifest.update(
+        run_id="paired-gate", requested_samples=len(rows) + int(missing),
+        completed_samples=len(rows) - infra_count, infrastructure_failures=infra_count,
+    )
+    folder = tmp_path / "paired-gate"
+    export_run(folder, manifest, rows, [])
+    snapshot = {p.name: p.read_bytes() for p in folder.iterdir()}
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(folder),
+        "--require-nondegrading-pairs", "--format", output_format,
+    ])
+    if exit_code:
+        with pytest.raises(SystemExit) as exc:
+            review.main()
+        assert exc.value.code == exit_code
+    else:
+        review.main()
+    output = capsys.readouterr().out
+    if output_format == "json":
+        pairs = json.loads(output)["within_run_condition_pairs"]
+        assert pairs["paired_task_epochs"] >= 0
+        assert "private-" not in output
+    else:
+        assert "Within-run matched condition outcomes" in output
+        assert "private-" not in output
+    assert {p.name: p.read_bytes() for p in folder.iterdir()} == snapshot
+
+
+def test_offline_review_cli_require_nondegrading_pairs_rejects_comparison(
+    exported: Path, monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(exported), "--compare", str(exported),
+        "--require-nondegrading-pairs",
+    ])
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "--require-nondegrading-pairs" in capsys.readouterr().err
+
+
 @pytest.fixture
 def comparable_exports(exported: Path, tmp_path: Path) -> tuple[Path, Path]:
     common = {
