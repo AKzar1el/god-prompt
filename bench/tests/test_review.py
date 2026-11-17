@@ -269,6 +269,73 @@ def test_offline_comparison_cli_prints_json_without_provider_calls(
     assert report["before"]["run_id"] == "sample-run"
 
 
+def test_offline_review_cli_markdown_is_read_only_and_non_promotional(
+    exported: Path, monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    before = {p.name: p.read_bytes() for p in exported.iterdir()}
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(exported), "--format", "markdown",
+    ])
+    review.main()
+    rendered = capsys.readouterr().out
+    assert "# GodPrompt Bench" in rendered
+    assert "sample-run" in rendered
+    assert "baseline" in rendered and "godprompt" in rendered
+    assert "mock_model" in rendered
+    assert "a" * 40 in rendered and "b" * 40 in rendered
+    assert "not independently verified" in rendered.lower()
+    assert "not a performance claim" in rendered.lower()
+    assert {p.name: p.read_bytes() for p in exported.iterdir()} == before
+
+
+def test_markdown_report_escapes_untrusted_export_labels(exported: Path, monkeypatch, capsys):
+    from godprompt_bench import review
+
+    manifest_path = exported / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["run_id"] = "run|example\n# injected heading"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(exported), "--format", "markdown",
+    ])
+    review.main()
+    rendered = capsys.readouterr().out
+    assert "run\\|example # injected heading" in rendered
+    assert "\n# injected heading" not in rendered
+
+
+def test_offline_comparison_cli_markdown_shows_category_changes_only_if_aligned(
+    comparable_exports: tuple[Path, Path], monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    before, after = comparable_exports
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(before), "--compare", str(after),
+        "--format", "markdown",
+    ])
+    review.main()
+    rendered = capsys.readouterr().out
+    assert "implementation" in rendered
+    assert "-100.0 pp" in rendered
+    assert "+100.0 pp" in rendered
+    assert "3" * 40 in rendered
+    assert "not a performance claim" in rendered.lower()
+
+    path = after / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["fixture_bundles_sha256"] = "9" * 64
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    review.main()
+    rejected = capsys.readouterr().out
+    assert "different:fixture_bundles_sha256" in rejected
+    assert "not comparable" in rejected.lower()
+    assert "-100.0 pp" not in rejected
+    assert "+100.0 pp" not in rejected
+
+
 @pytest.mark.parametrize("changed_field", ["task_id", "category"])
 def test_offline_comparison_suppresses_delta_for_different_scored_samples(
     comparable_exports: tuple[Path, Path], tmp_path: Path, changed_field: str,

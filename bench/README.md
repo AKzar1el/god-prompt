@@ -175,6 +175,8 @@ python -m godprompt_bench.review results/<run-id>
 
 This read-only command recomputes baseline, GodPrompt and per-category counts/rates from `scores.csv`, checks that `summary.json` agrees, and checks recorded sample/infrastructure totals against `manifest.json`. Its JSON output includes explicit denominators, run/commit provenance, coverage completeness and cautions for non-full, mocked, incomplete or dirty-source evidence. Missing, inconsistent or malformed public artifacts fail closed. It does not read trajectories, write results, start Docker or make provider/model calls. A consistent local export **does not** independently authenticate the model run, prove provenance, validate the benchmark methodology or authorize a performance or commercial claim.
 
+For a concise, copyable Markdown evidence summary, add `--format markdown` to the same offline review command. The default remains machine-readable JSON. The Markdown view displays run, coverage, per-condition and per-category rates, visible cautions and an explicit warning that a locally consistent export is not independently verified performance evidence. It never submits or publishes the report.
+
 Credential-like fields are recursively redacted from public JSON/JSONL exports.
 
 ## CI
@@ -199,6 +201,8 @@ python -m godprompt_bench.review results/<earlier-run-id> --compare results/<lat
 ```
 
 Both exports are checked independently. A mismatch in selected fixtures, model, evaluation controls, sandbox, baseline prompt, scored task/condition/epoch/category identities, model-evaluable sample coverage or required metadata suppresses pass-rate deltas and appears in `comparison_cautions`. Matching manifest fingerprints alone do not establish that the same samples were scored. With aligned metadata and samples, JSON includes condition-level and per-category pass-rate differences; a category/condition with no model-evaluable samples receives `null` rather than an invented rate difference. All differences are descriptive only, not proof of a causal improvement; mocked and non-full runs retain their cautions. The comparison does not modify artifacts, start Docker or call providers.
+
+Add `--format markdown` to render a short human-readable comparison with condition/category percentage-point changes and caution labels. If local metadata or scored samples are not comparable, the Markdown report suppresses all change tables rather than presenting misleading deltas. This is for inspection and review drafts, not an independently validated performance claim.
 
 ## Publishing results
 

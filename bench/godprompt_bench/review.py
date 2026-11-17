@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from html import escape
 import json
 from dataclasses import fields
 from math import isfinite
@@ -295,6 +296,111 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
     }
 
 
+def _markdown_text(value: Any) -> str:
+    """Keep exported, untrusted labels inert when copied into a Markdown report."""
+    clean = escape(str(value) if value is not None else "unavailable").replace("\r", " ").replace("\n", " ")
+    return re.sub(r"([\\`*\[\]|])", r"\\\1", clean)
+
+
+def _percent(rate: float | None) -> str:
+    return f"{100 * rate:.1f}%" if rate is not None else "n/a"
+
+
+def _percentage_points(delta: float | None) -> str:
+    return f"{100 * delta:+.1f} pp" if delta is not None else "n/a"
+
+
+def _markdown_cautions(label: str, cautions: list[str]) -> list[str]:
+    return [f"**{label}:** " + (
+        ", ".join(_markdown_text(caution) for caution in cautions)
+        if cautions else "No local cautions (not independent verification)"
+    )]
+
+
+def render_markdown(report: dict[str, Any]) -> str:
+    """Create an offline, copyable evidence summary without a performance claim."""
+    lines = [
+        "# GodPrompt Bench - offline " + ("comparison" if report.get("comparison_only") else "review"),
+        "",
+        "**Evidence status:** Model execution and provenance are not independently verified; "
+        "this is not a performance claim or a causal estimate.",
+        "",
+    ]
+    if report.get("comparison_only"):
+        before, after = report["before"], report["after"]
+        lines += [
+            f"**Earlier run:** {_markdown_text(before['run_id'])}",
+            f"**Later run:** {_markdown_text(after['run_id'])}",
+            f"**Requested models:** {_markdown_text(before['requested_model'])} / "
+            f"{_markdown_text(after['requested_model'])}",
+            f"**Benchmark commits:** {_markdown_text(before['benchmark_commit_sha'])} / "
+            f"{_markdown_text(after['benchmark_commit_sha'])}",
+            f"**GodPrompt commits:** {_markdown_text(before['godprompt_commit_sha'])} / "
+            f"{_markdown_text(after['godprompt_commit_sha'])}",
+            f"**Comparability:** " + (
+                "Aligned local metadata and scored sample identities; not authenticated."
+                if report["metadata_aligned"] else "Not comparable; all deltas suppressed."
+            ),
+            *_markdown_cautions("Comparison cautions", report["comparison_cautions"]),
+            *_markdown_cautions("Earlier run cautions", before["cautions"]),
+            *_markdown_cautions("Later run cautions", after["cautions"]),
+            "",
+        ]
+        if report["metadata_aligned"]:
+            lines += [
+                "| Condition | Earlier pass rate | Later pass rate | Delta |",
+                "| --- | ---: | ---: | ---: |",
+            ]
+            for condition in ("baseline", "godprompt"):
+                lines.append(
+                    f"| {condition} | {_percent(before['conditions'][condition]['pass_rate'])} | "
+                    f"{_percent(after['conditions'][condition]['pass_rate'])} | "
+                    f"{_percentage_points(report['condition_pass_rate_delta'][condition])} |"
+                )
+            lines += [
+                "", "| Category | Baseline delta | GodPrompt delta |",
+                "| --- | ---: | ---: |",
+            ]
+            for category, conditions in sorted(report["category_pass_rate_delta"].items()):
+                lines.append(
+                    f"| {_markdown_text(category)} | "
+                    f"{_percentage_points(conditions['baseline'])} | "
+                    f"{_percentage_points(conditions['godprompt'])} |"
+                )
+    else:
+        lines += [
+            f"**Run:** {_markdown_text(report['run_id'])}",
+            f"**Profile:** {_markdown_text(report['profile'])}",
+            f"**Model requested:** {_markdown_text(report['requested_model'])}",
+            f"**Benchmark commit:** {_markdown_text(report['benchmark_commit_sha'])}",
+            f"**GodPrompt commit:** {_markdown_text(report['godprompt_commit_sha'])}",
+            f"**Coverage:** {report['coverage']['recorded_samples']}/"
+            f"{report['coverage']['requested_samples']} recorded, "
+            f"{report['coverage']['model_samples']} model-evaluable, "
+            f"{report['coverage']['infrastructure_failures']} infrastructure failures.",
+            *_markdown_cautions("Cautions", report["cautions"]),
+            "", "| Condition | Passed / model samples | Pass rate |",
+            "| --- | ---: | ---: |",
+        ]
+        for condition in ("baseline", "godprompt"):
+            score = report["conditions"][condition]
+            lines.append(
+                f"| {condition} | {score['passed']}/{score['model_samples']} | "
+                f"{_percent(score['pass_rate'])} |"
+            )
+        lines += ["", "| Category | Condition | Passed / model samples | Pass rate |",
+                  "| --- | --- | ---: | ---: |"]
+        for category, conditions in sorted(report["by_category"].items()):
+            for condition in ("baseline", "godprompt"):
+                score = conditions[condition]
+                lines.append(
+                    f"| {_markdown_text(category)} | {condition} | "
+                    f"{score['passed']}/{score['model_samples']} | {_percent(score['pass_rate'])} |"
+                )
+    lines += ["", "*Local artifact consistency does not authenticate a model run or establish a causal benefit.*"]
+    return "\n".join(lines)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Review an existing GodPrompt benchmark export offline; never calls a model"
@@ -302,12 +408,17 @@ def main() -> None:
     parser.add_argument("result_dir", type=Path, help="Directory containing manifest.json, summary.json and scores.csv")
     parser.add_argument("--compare", type=Path, metavar="OTHER_RESULT_DIR",
                         help="Compare with another saved export, without running a model")
+    parser.add_argument("--format", choices=("json", "markdown"), default="json",
+                        help="Output format; Markdown is a read-only, non-promotional summary")
     args = parser.parse_args()
     try:
         report = compare_results(args.result_dir, args.compare) if args.compare else review_result(args.result_dir)
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
-    print(json.dumps(report, indent=2, sort_keys=True, allow_nan=False))
+    if args.format == "markdown":
+        print(render_markdown(report))
+    else:
+        print(json.dumps(report, indent=2, sort_keys=True, allow_nan=False))
 
 
 if __name__ == "__main__":
