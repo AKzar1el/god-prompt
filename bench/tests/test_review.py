@@ -424,3 +424,74 @@ def test_offline_comparison_suppresses_delta_for_different_evaluable_samples(
     assert report["metadata_aligned"] is False
     assert "different:model_sample_coverage" in report["comparison_cautions"]
     assert report["condition_pass_rate_delta"] is None
+
+
+def test_offline_comparison_shows_paired_pass_transitions_without_listing_tasks(
+    comparable_exports: tuple[Path, Path],
+):
+    from godprompt_bench.review import compare_results, render_markdown
+
+    before, after = comparable_exports
+    report = compare_results(before, after)
+    assert report["metadata_aligned"] is True
+    assert report["condition_pass_transitions"] == {
+        "baseline": {"fail_to_pass": 0, "pass_to_fail": 1,
+                     "pass_to_pass": 0, "fail_to_fail": 0, "paired_samples": 1},
+        "godprompt": {"fail_to_pass": 1, "pass_to_fail": 0,
+                      "pass_to_pass": 0, "fail_to_fail": 0, "paired_samples": 1},
+    }
+    markdown = render_markdown(report)
+    assert "Paired outcome transitions" in markdown
+    assert "| baseline | 0 | 1 | 0 | 0 | 1 |" in markdown
+    assert "| godprompt | 1 | 0 | 0 | 0 | 1 |" in markdown
+    assert "impl-example" not in markdown  # no sample-level IDs in shareable evidence
+    assert "not a performance claim" in markdown.lower()
+
+
+def test_offline_comparison_counts_unchanged_and_mixed_paired_outcomes(
+    comparable_exports: tuple[Path, Path], tmp_path: Path,
+):
+    from godprompt_bench.review import compare_results
+
+    original, _ = comparable_exports
+    manifest = json.loads((original / "manifest.json").read_text(encoding="utf-8"))
+    common = {**manifest, "requested_samples": 5, "completed_samples": 5,
+              "infrastructure_failures": 0}
+    earlier, later = tmp_path / "earlier-mixed", tmp_path / "later-mixed"
+    before_states = [True, False, True, False]
+    after_states = [True, True, False, False]
+    before_records = [replace(record("baseline", passed=state), task_id=f"task-{i}")
+                      for i, state in enumerate(before_states)]
+    after_records = [replace(record("baseline", passed=state), task_id=f"task-{i}")
+                     for i, state in enumerate(after_states)]
+    export_run(earlier, {**common, "run_id": "earlier-mixed"},
+               [*before_records, record("godprompt")], [])
+    export_run(later, {**common, "run_id": "later-mixed", "godprompt_commit_sha": "3" * 40},
+               [*after_records, record("godprompt")], [])
+
+    report = compare_results(earlier, later)
+    assert report["metadata_aligned"] is True
+    assert report["condition_pass_transitions"]["baseline"] == {
+        "fail_to_pass": 1, "pass_to_fail": 1,
+        "pass_to_pass": 1, "fail_to_fail": 1, "paired_samples": 4,
+    }
+    assert report["condition_pass_transitions"]["godprompt"] == {
+        "fail_to_pass": 0, "pass_to_fail": 0,
+        "pass_to_pass": 1, "fail_to_fail": 0, "paired_samples": 1,
+    }
+
+
+def test_offline_comparison_suppresses_paired_transitions_for_unaligned_samples(
+    comparable_exports: tuple[Path, Path],
+):
+    from godprompt_bench.review import compare_results, render_markdown
+
+    before, after = comparable_exports
+    path = after / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["seed"] = 42
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    report = compare_results(before, after)
+    assert report["metadata_aligned"] is False
+    assert report["condition_pass_transitions"] is None
+    assert "Paired outcome transitions" not in render_markdown(report)
