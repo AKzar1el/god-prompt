@@ -23,6 +23,7 @@ from .models import SampleRecord
 
 _JSON_MAX_BYTES = 2_000_000
 _CSV_MAX_BYTES = 20_000_000
+_REPORT_CONTROLS = re.compile(r"[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]")
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 _INT = re.compile(r"(?:0|[1-9][0-9]*)\Z")
 _NUMERIC = {"epoch", "tool_misuse_count", "verification_attempts", "failed_tool_calls", "retries"}
@@ -334,7 +335,8 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
 
 def _markdown_text(value: Any) -> str:
     """Keep exported, untrusted labels inert when copied into a Markdown report."""
-    clean = escape(str(value) if value is not None else "unavailable").replace("\r", " ").replace("\n", " ")
+    # An exported label must not clear a terminal or reverse displayed text.
+    clean = escape(_REPORT_CONTROLS.sub(" ", str(value) if value is not None else "unavailable"))
     return re.sub(r"([\\`*\[\]|])", r"\\\1", clean)
 
 
