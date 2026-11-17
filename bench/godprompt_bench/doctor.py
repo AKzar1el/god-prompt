@@ -7,6 +7,7 @@ It never contacts a Docker daemon or a model provider.
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import shutil
@@ -85,9 +86,58 @@ def check_local_runtime() -> dict:
     }
 
 
+def format_text(report: dict) -> str:
+    """Render fixed remediation guidance without echoing host or subprocess data."""
+    checks = report.get("checks", {})
+    python_status = checks.get("python", {}).get("status")
+    inspect_status = checks.get("inspect_ai", {}).get("status")
+    docker_status = checks.get("docker_cli", {}).get("status")
+
+    lines = ["GodPrompt benchmark local prerequisites"]
+    if python_status == "ok":
+        lines.append("Python: OK")
+    else:
+        lines.append("Python: NOT READY - Use Python 3.11 or newer to run the benchmark and this doctor.")
+
+    if inspect_status == "ok":
+        lines.append("Inspect AI: OK (pinned 0.3.260)")
+    elif inspect_status in ("missing", "version_mismatch"):
+        lines.append(
+            "Inspect AI: NOT READY - From bench/, run python -m pip install -e '.[test,openai]' "
+            "to install pinned Inspect AI 0.3.260."
+        )
+    else:
+        lines.append("Inspect AI: NOT READY - Verify the pinned Inspect AI installation in bench/.")
+
+    if docker_status == "ok":
+        lines.append("Docker CLI: OK")
+    elif docker_status == "missing":
+        lines.append("Docker CLI: NOT READY - Install Docker CLI and ensure docker is on PATH.")
+    else:
+        lines.append("Docker CLI: NOT READY - Run docker --version locally and check the CLI installation.")
+
+    lines.append(
+        "Local prerequisites: " + ("PASS" if report["local_prerequisites_present"] else "NOT READY")
+    )
+    lines.append(
+        "This does not verify Docker daemon or image readiness, credentials, provider access, "
+        "or live evaluation. No model/provider calls were made."
+    )
+    return "\n".join(lines)
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Check local benchmark prerequisites without model calls")
+    parser.add_argument(
+        "--format", choices=("json", "text"), default="json",
+        help="Output format (default: machine-readable JSON)",
+    )
+    args = parser.parse_args()
     report = check_local_runtime()
-    print(json.dumps(report, indent=2, sort_keys=True))
+    if args.format == "text":
+        print(format_text(report))
+    else:
+        print(json.dumps(report, indent=2, sort_keys=True))
     if not report["local_prerequisites_present"]:
         raise SystemExit(1)
 

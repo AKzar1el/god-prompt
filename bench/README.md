@@ -99,6 +99,8 @@ python -m godprompt_bench.doctor
 
 From Windows PowerShell inside `bench/`, use `.\.venv\Scripts\python.exe -m godprompt_bench.doctor` instead. The doctor command is standard-library-only, so it can also report a missing Inspect AI installation before the benchmark runner can import it. It checks Python 3.11+, the exact pinned Inspect AI version, and the installed Docker **CLI** version, returning structured JSON with a nonzero exit status when prerequisites are absent. It runs only `docker --version`; it never contacts the Docker daemon or a model provider, reads credentials, starts a sandbox, or writes benchmark results. Passing this check **does not prove** the daemon, Docker images, credentials, provider access, or live evaluation will work.
 
+For a human-readable readiness summary with actionable local setup steps, run `python -m godprompt_bench.doctor --format text` (or `.\.venv\Scripts\python.exe -m godprompt_bench.doctor --format text` on Windows). This optional format preserves the same exit code and local-only checks; the default JSON output remains unchanged for automation. The text advice never includes raw Docker errors or host paths and does not imply the Docker daemon or model provider was tested.
+
 ## Run
 
 Inspect model names include their provider prefix, such as `openai/gpt-5.6-sol`. This is an example model ID, not a claim that it is the latest flagship model. Confirm that your account has access to the selected model before a live evaluation; smoke and full runs may incur provider charges.

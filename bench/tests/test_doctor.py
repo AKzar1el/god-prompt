@@ -122,3 +122,92 @@ def test_doctor_cli_success_is_machine_readable(monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out) == {
         "local_prerequisites_present": True, "provider_calls_made": False,
     }
+
+
+@pytest.mark.parametrize(
+    "component,status,expected",
+    [
+        ("python", "unsupported", "Python 3.11 or newer"),
+        ("inspect_ai", "missing", "pip install -e"),
+        ("inspect_ai", "version_mismatch", "pinned Inspect AI"),
+        ("docker_cli", "missing", "Docker CLI"),
+        ("docker_cli", "timeout", "docker --version"),
+        ("docker_cli", "unverifiable", "docker --version"),
+    ],
+)
+def test_doctor_text_gives_actionable_local_remediation(monkeypatch, capsys, component, status, expected):
+    from godprompt_bench import doctor
+
+    checks = {
+        "python": {"status": "ok", "version": "3.13.5", "minimum": "3.11"},
+        "inspect_ai": {"status": "ok", "version": "0.3.260", "required": "0.3.260"},
+        "docker_cli": {"status": "ok", "version": "27.4.1"},
+    }
+    checks[component]["status"] = status
+    monkeypatch.setattr(sys, "argv", ["godprompt_bench.doctor", "--format", "text"])
+    monkeypatch.setattr(doctor, "check_local_runtime", lambda: {
+        "local_prerequisites_present": False,
+        "checks": checks,
+        "docker_daemon_checked": False,
+        "provider_calls_made": False,
+    })
+
+    with pytest.raises(SystemExit) as exc:
+        doctor.main()
+    assert exc.value.code == 1
+    output = capsys.readouterr().out
+    assert expected in output
+    assert "NOT READY" in output
+    assert "not verify Docker daemon" in output
+
+
+def test_doctor_text_success_and_default_json_stay_distinct(monkeypatch, capsys):
+    from godprompt_bench import doctor
+
+    report = {
+        "local_prerequisites_present": True,
+        "checks": {
+            "python": {"status": "ok", "version": "3.13.5", "minimum": "3.11"},
+            "inspect_ai": {"status": "ok", "version": "0.3.260", "required": "0.3.260"},
+            "docker_cli": {"status": "ok", "version": "27.4.1"},
+        },
+        "docker_daemon_checked": False,
+        "provider_calls_made": False,
+    }
+    monkeypatch.setattr(doctor, "check_local_runtime", lambda: report)
+    monkeypatch.setattr(sys, "argv", ["godprompt_bench.doctor", "--format", "text"])
+    doctor.main()
+    output = capsys.readouterr().out
+    assert "Local prerequisites: PASS" in output
+    assert "not verify Docker daemon" in output
+    assert not output.startswith("{")
+
+    monkeypatch.setattr(sys, "argv", ["godprompt_bench.doctor"])
+    doctor.main()
+    assert json.loads(capsys.readouterr().out) == report
+
+
+def test_doctor_text_uses_only_known_statuses_not_raw_error_text(monkeypatch, capsys):
+    from godprompt_bench import doctor
+
+    monkeypatch.setattr(sys, "argv", ["godprompt_bench.doctor", "--format", "text"])
+    monkeypatch.setattr(doctor, "check_local_runtime", lambda: {
+        "local_prerequisites_present": False,
+        "checks": {"docker_cli": {
+            "status": "unverifiable", "version": "sensitive-host-error-do-not-print",
+        }},
+    })
+    with pytest.raises(SystemExit):
+        doctor.main()
+    assert "sensitive-host-error-do-not-print" not in capsys.readouterr().out
+
+
+def test_doctor_rejects_unknown_output_format_without_probe(monkeypatch, capsys):
+    from godprompt_bench import doctor
+
+    monkeypatch.setattr(sys, "argv", ["godprompt_bench.doctor", "--format", "yaml"])
+    monkeypatch.setattr(doctor, "check_local_runtime", lambda: pytest.fail("not called"))
+    with pytest.raises(SystemExit) as exc:
+        doctor.main()
+    assert exc.value.code == 2
+    assert capsys.readouterr().out == ""
