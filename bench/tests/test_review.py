@@ -189,6 +189,22 @@ def test_review_refuses_malformed_csv_outcome(exported: Path):
         review_result(exported)
 
 
+@pytest.mark.parametrize("status", ["completed", "COMPLETE", "protocol-invalid\nspoofed"])
+def test_review_refuses_unknown_completion_status(exported: Path, status: str):
+    from godprompt_bench.review import review_result
+
+    path = exported / "scores.csv"
+    with path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    rows[0]["completion_status"] = status
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+    with pytest.raises(ValueError, match="completion_status"):
+        review_result(exported)
+
+
 def test_review_refuses_duplicate_sample_identity(exported: Path):
     from godprompt_bench.review import review_result
 
