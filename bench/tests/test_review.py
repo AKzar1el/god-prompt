@@ -60,6 +60,71 @@ def test_review_verifies_exported_scores_and_preserves_denominators(exported: Pa
     assert report["conditions"]["godprompt"]["infrastructure_failures"] == 1
     assert "mock_model" in report["cautions"]
     assert report["performance_claim_verified"] is False
+    assert report["within_run_condition_pairs"] == {
+        "baseline_fail_godprompt_pass": 0,
+        "baseline_pass_godprompt_fail": 1,
+        "both_pass": 0,
+        "both_fail": 0,
+        "paired_task_epochs": 1,
+        "unpaired_task_epochs": 1,
+        "by_category": {
+            "implementation": {
+                "baseline_fail_godprompt_pass": 0,
+                "baseline_pass_godprompt_fail": 1,
+                "both_pass": 0,
+                "both_fail": 0,
+                "paired_task_epochs": 1,
+            },
+        },
+    }
+
+
+def test_review_pairs_conditions_without_leaking_task_ids_or_counting_infra(
+    exported: Path, tmp_path: Path,
+):
+    from godprompt_bench.review import render_markdown, review_result
+
+    rows = [
+        replace(record("baseline", passed=False), task_id="private-a"),
+        replace(record("godprompt"), task_id="private-a"),
+        replace(record("baseline"), task_id="private-b"),
+        replace(record("godprompt", passed=False), task_id="private-b"),
+        replace(record("baseline"), task_id="private-c", category="verification"),
+        replace(record("godprompt"), task_id="private-c", category="verification"),
+        replace(record("baseline", passed=False), task_id="private-d", category="verification"),
+        replace(record("godprompt", passed=False), task_id="private-d", category="verification"),
+        replace(record("baseline"), task_id="private-infra"),
+        replace(record("godprompt", infra="sandbox unavailable"), task_id="private-infra"),
+        replace(record("baseline"), task_id="private-missing"),
+        replace(record("baseline"), task_id="private-category"),
+        replace(record("godprompt"), task_id="private-category", category="verification"),
+    ]
+    manifest = json.loads((exported / "manifest.json").read_text(encoding="utf-8"))
+    manifest.update(run_id="mixed-pairs", requested_samples=len(rows),
+                    completed_samples=len(rows) - 1, infrastructure_failures=1)
+    folder = tmp_path / "mixed-pairs"
+    export_run(folder, manifest, rows, [])
+
+    report = review_result(folder)
+    pairs = report["within_run_condition_pairs"]
+    assert {key: pairs[key] for key in (
+        "baseline_fail_godprompt_pass", "baseline_pass_godprompt_fail",
+        "both_pass", "both_fail", "paired_task_epochs", "unpaired_task_epochs",
+    )} == {
+        "baseline_fail_godprompt_pass": 1,
+        "baseline_pass_godprompt_fail": 1,
+        "both_pass": 1,
+        "both_fail": 1,
+        "paired_task_epochs": 4,
+        "unpaired_task_epochs": 3,
+    }
+    assert pairs["by_category"]["implementation"]["paired_task_epochs"] == 2
+    assert pairs["by_category"]["verification"]["paired_task_epochs"] == 2
+    markdown = render_markdown(report)
+    assert "Within-run matched condition outcomes" in markdown
+    assert "1 | 1 | 1 | 1 | 4 | 3" in markdown
+    assert "private-" not in markdown
+    assert "not a performance claim" in markdown.lower()
 
 
 def test_review_refuses_changed_summary(exported: Path):

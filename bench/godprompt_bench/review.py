@@ -153,6 +153,46 @@ def _manifest_count(manifest: dict[str, Any], name: str) -> int:
     return value
 
 
+def _within_run_condition_pairs(
+    records: list[SampleRecord],
+) -> dict[str, Any]:
+    """Count matched baseline/GodPrompt outcomes, without exposing task IDs."""
+    outcome_keys = (
+        "baseline_fail_godprompt_pass", "baseline_pass_godprompt_fail",
+        "both_pass", "both_fail",
+    )
+    totals = {key: 0 for key in outcome_keys}
+    totals.update(paired_task_epochs=0, unpaired_task_epochs=0)
+    by_category = {
+        category: {**{key: 0 for key in outcome_keys}, "paired_task_epochs": 0}
+        for category in sorted({record.category for record in records})
+    }
+    pairs: dict[tuple[str, int], dict[str, SampleRecord]] = {}
+    for record in records:
+        pairs.setdefault((record.task_id, record.epoch), {})[record.condition] = record
+    for pair in pairs.values():
+        baseline, godprompt = pair.get("baseline"), pair.get("godprompt")
+        if (baseline is None or godprompt is None
+                or baseline.category != godprompt.category
+                or baseline.infrastructure_error is not None
+                or godprompt.infrastructure_error is not None):
+            totals["unpaired_task_epochs"] += 1
+            continue
+        if baseline.passed and godprompt.passed:
+            outcome = "both_pass"
+        elif not baseline.passed and not godprompt.passed:
+            outcome = "both_fail"
+        elif baseline.passed:
+            outcome = "baseline_pass_godprompt_fail"
+        else:
+            outcome = "baseline_fail_godprompt_pass"
+        totals[outcome] += 1
+        totals["paired_task_epochs"] += 1
+        by_category[baseline.category][outcome] += 1
+        by_category[baseline.category]["paired_task_epochs"] += 1
+    return {**totals, "by_category": by_category}
+
+
 def review_result(folder: Path) -> dict[str, Any]:
     """Validate a saved export and return a compact, non-promotional review."""
     manifest = _read_json(folder, "manifest.json")
@@ -221,6 +261,7 @@ def review_result(folder: Path) -> dict[str, Any]:
         },
         "conditions": {name: recomputed[name] for name in ("baseline", "godprompt")},
         "by_category": recomputed["by_category"],
+        "within_run_condition_pairs": _within_run_condition_pairs(records),
         "cautions": cautions,
         "note": "Counts and summaries were checked against local export rows; "
                 "this does not independently verify model execution, provenance or a performance claim.",
@@ -494,6 +535,31 @@ def render_markdown(report: dict[str, Any]) -> str:
                     f"| {_markdown_text(category)} | {condition} | "
                     f"{score['passed']}/{score['model_samples']} | {_percent(score['pass_rate'])} |"
                 )
+        pairs = report["within_run_condition_pairs"]
+        lines += [
+            "", "**Within-run matched condition outcomes:** Same task and epoch, "
+            "both model-evaluable and in the same category. Exclusions include "
+            "missing conditions, infrastructure failures or category mismatches; "
+            "these counts do not establish a causal improvement.",
+            "", "| Baseline fail / GodPrompt pass | Baseline pass / GodPrompt fail | "
+            "Both pass | Both fail | Matched task-epochs | Excluded task-epochs |",
+            "| ---: | ---: | ---: | ---: | ---: | ---: |",
+            f"| {pairs['baseline_fail_godprompt_pass']} | "
+            f"{pairs['baseline_pass_godprompt_fail']} | {pairs['both_pass']} | "
+            f"{pairs['both_fail']} | {pairs['paired_task_epochs']} | "
+            f"{pairs['unpaired_task_epochs']} |",
+            "", "| Category | Baseline fail / GodPrompt pass | "
+            "Baseline pass / GodPrompt fail | Both pass | Both fail | Matched task-epochs |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+        for category, counts in sorted(pairs["by_category"].items()):
+            lines.append(
+                f"| {_markdown_text(category)} | "
+                f"{counts['baseline_fail_godprompt_pass']} | "
+                f"{counts['baseline_pass_godprompt_fail']} | "
+                f"{counts['both_pass']} | {counts['both_fail']} | "
+                f"{counts['paired_task_epochs']} |"
+            )
     lines += ["", "*Local artifact consistency does not authenticate a model run or establish a causal benefit.*"]
     return "\n".join(lines)
 
