@@ -319,6 +319,34 @@ def test_offline_comparison_breaks_down_categories_without_inventing_missing_rat
         "implementation": {"baseline": -1.0, "godprompt": 1.0},
         "verification": {"baseline": None, "godprompt": -1.0},
     }
+    assert report["category_pass_transitions"] == {
+        "implementation": {
+            "baseline": {"fail_to_pass": 0, "pass_to_fail": 1,
+                         "pass_to_pass": 0, "fail_to_fail": 0, "paired_samples": 1},
+            "godprompt": {"fail_to_pass": 1, "pass_to_fail": 0,
+                          "pass_to_pass": 0, "fail_to_fail": 0, "paired_samples": 1},
+        },
+        "verification": {
+            "baseline": {"fail_to_pass": 0, "pass_to_fail": 0,
+                         "pass_to_pass": 0, "fail_to_fail": 0, "paired_samples": 0},
+            "godprompt": {"fail_to_pass": 0, "pass_to_fail": 1,
+                          "pass_to_pass": 0, "fail_to_fail": 0, "paired_samples": 1},
+        },
+    }
+    from godprompt_bench.review import render_markdown
+    markdown = render_markdown(report)
+    assert "Per-category paired transitions" in markdown
+    assert "| implementation | baseline | 0 | 1 | 0 | 0 | 1 |" in markdown
+    assert "| verification | baseline | 0 | 0 | 0 | 0 | 0 |" in markdown
+    assert "| verification | godprompt | 0 | 1 | 0 | 0 | 1 |" in markdown
+    assert "| impl-example |" not in markdown
+    assert "| verify |" not in markdown
+    for condition in ("baseline", "godprompt"):
+        for field, count in report["condition_pass_transitions"][condition].items():
+            assert sum(
+                category[condition][field]
+                for category in report["category_pass_transitions"].values()
+            ) == count
     assert report["performance_claim_verified"] is False
 
 
@@ -548,4 +576,6 @@ def test_offline_comparison_suppresses_paired_transitions_for_unaligned_samples(
     report = compare_results(before, after)
     assert report["metadata_aligned"] is False
     assert report["condition_pass_transitions"] is None
+    assert report["category_pass_transitions"] is None
     assert "Paired outcome transitions" not in render_markdown(report)
+    assert "Per-category paired transitions" not in render_markdown(report)
