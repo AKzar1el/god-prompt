@@ -648,7 +648,11 @@ def main() -> None:
                         help="Compare with another saved export, without running a model")
     parser.add_argument("--format", choices=("json", "markdown"), default="json",
                         help="Output format; Markdown is a read-only, non-promotional summary")
+    parser.add_argument("--require-aligned", action="store_true",
+                        help="With --compare, exit 1 on unaligned results after printing diagnostics")
     args = parser.parse_args()
+    if args.require_aligned and args.compare is None:
+        parser.error("--require-aligned requires --compare")
     try:
         report = compare_results(args.result_dir, args.compare) if args.compare else review_result(args.result_dir)
     except (OSError, ValueError) as exc:
@@ -657,6 +661,8 @@ def main() -> None:
         print(render_markdown(report))
     else:
         print(json.dumps(report, indent=2, sort_keys=True, allow_nan=False))
+    if args.require_aligned and not report["metadata_aligned"]:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

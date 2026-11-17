@@ -534,6 +534,65 @@ def test_offline_comparison_cli_prints_json_without_provider_calls(
     assert report["before"]["run_id"] == "sample-run"
 
 
+def test_offline_comparison_cli_require_aligned_succeeds_for_comparable_exports(
+    comparable_exports: tuple[Path, Path], monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    before, after = comparable_exports
+    original = {folder: {p.name: p.read_bytes() for p in folder.iterdir()}
+                for folder in (before, after)}
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(before), "--compare", str(after),
+        "--require-aligned",
+    ])
+    review.main()
+    assert json.loads(capsys.readouterr().out)["metadata_aligned"] is True
+    assert all({p.name: p.read_bytes() for p in folder.iterdir()} == contents
+               for folder, contents in original.items())
+
+
+@pytest.mark.parametrize("output_format", ["json", "markdown"])
+def test_offline_comparison_cli_require_aligned_fails_but_prints_diagnostics(
+    comparable_exports: tuple[Path, Path], monkeypatch, capsys, output_format: str,
+):
+    from godprompt_bench import review
+
+    before, after = comparable_exports
+    path = after / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["fixture_bundles_sha256"] = "9" * 64
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(before), "--compare", str(after),
+        "--require-aligned", "--format", output_format,
+    ])
+    with pytest.raises(SystemExit) as exit_info:
+        review.main()
+    assert exit_info.value.code == 1
+    output = capsys.readouterr().out
+    if output_format == "json":
+        report = json.loads(output)
+        assert report["metadata_aligned"] is False
+        assert "different:fixture_bundles_sha256" in report["comparison_cautions"]
+        assert report["condition_pass_rate_delta"] is None
+    else:
+        assert "different:fixture_bundles_sha256" in output
+        assert "not comparable" in output.lower()
+
+
+def test_offline_review_cli_require_aligned_requires_compare(exported: Path, monkeypatch, capsys):
+    from godprompt_bench import review
+
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(exported), "--require-aligned",
+    ])
+    with pytest.raises(SystemExit) as exit_info:
+        review.main()
+    assert exit_info.value.code == 2
+    assert "--compare" in capsys.readouterr().err
+
+
 def test_offline_review_cli_markdown_is_read_only_and_non_promotional(
     exported: Path, monkeypatch, capsys,
 ):
