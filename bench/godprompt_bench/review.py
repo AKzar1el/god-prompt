@@ -30,6 +30,8 @@ _NUMERIC = {"epoch", "tool_misuse_count", "verification_attempts", "failed_tool_
 _OPTIONAL_INT = {"input_tokens", "output_tokens"}
 _BOOLEAN = {"passed", "false_completion", "scope_violation"}
 _OPTIONAL_TEXT = {"infrastructure_error"}
+# Scorer protocol statuses plus the runner's local timeout/error fallbacks.
+_COMPLETION_STATUSES = {"complete", "blocked", "error", "timeout", "protocol-invalid"}
 _COMPARISON_FIELDS = (
     "profile", "requested_model", "actual_models", "requested_samples",
     "task_manifest_sha256", "fixture_bundles_sha256",
@@ -109,6 +111,10 @@ def _parse_record(row: dict[str, str]) -> SampleRecord:
             converted[name] = _parse_integer(value, name, name in _OPTIONAL_INT)
         elif name == "latency_seconds":
             converted[name] = _parse_number(value, name)
+        elif name == "completion_status":
+            if value not in _COMPLETION_STATUSES:
+                raise ValueError("completion_status is not a recognized benchmark status")
+            converted[name] = value
         elif name in _OPTIONAL_TEXT:
             converted[name] = value or None
         else:
