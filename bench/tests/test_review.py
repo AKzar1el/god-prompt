@@ -387,6 +387,24 @@ def test_markdown_report_escapes_untrusted_export_labels(exported: Path, monkeyp
     assert "\n# injected heading" not in rendered
 
 
+def test_markdown_report_neutralizes_terminal_and_bidi_controls(exported: Path, monkeypatch, capsys):
+    from godprompt_bench import review
+
+    manifest_path = exported / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["run_id"] = "first\x1b[2J\x9b0K\u202ehidden\u2066last"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(exported), "--format", "markdown",
+    ])
+
+    review.main()
+    rendered = capsys.readouterr().out
+    assert "first" in rendered and "last" in rendered
+    assert all(control not in rendered for control in ("\x1b", "\x9b", "\u202e", "\u2066"))
+    assert "not independently verified" in rendered.lower()
+
+
 def test_offline_comparison_cli_markdown_shows_category_changes_only_if_aligned(
     comparable_exports: tuple[Path, Path], monkeypatch, capsys,
 ):
