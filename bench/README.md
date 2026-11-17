@@ -161,6 +161,8 @@ A run writes raw Inspect logs plus a public result directory containing:
 
 The runner fingerprints selected fixtures before evaluation and checks them again before public export. If they change during a run, it refuses to publish a misleading result manifest; Inspect's raw diagnostic logs remain available. This does not prevent provider charges for samples already evaluated, so avoid editing fixtures while a live run is in progress.
 
+The treatment prompt is also checked before and after evaluation. If `GodPrompt.md` changes while tasks are constructed or evaluated, the run refuses to attribute results to an inconsistent prompt; a successful manifest records the fingerprint captured for the evaluated prompt. Do not modify the prompt during a live run. Already-incurred provider charges cannot be reversed.
+
 The sandbox provenance includes SHA-256 hashes for both `sandbox/Dockerfile` and the actual `sandbox/compose.yaml` supplied to Inspect. These identify the checked-in isolation settings (including networking and capabilities), but do not attest to the resolved base-image digest on the execution host.
 
 `scores.csv` contains one row per task/condition/epoch. `summary.json` can be regenerated from those rows. `trajectories.jsonl` contains observable non-system messages plus tool/approval events. System prompts are reproducible from the recorded commit hashes and are not duplicated into every trajectory. Reasoning-content blocks are excluded; the benchmark does not request, reconstruct, or publish hidden chain-of-thought.
