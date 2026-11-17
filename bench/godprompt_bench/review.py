@@ -263,12 +263,23 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
 
     aligned = not cautions
     delta = None
+    category_delta = None
     if aligned:
         delta = {
             condition: after["conditions"][condition]["pass_rate"]
             - before["conditions"][condition]["pass_rate"]
             for condition in ("baseline", "godprompt")
         }
+        category_delta = {}
+        for category, before_conditions in before["by_category"].items():
+            category_delta[category] = {}
+            for condition in ("baseline", "godprompt"):
+                earlier = before_conditions[condition]["pass_rate"]
+                later = after["by_category"][category][condition]["pass_rate"]
+                # A zero model-evaluable denominator has no defined rate to compare.
+                category_delta[category][condition] = (
+                    later - earlier if earlier is not None and later is not None else None
+                )
     return {
         "comparison_only": True,
         "metadata_aligned": aligned,
@@ -277,6 +288,7 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
         "after": after,
         "comparison_cautions": cautions,
         "condition_pass_rate_delta": delta,
+        "category_pass_rate_delta": category_delta,
         "note": "Rate differences are descriptive, not a causal effect or verified performance claim. "
                 "Metadata alignment does not independently authenticate model runs; "
                 "non-full or mock results are not publication evidence.",

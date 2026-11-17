@@ -182,6 +182,9 @@ def test_offline_comparison_reports_condition_deltas_and_no_performance_claim(
     assert report["performance_claim_verified"] is False
     assert report["condition_pass_rate_delta"]["baseline"] == -1.0
     assert report["condition_pass_rate_delta"]["godprompt"] == 1.0
+    assert report["category_pass_rate_delta"] == {
+        "implementation": {"baseline": -1.0, "godprompt": 1.0},
+    }
     assert report["before"]["run_id"] == "sample-run"
     assert report["after"]["run_id"] == "later-run"
     assert "mock_model" in report["before"]["cautions"]
@@ -203,6 +206,39 @@ def test_offline_comparison_suppresses_delta_for_different_fixtures(
     assert report["metadata_aligned"] is False
     assert "different:fixture_bundles_sha256" in report["comparison_cautions"]
     assert report["condition_pass_rate_delta"] is None
+    assert report["category_pass_rate_delta"] is None
+
+
+def test_offline_comparison_breaks_down_categories_without_inventing_missing_rates(
+    comparable_exports: tuple[Path, Path], tmp_path: Path,
+):
+    from godprompt_bench.review import compare_results
+
+    original, _ = comparable_exports
+    manifest = json.loads((original / "manifest.json").read_text(encoding="utf-8"))
+    manifest.update(requested_samples=4, completed_samples=3, infrastructure_failures=1)
+    before = tmp_path / "category-before"
+    after = tmp_path / "category-after"
+    records_before = [
+        record("baseline"), record("godprompt", passed=False),
+        replace(record("baseline", infra="unavailable"), task_id="verify", category="verification"),
+        replace(record("godprompt"), task_id="verify", category="verification"),
+    ]
+    records_after = [
+        record("baseline", passed=False), record("godprompt"),
+        replace(record("baseline", infra="unavailable"), task_id="verify", category="verification"),
+        replace(record("godprompt", passed=False), task_id="verify", category="verification"),
+    ]
+    export_run(before, {**manifest, "run_id": "category-before"}, records_before, [])
+    export_run(after, {**manifest, "run_id": "category-after", "godprompt_commit_sha": "3" * 40}, records_after, [])
+
+    report = compare_results(before, after)
+    assert report["metadata_aligned"] is True
+    assert report["category_pass_rate_delta"] == {
+        "implementation": {"baseline": -1.0, "godprompt": 1.0},
+        "verification": {"baseline": None, "godprompt": -1.0},
+    }
+    assert report["performance_claim_verified"] is False
 
 
 def test_offline_comparison_requires_metadata_and_complete_exports(exported: Path, tmp_path: Path):
