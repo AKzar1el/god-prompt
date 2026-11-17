@@ -293,6 +293,81 @@ def test_offline_comparison_reports_condition_deltas_and_no_performance_claim(
     assert {p.name: p.read_bytes() for p in after.iterdir()} == after_files
 
 
+def test_comparison_counts_joint_condition_pair_transitions_without_task_ids(
+    comparable_exports: tuple[Path, Path], tmp_path: Path,
+):
+    from godprompt_bench.review import compare_results, render_markdown
+
+    sample, _ = comparable_exports
+    manifest = json.loads((sample / "manifest.json").read_text(encoding="utf-8"))
+    manifest.update(requested_samples=12, completed_samples=11, infrastructure_failures=1)
+    earlier_rows = [
+        replace(record("baseline", passed=False), task_id="secret-a"),
+        replace(record("godprompt"), task_id="secret-a"),
+        replace(record("baseline"), task_id="secret-b"),
+        replace(record("godprompt"), task_id="secret-b"),
+        replace(record("baseline"), task_id="secret-c"),
+        replace(record("godprompt", passed=False), task_id="secret-c"),
+        replace(record("baseline", passed=False), task_id="secret-d"),
+        replace(record("godprompt", passed=False), task_id="secret-d"),
+        replace(record("baseline", infra="unavailable"), task_id="secret-e"),
+        replace(record("godprompt"), task_id="secret-e"),
+        replace(record("baseline"), task_id="secret-f"),
+        replace(record("godprompt"), task_id="secret-f", category="verification"),
+    ]
+    later_rows = [
+        replace(record("baseline"), task_id="secret-a"),
+        replace(record("godprompt"), task_id="secret-a"),
+        replace(record("baseline"), task_id="secret-b"),
+        replace(record("godprompt", passed=False), task_id="secret-b"),
+        replace(record("baseline", passed=False), task_id="secret-c"),
+        replace(record("godprompt", passed=False), task_id="secret-c"),
+        replace(record("baseline", passed=False), task_id="secret-d"),
+        replace(record("godprompt"), task_id="secret-d"),
+        replace(record("baseline", infra="unavailable"), task_id="secret-e"),
+        replace(record("godprompt"), task_id="secret-e"),
+        replace(record("baseline"), task_id="secret-f"),
+        replace(record("godprompt"), task_id="secret-f", category="verification"),
+    ]
+    before, after = tmp_path / "joint-before", tmp_path / "joint-after"
+    export_run(before, {**manifest, "run_id": "joint-before"}, earlier_rows, [])
+    export_run(after, {**manifest, "run_id": "joint-after"}, later_rows, [])
+
+    report = compare_results(before, after)
+    assert report["metadata_aligned"] is True
+    pairs = report["cross_run_condition_pair_transitions"]
+    assert pairs["paired_task_epochs"] == 4
+    assert pairs["excluded_task_epochs"] == 2
+    matrix = pairs["transitions"]
+    assert matrix["baseline_fail_godprompt_pass"]["both_pass"] == 1
+    assert matrix["both_pass"]["baseline_pass_godprompt_fail"] == 1
+    assert matrix["baseline_pass_godprompt_fail"]["both_fail"] == 1
+    assert matrix["both_fail"]["baseline_fail_godprompt_pass"] == 1
+    assert sum(sum(row.values()) for row in matrix.values()) == 4
+    rendered = render_markdown(report)
+    assert "Joint baseline/GodPrompt pair transitions" in rendered
+    assert "4 matched task-epochs; 2 excluded" in rendered
+    assert "secret-" not in rendered
+    assert "secret-" not in json.dumps(report)
+    assert report["performance_claim_verified"] is False
+
+
+def test_comparison_suppresses_joint_pair_transitions_if_metadata_is_unaligned(
+    comparable_exports: tuple[Path, Path],
+):
+    from godprompt_bench.review import compare_results, render_markdown
+
+    before, after = comparable_exports
+    manifest_path = after / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["seed"] = 42
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    report = compare_results(before, after)
+    assert report["metadata_aligned"] is False
+    assert report["cross_run_condition_pair_transitions"] is None
+    assert "Joint baseline/GodPrompt pair transitions" not in render_markdown(report)
+
+
 def test_offline_comparison_resource_deltas_keep_unknown_tokens_unknown(
     comparable_exports: tuple[Path, Path], tmp_path: Path,
 ):

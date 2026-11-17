@@ -153,18 +153,28 @@ def _manifest_count(manifest: dict[str, Any], name: str) -> int:
     return value
 
 
+_PAIR_OUTCOMES = (
+    "baseline_fail_godprompt_pass", "baseline_pass_godprompt_fail",
+    "both_pass", "both_fail",
+)
+
+
+def _pair_outcome(baseline_passed: bool, godprompt_passed: bool) -> str:
+    if baseline_passed and godprompt_passed:
+        return "both_pass"
+    if not baseline_passed and not godprompt_passed:
+        return "both_fail"
+    return "baseline_pass_godprompt_fail" if baseline_passed else "baseline_fail_godprompt_pass"
+
+
 def _within_run_condition_pairs(
     records: list[SampleRecord],
 ) -> dict[str, Any]:
     """Count matched baseline/GodPrompt outcomes, without exposing task IDs."""
-    outcome_keys = (
-        "baseline_fail_godprompt_pass", "baseline_pass_godprompt_fail",
-        "both_pass", "both_fail",
-    )
-    totals = {key: 0 for key in outcome_keys}
+    totals = {key: 0 for key in _PAIR_OUTCOMES}
     totals.update(paired_task_epochs=0, unpaired_task_epochs=0)
     by_category = {
-        category: {**{key: 0 for key in outcome_keys}, "paired_task_epochs": 0}
+        category: {**{key: 0 for key in _PAIR_OUTCOMES}, "paired_task_epochs": 0}
         for category in sorted({record.category for record in records})
     }
     pairs: dict[tuple[str, int], dict[str, SampleRecord]] = {}
@@ -178,19 +188,52 @@ def _within_run_condition_pairs(
                 or godprompt.infrastructure_error is not None):
             totals["unpaired_task_epochs"] += 1
             continue
-        if baseline.passed and godprompt.passed:
-            outcome = "both_pass"
-        elif not baseline.passed and not godprompt.passed:
-            outcome = "both_fail"
-        elif baseline.passed:
-            outcome = "baseline_pass_godprompt_fail"
-        else:
-            outcome = "baseline_fail_godprompt_pass"
+        outcome = _pair_outcome(baseline.passed, godprompt.passed)
         totals[outcome] += 1
         totals["paired_task_epochs"] += 1
         by_category[baseline.category][outcome] += 1
         by_category[baseline.category]["paired_task_epochs"] += 1
     return {**totals, "by_category": by_category}
+
+
+def _cross_run_condition_pair_transitions(
+    before_samples: dict[tuple[str, str, int], tuple[str, bool, bool]],
+    after_samples: dict[tuple[str, str, int], tuple[str, bool, bool]],
+) -> dict[str, Any]:
+    """Track joint baseline/GodPrompt outcome changes for matching task-epochs.
+
+    Called only after cross-run sample/metadata alignment is established. Export
+    counts, never the task identities used for local matching.
+    """
+    result = {
+        "paired_task_epochs": 0,
+        "excluded_task_epochs": 0,
+        "transitions": {
+            earlier: {later: 0 for later in _PAIR_OUTCOMES}
+            for earlier in _PAIR_OUTCOMES
+        },
+    }
+    for task_id, epoch in {(task, number) for task, _, number in before_samples}:
+        baseline_key = (task_id, "baseline", epoch)
+        godprompt_key = (task_id, "godprompt", epoch)
+        earlier_baseline = before_samples.get(baseline_key)
+        earlier_godprompt = before_samples.get(godprompt_key)
+        later_baseline = after_samples.get(baseline_key)
+        later_godprompt = after_samples.get(godprompt_key)
+        if (earlier_baseline is None or earlier_godprompt is None
+                or later_baseline is None or later_godprompt is None
+                or earlier_baseline[0] != earlier_godprompt[0]
+                or later_baseline[0] != later_godprompt[0]
+                or not all(row[1] for row in (
+                    earlier_baseline, earlier_godprompt, later_baseline, later_godprompt
+                ))):
+            result["excluded_task_epochs"] += 1
+            continue
+        earlier_outcome = _pair_outcome(earlier_baseline[2], earlier_godprompt[2])
+        later_outcome = _pair_outcome(later_baseline[2], later_godprompt[2])
+        result["transitions"][earlier_outcome][later_outcome] += 1
+        result["paired_task_epochs"] += 1
+    return result
 
 
 def review_result(folder: Path) -> dict[str, Any]:
@@ -316,6 +359,7 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
     resource_delta = None
     pass_transitions = None
     category_pass_transitions = None
+    cross_run_pair_transitions = None
     if aligned:
         delta = {
             condition: after["conditions"][condition]["pass_rate"]
@@ -370,6 +414,9 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
             pass_transitions[condition]["paired_samples"] += 1
             category_pass_transitions[category][condition][transition] += 1
             category_pass_transitions[category][condition]["paired_samples"] += 1
+        cross_run_pair_transitions = _cross_run_condition_pair_transitions(
+            before_samples, after_samples
+        )
     return {
         "comparison_only": True,
         "metadata_aligned": aligned,
@@ -382,6 +429,7 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
         "condition_resource_delta": resource_delta,
         "condition_pass_transitions": pass_transitions,
         "category_pass_transitions": category_pass_transitions,
+        "cross_run_condition_pair_transitions": cross_run_pair_transitions,
         "note": "Rate differences are descriptive, not a causal effect or verified performance claim. "
                 "Metadata alignment does not independently authenticate model runs; "
                 "non-full or mock results are not publication evidence.",
@@ -493,6 +541,27 @@ def render_markdown(report: dict[str, Any]) -> str:
                         f"{counts['pass_to_pass']} | {counts['fail_to_fail']} | "
                         f"{counts['paired_samples']} |"
                     )
+            pair_changes = report["cross_run_condition_pair_transitions"]
+            labels = {
+                "baseline_fail_godprompt_pass": "Baseline fail / GodPrompt pass",
+                "baseline_pass_godprompt_fail": "Baseline pass / GodPrompt fail",
+                "both_pass": "Both pass", "both_fail": "Both fail",
+            }
+            lines += [
+                "", "**Joint baseline/GodPrompt pair transitions:** "
+                f"{pair_changes['paired_task_epochs']} matched task-epochs; "
+                f"{pair_changes['excluded_task_epochs']} excluded (missing, infrastructure-failed "
+                "or mismatched condition pairs). These are descriptive, not causal.",
+                "", "| Earlier pair outcome / Later pair outcome | "
+                + " | ".join(labels[outcome] for outcome in _PAIR_OUTCOMES) + " |",
+                "| --- |" + " ---: |" * len(_PAIR_OUTCOMES),
+            ]
+            for earlier in _PAIR_OUTCOMES:
+                row = pair_changes["transitions"][earlier]
+                lines.append(
+                    f"| {labels[earlier]} | "
+                    + " | ".join(str(row[later]) for later in _PAIR_OUTCOMES) + " |"
+                )
             lines += [
                 "", "**Observed resource deltas:** Later minus earlier; provider tokens may be "
                 "unreported (n/a). No price or efficiency claim is implied.",
