@@ -639,6 +639,15 @@ def render_markdown(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _fully_model_evaluable(report: dict[str, Any]) -> bool:
+    coverage = report["coverage"]
+    return (
+        coverage["complete"]
+        and coverage["infrastructure_failures"] == 0
+        and coverage["model_samples"] == coverage["requested_samples"]
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Review an existing GodPrompt benchmark export offline; never calls a model"
@@ -650,6 +659,8 @@ def main() -> None:
                         help="Output format; Markdown is a read-only, non-promotional summary")
     parser.add_argument("--require-aligned", action="store_true",
                         help="With --compare, exit 1 on unaligned results after printing diagnostics")
+    parser.add_argument("--require-evaluable", action="store_true",
+                        help="Exit 1 unless all requested samples in each reviewed run were model-evaluable")
     args = parser.parse_args()
     if args.require_aligned and args.compare is None:
         parser.error("--require-aligned requires --compare")
@@ -663,6 +674,10 @@ def main() -> None:
         print(json.dumps(report, indent=2, sort_keys=True, allow_nan=False))
     if args.require_aligned and not report["metadata_aligned"]:
         raise SystemExit(1)
+    if args.require_evaluable:
+        reviewed = (report["before"], report["after"]) if args.compare else (report,)
+        if not all(_fully_model_evaluable(item) for item in reviewed):
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":

@@ -256,6 +256,63 @@ def test_offline_review_cli_prints_json_without_writing_or_running_model(
     assert {p.name: p.read_bytes() for p in exported.iterdir()} == before
 
 
+@pytest.mark.parametrize("scenario", ["infrastructure", "missing"])
+@pytest.mark.parametrize("output_format", ["json", "markdown"])
+def test_offline_review_cli_require_evaluable_fails_with_diagnostics(
+    exported: Path, tmp_path: Path, monkeypatch, capsys,
+    scenario: str, output_format: str,
+):
+    from godprompt_bench import review
+
+    folder = exported
+    if scenario == "missing":
+        folder = tmp_path / "missing-samples"
+        manifest = json.loads((exported / "manifest.json").read_text(encoding="utf-8"))
+        manifest.update(
+            run_id="missing-samples", requested_samples=3,
+            completed_samples=2, infrastructure_failures=0,
+        )
+        export_run(folder, manifest, [record("baseline"), record("godprompt")], [])
+    snapshot = {p.name: p.read_bytes() for p in folder.iterdir()}
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(folder),
+        "--require-evaluable", "--format", output_format,
+    ])
+    with pytest.raises(SystemExit) as exit_info:
+        review.main()
+    assert exit_info.value.code == 1
+    output = capsys.readouterr().out
+    if output_format == "json":
+        coverage = json.loads(output)["coverage"]
+        assert coverage["model_samples"] < coverage["requested_samples"]
+        assert coverage["infrastructure_failures"] == (1 if scenario == "infrastructure" else 0)
+    else:
+        assert "Coverage:" in output
+        assert "model-evaluable" in output
+    assert {p.name: p.read_bytes() for p in folder.iterdir()} == snapshot
+
+
+def test_offline_review_cli_require_evaluable_succeeds_for_all_model_samples(
+    exported: Path, tmp_path: Path, monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    manifest = json.loads((exported / "manifest.json").read_text(encoding="utf-8"))
+    manifest.update(
+        run_id="evaluable", requested_samples=2,
+        completed_samples=2, infrastructure_failures=0,
+    )
+    folder = tmp_path / "evaluable"
+    export_run(folder, manifest, [record("baseline"), record("godprompt")], [])
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(folder), "--require-evaluable",
+    ])
+    review.main()
+    coverage = json.loads(capsys.readouterr().out)["coverage"]
+    assert coverage["complete"] is True
+    assert coverage["model_samples"] == coverage["requested_samples"] == 2
+
+
 @pytest.fixture
 def comparable_exports(exported: Path, tmp_path: Path) -> tuple[Path, Path]:
     common = {
@@ -591,6 +648,25 @@ def test_offline_review_cli_require_aligned_requires_compare(exported: Path, mon
         review.main()
     assert exit_info.value.code == 2
     assert "--compare" in capsys.readouterr().err
+
+
+def test_offline_comparison_cli_require_evaluable_checks_both_runs(
+    comparable_exports: tuple[Path, Path], monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    before, after = comparable_exports
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(before), "--compare", str(after),
+        "--require-aligned", "--require-evaluable",
+    ])
+    with pytest.raises(SystemExit) as exit_info:
+        review.main()
+    assert exit_info.value.code == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["metadata_aligned"] is True
+    assert report["before"]["coverage"]["infrastructure_failures"] == 1
+    assert report["after"]["coverage"]["infrastructure_failures"] == 1
 
 
 def test_offline_review_cli_markdown_is_read_only_and_non_promotional(

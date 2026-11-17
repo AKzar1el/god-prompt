@@ -185,6 +185,8 @@ This read-only command recomputes baseline, GodPrompt and per-category counts/ra
 
 For a concise, copyable Markdown evidence summary, add `--format markdown` to the same offline review command. The default remains machine-readable JSON. The Markdown view displays run, coverage, per-condition and per-category rates, matched within-run outcome counts, visible cautions and an explicit warning that a locally consistent export is not independently verified performance evidence. These descriptive outcomes do not establish causality or justify selective performance claims. It never submits or publishes the report.
 
+For an automated offline coverage check, add `--require-evaluable` to review one saved run. This opt-in gate prints the same JSON or Markdown diagnostics and exits 1 if any requested sample is missing or has an infrastructure failure; otherwise it exits 0. With `--compare`, it checks **both** saved runs and can be combined with `--require-aligned`. Default read-only review remains diagnostic and exits 0 for internally consistent partial results. Passing either gate establishes only local artifact coverage/comparability, not authentic model execution, release readiness or performance superiority.
+
 Credential-like fields are recursively redacted from public JSON/JSONL exports.
 
 ## CI
