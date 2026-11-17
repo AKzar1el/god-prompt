@@ -882,3 +882,61 @@ def test_public_exports_redact_inline_secret_aliases_without_masking_counts(tmp_
     assert manifest['accessKey'] == '[REDACTED]'
     assert manifest['accessKeyIdentifier'] == '[REDACTED]'
     assert manifest['accessKeyCount'] == 3
+
+
+def test_export_stage_and_rollback_copies_are_redacted_before_promotion(
+    tmp_path: Path, monkeypatch,
+):
+    """The temporary stage is also a sensitive-data boundary, not just final JSON."""
+    output = tmp_path / 'public'
+    previous_value = 'SYNTHETIC_PRIVATE_OLD_CANARY_639827'
+    next_value = 'SYNTHETIC_PRIVATE_NEW_CANARY_528164'
+    previous_diag = json.dumps({'api_key': previous_value})
+    next_diag = json.dumps({'password': next_value})
+    export_run(
+        output, {'diagnostic': previous_diag},
+        [replace(record(), infrastructure_error=previous_diag)],
+        [{'output': previous_diag}],
+    )
+
+    original_replace = Path.replace
+    captured = []
+
+    def verify_stage_before_first_promotion(source: Path, destination: Path):
+        if (
+            source.parent.name.startswith('.godprompt-export-')
+            and destination.name == 'scores.csv'
+        ):
+            stage = source.parent
+            assert stage.parent == output.parent
+            assert stage != output
+            assert not stage.is_relative_to(output)
+            if os.name != 'nt':
+                assert stage.stat().st_mode & 0o777 == 0o700
+            contents = {
+                item.relative_to(stage).as_posix(): item.read_text(encoding='utf-8')
+                for item in stage.rglob('*')
+                if item.is_file()
+            }
+            public_names = {
+                'manifest.json', 'summary.json', 'scores.csv', 'trajectories.jsonl',
+            }
+            assert set(contents) == public_names | {
+                f'backups/{name}' for name in public_names
+            }
+            for name, data in contents.items():
+                assert previous_value not in data, name
+                assert next_value not in data, name
+            captured.append(contents)
+        return original_replace(source, destination)
+
+    monkeypatch.setattr(Path, 'replace', verify_stage_before_first_promotion)
+    export_run(
+        output, {'diagnostic': next_diag},
+        [replace(record(), infrastructure_error=next_diag)],
+        [{'output': next_diag}],
+    )
+    assert len(captured) == 1
+    assert '[REDACTED]' in captured[0]['manifest.json']
+    assert '[REDACTED]' in captured[0]['trajectories.jsonl']
+    assert all(not item.name.startswith('.godprompt-export-') for item in output.iterdir())

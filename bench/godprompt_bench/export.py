@@ -229,9 +229,12 @@ def export_run(
         if target.exists() and target.stat().st_nlink > 1:
             raise ValueError(f"refusing linked public artifact: {name}")
 
-    # Stage the entire report before touching an existing run. Backups allow
-    # rollback if a later replacement fails (not a crash-atomic transaction).
-    stage = Path(tempfile.mkdtemp(prefix=".godprompt-export-", dir=output_dir))
+    # Keep temporary report and rollback copies OUTSIDE the public run folder.
+    # Use a same-filesystem sibling so Path.replace remains an atomic file
+    # operation; tempfile.mkdtemp creates an unpredictable, owner-only
+    # directory on POSIX. The completed public files remain intentionally
+    # readable; this is not a crash-atomic multi-file transaction.
+    stage = Path(tempfile.mkdtemp(prefix=".godprompt-export-", dir=output_dir.parent))
     # The manifest is the provenance marker; replace it only after data files.
     names = ("scores.csv", "trajectories.jsonl", "summary.json", "manifest.json")
     promoted: list[str] = []
