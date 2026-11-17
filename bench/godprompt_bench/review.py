@@ -274,6 +274,7 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
     category_delta = None
     resource_delta = None
     pass_transitions = None
+    category_pass_transitions = None
     if aligned:
         delta = {
             condition: after["conditions"][condition]["pass_rate"]
@@ -305,17 +306,29 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
                         "pass_to_pass": 0, "fail_to_fail": 0, "paired_samples": 0}
             for condition in ("baseline", "godprompt")
         }
-        for (task_id, condition, epoch), (_, model_evaluable, was_passed) in before_samples.items():
+        category_pass_transitions = {
+            category: {
+                condition: {"fail_to_pass": 0, "pass_to_fail": 0,
+                            "pass_to_pass": 0, "fail_to_fail": 0, "paired_samples": 0}
+                for condition in ("baseline", "godprompt")
+            }
+            for category in before["by_category"]
+        }
+        for (task_id, condition, epoch), (
+            category, model_evaluable, was_passed
+        ) in before_samples.items():
             if not model_evaluable:
                 continue
             # Alignment above proves the same sample is model-evaluable in both exports.
-            # Export only aggregate transitions, never task IDs or sample content.
+            # Export only condition/category aggregates, never task IDs or sample content.
             later_passed = after_samples[(task_id, condition, epoch)][2]
             transition = ("pass" if was_passed else "fail") + "_to_" + (
                 "pass" if later_passed else "fail"
             )
             pass_transitions[condition][transition] += 1
             pass_transitions[condition]["paired_samples"] += 1
+            category_pass_transitions[category][condition][transition] += 1
+            category_pass_transitions[category][condition]["paired_samples"] += 1
     return {
         "comparison_only": True,
         "metadata_aligned": aligned,
@@ -327,6 +340,7 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
         "category_pass_rate_delta": category_delta,
         "condition_resource_delta": resource_delta,
         "condition_pass_transitions": pass_transitions,
+        "category_pass_transitions": category_pass_transitions,
         "note": "Rate differences are descriptive, not a causal effect or verified performance claim. "
                 "Metadata alignment does not independently authenticate model runs; "
                 "non-full or mock results are not publication evidence.",
@@ -422,6 +436,22 @@ def render_markdown(report: dict[str, Any]) -> str:
                     f"{counts['pass_to_pass']} | {counts['fail_to_fail']} | "
                     f"{counts['paired_samples']} |"
                 )
+            lines += [
+                "", "**Per-category paired transitions:** Aggregated by category and condition; "
+                "zero paired samples means no model-evaluable comparison.",
+                "", "| Category | Condition | Fail to pass | Pass to fail | Pass to pass | "
+                "Fail to fail | Paired samples |",
+                "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
+            ]
+            for category, conditions in sorted(report["category_pass_transitions"].items()):
+                for condition in ("baseline", "godprompt"):
+                    counts = conditions[condition]
+                    lines.append(
+                        f"| {_markdown_text(category)} | {condition} | "
+                        f"{counts['fail_to_pass']} | {counts['pass_to_fail']} | "
+                        f"{counts['pass_to_pass']} | {counts['fail_to_fail']} | "
+                        f"{counts['paired_samples']} |"
+                    )
             lines += [
                 "", "**Observed resource deltas:** Later minus earlier; provider tokens may be "
                 "unreported (n/a). No price or efficiency claim is implied.",
