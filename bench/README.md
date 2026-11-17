@@ -221,6 +221,18 @@ Without this flag, an unaligned comparison remains a successful read-only report
 This gate checks local comparability only: a successful exit is not proof of
 authentic model execution or performance improvement.
 
+To fail a CI step when the **later GodPrompt condition has a net loss of passed
+tasks** relative to the earlier result, add `--require-no-godprompt-regression`
+to the comparison command. This opt-in check requires aligned scored samples,
+complete model-evaluable coverage in both runs, and at least one fully matched
+baseline/GodPrompt task-epoch pair with no exclusions. It exits 1 on insufficient
+evidence or when GodPrompt pass-to-fail transitions outnumber fail-to-pass
+transitions; equal numbers pass. The normal JSON or Markdown comparison is printed
+before the exit status, and neither artifact is modified. This checks **net**
+GodPrompt pass changes across matched tasks, not category-by-category guarantees
+or causality. A passing mocked, non-full or locally generated comparison is not
+independent performance verification or permission to publish a claim.
+
 Both exports are checked independently. A mismatch in selected fixtures, model, evaluation controls, sandbox, baseline prompt, scored task/condition/epoch/category identities, model-evaluable sample coverage or required metadata suppresses comparison deltas and appears in `comparison_cautions`. Matching manifest fingerprints alone do not establish that the same samples were scored. With aligned metadata and samples, JSON includes condition-level and per-category pass-rate differences, aggregated per-condition paired outcome transitions (`condition_pass_transitions`) and a per-category/condition transition breakdown (`category_pass_transitions`). Each transition counts `fail_to_pass`, `pass_to_fail`, `pass_to_pass`, `fail_to_fail` and `paired_samples`; no task IDs or sample contents are exposed in the transition totals. The `cross_run_condition_pair_transitions` matrix additionally shows whether the *joint* baseline/GodPrompt outcome for each matching task-epoch stayed the same or moved between both-pass, both-fail and the two single-condition-pass states. Its separate matched/excluded task-epoch counts omit missing, infrastructure-failed and category-mismatched condition pairs; it never reveals task IDs. Infrastructure-failed samples are excluded from paired outcomes. A category/condition with zero model-evaluable paired samples has zero transition counts and a `null` rate difference, not evidence of no change. All differences are descriptive only, not proof of a causal improvement; mocked and non-full runs retain their cautions. The comparison does not modify artifacts, start Docker or call providers.
 
 Add `--format markdown` to render a human-readable comparison with condition/category percentage-point changes, aggregate and per-category paired pass/fail transitions, a joint condition-pair transition matrix, observed per-condition input/output token, failed-tool-call and retry count changes, and caution labels. Missing provider token usage remains `n/a`, not zero; no provider price or efficiency benefit is estimated. If local metadata or scored samples are not comparable, the Markdown report suppresses all change tables rather than presenting misleading deltas. The default JSON comparison includes nullable `condition_resource_delta`, `condition_pass_transitions`, `category_pass_transitions` and `cross_run_condition_pair_transitions` data. This is for inspection and review drafts, not an independently validated performance claim.
