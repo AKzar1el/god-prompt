@@ -175,6 +175,8 @@ python -m godprompt_bench.review results/<run-id>
 
 This read-only command recomputes baseline, GodPrompt and per-category counts/rates from `scores.csv`, checks that `summary.json` agrees, and checks recorded sample/infrastructure totals against `manifest.json`. Its JSON output includes explicit denominators, run/commit provenance, coverage completeness and cautions for non-full, mocked, incomplete or dirty-source evidence. Missing, inconsistent or malformed public artifacts fail closed. It does not read trajectories, write results, start Docker or make provider/model calls. A consistent local export **does not** independently authenticate the model run, prove provenance, validate the benchmark methodology or authorize a performance or commercial claim.
 
+Public export stages all four files before replacing a previous run and attempts to roll back on filesystem errors, with `manifest.json` replaced last. It is **not crash-atomic** across all four files: after an abrupt process or host failure, inspect existing artifacts for consistency before sharing results. Incomplete rollback preserves its recovery files for manual inspection.
+
 Credential-like fields are recursively redacted from public JSON/JSONL exports.
 
 ## CI

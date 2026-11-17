@@ -227,6 +227,57 @@ def test_export_allows_replacing_ordinary_unlinked_artifacts(tmp_path: Path):
     assert json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))['run_id'] == 'new'
 
 
+def test_public_export_write_error_preserves_previous_complete_run(tmp_path: Path, monkeypatch):
+    output = tmp_path / 'public'
+    export_run(output, {'run_id': 'previous'}, [record()], [{'event': 'previous'}])
+    previous = {item.name: item.read_bytes() for item in output.iterdir()}
+    original_write_text = Path.write_text
+
+    def fail_summary_write(path, *args, **kwargs):
+        if path.name == 'summary.json':
+            raise OSError('synthetic summary write failure')
+        return original_write_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'write_text', fail_summary_write)
+    with pytest.raises(OSError, match='synthetic summary write failure'):
+        export_run(output, {'run_id': 'next'}, [record()], [{'event': 'next'}])
+    assert {item.name: item.read_bytes() for item in output.iterdir()} == previous
+
+
+def test_public_export_promote_error_rolls_back_previous_complete_run(tmp_path: Path, monkeypatch):
+    output = tmp_path / 'public'
+    export_run(output, {'run_id': 'previous'}, [record()], [{'event': 'previous'}])
+    previous = {item.name: item.read_bytes() for item in output.iterdir()}
+    original_replace = Path.replace
+    injected = False
+
+    def fail_second_promotion(path, target):
+        nonlocal injected
+        if Path(target).name == 'summary.json' and not injected:
+            injected = True
+            raise OSError('synthetic promotion failure')
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, 'replace', fail_second_promotion)
+    with pytest.raises(OSError, match='synthetic promotion failure'):
+        export_run(output, {'run_id': 'next'}, [record()], [{'event': 'next'}])
+    assert injected
+    assert {item.name: item.read_bytes() for item in output.iterdir()} == previous
+
+
+def test_public_export_replaces_manifest_after_data_files(tmp_path: Path, monkeypatch):
+    original_replace = Path.replace
+    promoted = []
+
+    def note_replace(path, target):
+        promoted.append(Path(target).name)
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, 'replace', note_replace)
+    export_run(tmp_path / 'public', {'run_id': 'new'}, [record()], [])
+    assert promoted == ['scores.csv', 'trajectories.jsonl', 'summary.json', 'manifest.json']
+
+
 def test_export_rejects_unknown_conditions_without_creating_public_artifacts(tmp_path: Path):
     output = tmp_path / 'invalid-benchmark'
     invalid = replace(record(), condition='godpromt')
