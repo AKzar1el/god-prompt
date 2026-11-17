@@ -167,6 +167,14 @@ The sandbox provenance includes SHA-256 hashes for both `sandbox/Dockerfile` and
 
 `scores.csv` contains one row per task/condition/epoch. `summary.json` can be regenerated from those rows. `trajectories.jsonl` contains observable non-system messages plus tool/approval events. System prompts are reproducible from the recorded commit hashes and are not duplicated into every trajectory. Reasoning-content blocks are excluded; the benchmark does not request, reconstruct, or publish hidden chain-of-thought.
 
+To inspect an **existing** public result directory without re-running a potentially billable evaluation, run from `bench/`:
+
+```bash
+python -m godprompt_bench.review results/<run-id>
+```
+
+This read-only command recomputes baseline, GodPrompt and per-category counts/rates from `scores.csv`, checks that `summary.json` agrees, and checks recorded sample/infrastructure totals against `manifest.json`. Its JSON output includes explicit denominators, run/commit provenance, coverage completeness and cautions for non-full, mocked, incomplete or dirty-source evidence. Missing, inconsistent or malformed public artifacts fail closed. It does not read trajectories, write results, start Docker or make provider/model calls. A consistent local export **does not** independently authenticate the model run, prove provenance, validate the benchmark methodology or authorize a performance or commercial claim.
+
 Credential-like fields are recursively redacted from public JSON/JSONL exports.
 
 ## CI
