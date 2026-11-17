@@ -548,6 +548,9 @@ def execute_benchmark(
         )
         for condition, batch_ids in condition_batches(profile.task_ids)
     ]
+    # A mid-run fixture edit must not be attributed to the files used to build
+    # the evaluation tasks in the published benchmark provenance.
+    evaluated_fixtures = fixture_fingerprints(bench_root, profile.task_ids)
     raw_log_dir = output_dir / "inspect-logs"
     _create_raw_log_directory(raw_log_dir)
     kwargs: dict[str, Any] = {
@@ -588,6 +591,9 @@ def execute_benchmark(
             trajectories.append(public_trajectory(sample, condition))
 
     validate_sample_coverage(profile, records, task_categories)
+
+    if fixture_fingerprints(bench_root, profile.task_ids) != evaluated_fixtures:
+        raise ValueError("benchmark fixture files changed during evaluation; refusing public export")
 
     manifest = build_manifest(
         repo_root,
