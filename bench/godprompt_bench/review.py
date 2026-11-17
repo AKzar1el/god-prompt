@@ -661,6 +661,22 @@ def _nondegrading_condition_pairs(report: dict[str, Any]) -> bool:
     )
 
 
+def _no_net_godprompt_regression_between_runs(report: dict[str, Any]) -> bool:
+    """Gate aligned, fully paired exports on net GodPrompt pass transitions."""
+    if not report["metadata_aligned"] or not all(
+        _fully_model_evaluable(report[name]) for name in ("before", "after")
+    ):
+        return False
+    pairs = report["cross_run_condition_pair_transitions"]
+    changes = report["condition_pass_transitions"]["godprompt"]
+    return (
+        pairs["paired_task_epochs"] > 0
+        and pairs["excluded_task_epochs"] == 0
+        and changes["paired_samples"] == pairs["paired_task_epochs"]
+        and changes["fail_to_pass"] >= changes["pass_to_fail"]
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Review an existing GodPrompt benchmark export offline; never calls a model"
@@ -676,11 +692,15 @@ def main() -> None:
                         help="Exit 1 unless all requested samples in each reviewed run were model-evaluable")
     parser.add_argument("--require-nondegrading-pairs", action="store_true",
                         help="For one run, exit 1 on missing/unpaired evidence or more baseline-only wins")
+    parser.add_argument("--require-no-godprompt-regression", action="store_true",
+                        help="With --compare, exit 1 on incomplete/unpaired evidence or net GodPrompt pass loss")
     args = parser.parse_args()
     if args.require_aligned and args.compare is None:
         parser.error("--require-aligned requires --compare")
     if args.require_nondegrading_pairs and args.compare is not None:
         parser.error("--require-nondegrading-pairs reviews one run; omit --compare")
+    if args.require_no_godprompt_regression and args.compare is None:
+        parser.error("--require-no-godprompt-regression requires --compare")
     try:
         report = compare_results(args.result_dir, args.compare) if args.compare else review_result(args.result_dir)
     except (OSError, ValueError) as exc:
@@ -696,6 +716,8 @@ def main() -> None:
         if not all(_fully_model_evaluable(item) for item in reviewed):
             raise SystemExit(1)
     if args.require_nondegrading_pairs and not _nondegrading_condition_pairs(report):
+        raise SystemExit(1)
+    if args.require_no_godprompt_regression and not _no_net_godprompt_regression_between_runs(report):
         raise SystemExit(1)
 
 

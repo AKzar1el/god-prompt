@@ -942,3 +942,99 @@ def test_offline_comparison_suppresses_paired_transitions_for_unaligned_samples(
     assert report["category_pass_transitions"] is None
     assert "Paired outcome transitions" not in render_markdown(report)
     assert "Per-category paired transitions" not in render_markdown(report)
+
+
+@pytest.mark.parametrize("output_format", ["json", "markdown"])
+@pytest.mark.parametrize(
+    ("earlier", "later", "missing", "infra", "misaligned", "expected_exit"),
+    [
+        ([False], [True], False, False, False, 0),
+        ([True], [True], False, False, False, 0),
+        ([True, False], [False, True], False, False, False, 0),
+        ([True], [False], False, False, False, 1),
+        ([], [], False, False, False, 1),
+        ([True], [True], True, False, False, 1),
+        ([True], [True], False, True, False, 1),
+        ([True], [True], False, False, True, 1),
+    ],
+)
+def test_offline_comparison_cli_requires_no_net_godprompt_regression(
+    comparable_exports: tuple[Path, Path], tmp_path: Path, monkeypatch, capsys,
+    earlier, later, missing: bool, infra: bool, misaligned: bool,
+    expected_exit: int, output_format: str,
+):
+    from godprompt_bench import review
+
+    template = json.loads(
+        (comparable_exports[0] / "manifest.json").read_text(encoding="utf-8")
+    )
+    runs = []
+    for label, outcomes in (("earlier", earlier), ("later", later)):
+        rows = []
+        for index, passed in enumerate(outcomes):
+            task_id = f"private-task-{index}"
+            rows.append(replace(record("baseline"), task_id=task_id))
+            rows.append(replace(
+                record("godprompt", passed=passed,
+                       infra="offline failure" if infra and label == "later" else None),
+                task_id=task_id,
+            ))
+        failures = sum(row.infrastructure_error is not None for row in rows)
+        manifest = {
+            **template, "run_id": label,
+            "requested_samples": len(rows) + (int(missing) if label == "later" else 0),
+            "completed_samples": len(rows) - failures,
+            "infrastructure_failures": failures,
+            "godprompt_commit_sha": ("b" if label == "earlier" else "3") * 40,
+        }
+        if misaligned and label == "later":
+            manifest["seed"] = 999
+        folder = tmp_path / label
+        export_run(folder, manifest, rows, [])
+        runs.append(folder)
+
+    before_files = {
+        folder: {path.name: path.read_bytes() for path in folder.iterdir()}
+        for folder in runs
+    }
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(runs[0]), "--compare", str(runs[1]),
+        "--require-no-godprompt-regression", "--format", output_format,
+    ])
+    if expected_exit:
+        with pytest.raises(SystemExit) as exc:
+            review.main()
+        assert exc.value.code == expected_exit
+    else:
+        review.main()
+    output = capsys.readouterr().out
+    if output_format == "json":
+        report = json.loads(output)
+        assert report["performance_claim_verified"] is False
+        if misaligned:
+            assert report["metadata_aligned"] is False
+        else:
+            assert "condition_pass_transitions" in report
+    else:
+        assert "not a performance claim" in output.lower()
+        assert "Comparison cautions" in output
+    assert "private-task-" not in output
+    assert all(
+        {path.name: path.read_bytes() for path in folder.iterdir()} == snapshot
+        for folder, snapshot in before_files.items()
+    )
+
+
+def test_offline_comparison_no_regression_flag_requires_compare(
+    exported: Path, monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(exported),
+        "--require-no-godprompt-regression",
+    ])
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "--compare" in capsys.readouterr().err
