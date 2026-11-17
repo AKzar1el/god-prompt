@@ -17,6 +17,7 @@ import re
 from typing import Any
 
 from .aggregate import aggregate
+from .corpus import _reject_duplicate_json_keys
 from .models import SampleRecord
 
 
@@ -52,7 +53,11 @@ def _read_json(folder: Path, name: str) -> dict[str, Any]:
     path = folder / name
     _check_file(path, _JSON_MAX_BYTES)
     try:
-        value = json.loads(path.read_text(encoding="utf-8"), parse_constant=_no_nonfinite)
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+            parse_constant=_no_nonfinite,
+        )
     except (UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"invalid {name}: {exc}") from exc
     if not isinstance(value, dict):

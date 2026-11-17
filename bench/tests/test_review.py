@@ -73,6 +73,42 @@ def test_review_refuses_changed_summary(exported: Path):
         review_result(exported)
 
 
+@pytest.mark.parametrize(
+    ("filename", "duplicated_key", "first_value"),
+    [
+        ("manifest.json", "requested_samples", 999),
+        ("summary.json", "baseline", {}),
+    ],
+)
+def test_review_rejects_duplicate_top_level_json_keys(
+    exported: Path, filename: str, duplicated_key: str, first_value: object,
+):
+    from godprompt_bench.review import review_result
+
+    path = exported / filename
+    original = json.loads(path.read_text(encoding="utf-8"))
+    # Python normally accepts the last JSON key, masking a conflicting first value.
+    duplicate = f'{{"{duplicated_key}": {json.dumps(first_value)}, {json.dumps(original)[1:]}'
+    path.write_text(duplicate, encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate JSON key"):
+        review_result(exported)
+
+
+def test_review_rejects_nested_duplicate_summary_keys(exported: Path):
+    from godprompt_bench.review import review_result
+
+    path = exported / "summary.json"
+    original = json.loads(path.read_text(encoding="utf-8"))
+    serialized = json.dumps(original, separators=(",", ":"))
+    assert '"baseline":{' in serialized
+    path.write_text(
+        serialized.replace('"baseline":{', '"baseline":{"passed":999,', 1),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="duplicate JSON key"):
+        review_result(exported)
+
+
 def test_review_refuses_malformed_csv_outcome(exported: Path):
     from godprompt_bench.review import review_result
 
