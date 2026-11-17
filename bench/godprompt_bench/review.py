@@ -27,6 +27,19 @@ _NUMERIC = {"epoch", "tool_misuse_count", "verification_attempts", "failed_tool_
 _OPTIONAL_INT = {"input_tokens", "output_tokens"}
 _BOOLEAN = {"passed", "false_completion", "scope_violation"}
 _OPTIONAL_TEXT = {"infrastructure_error"}
+_COMPARISON_FIELDS = (
+    "profile", "requested_model", "actual_models", "requested_samples",
+    "task_manifest_sha256", "fixture_bundles_sha256",
+    "sandbox_dockerfile_sha256", "sandbox_compose_sha256",
+    "baseline_system_prompt_sha256", "epochs", "max_messages",
+    "max_time_seconds", "max_output_tokens", "temperature", "seed",
+    "reasoning_effort", "reasoning_mode", "inspect_ai_version",
+)
+_COMPARISON_DISQUALIFIERS = {
+    "incomplete_coverage", "missing_model_identity",
+    "missing_actual_model_identity", "incomplete_commit_provenance",
+    "unverified_clean_source",
+}
 
 
 def _no_nonfinite(value: str) -> Any:
@@ -206,14 +219,61 @@ def review_result(folder: Path) -> dict[str, Any]:
     }
 
 
+def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
+    """Compare two independently validated exports, never asserting causal improvement."""
+    before = review_result(before_folder)
+    after = review_result(after_folder)
+    before_manifest = _read_json(before_folder, "manifest.json")
+    after_manifest = _read_json(after_folder, "manifest.json")
+
+    cautions: list[str] = []
+    if before["run_id"] == after["run_id"]:
+        cautions.append("same_run_id")
+    for field in _COMPARISON_FIELDS:
+        if field not in before_manifest or field not in after_manifest:
+            cautions.append(f"missing:{field}")
+        elif before_manifest[field] != after_manifest[field]:
+            cautions.append(f"different:{field}")
+    for label, report in (("before", before), ("after", after)):
+        for caution in report["cautions"]:
+            if caution in _COMPARISON_DISQUALIFIERS:
+                cautions.append(f"{label}:{caution}")
+        if any(report["conditions"][condition]["pass_rate"] is None
+               for condition in ("baseline", "godprompt")):
+            cautions.append(f"{label}:missing_model_samples")
+
+    aligned = not cautions
+    delta = None
+    if aligned:
+        delta = {
+            condition: after["conditions"][condition]["pass_rate"]
+            - before["conditions"][condition]["pass_rate"]
+            for condition in ("baseline", "godprompt")
+        }
+    return {
+        "comparison_only": True,
+        "metadata_aligned": aligned,
+        "performance_claim_verified": False,
+        "before": before,
+        "after": after,
+        "comparison_cautions": cautions,
+        "condition_pass_rate_delta": delta,
+        "note": "Rate differences are descriptive, not a causal effect or verified performance claim. "
+                "Metadata alignment does not independently authenticate model runs; "
+                "non-full or mock results are not publication evidence.",
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Review an existing GodPrompt benchmark export offline; never calls a model"
     )
     parser.add_argument("result_dir", type=Path, help="Directory containing manifest.json, summary.json and scores.csv")
+    parser.add_argument("--compare", type=Path, metavar="OTHER_RESULT_DIR",
+                        help="Compare with another saved export, without running a model")
     args = parser.parse_args()
     try:
-        report = review_result(args.result_dir)
+        report = compare_results(args.result_dir, args.compare) if args.compare else review_result(args.result_dir)
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
     print(json.dumps(report, indent=2, sort_keys=True, allow_nan=False))
