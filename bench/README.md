@@ -40,6 +40,9 @@ paths and forbidden operations must remain a hold. In-memory receipts are
 lost on context reset rather than restored from unverifiable self-report.
 The MCP's ready state is *reported ready for independent review*, never an
 independent verification, release approval or completed benchmark.
+The adapter independently rejects a purported MCP ready response when its own
+required verification receipts are missing, nonzero or outputless; MCP review
+cannot override those local observations.
 
 For host-side Inspect integration, `EvidenceSession` now has an opt-in
 `observe_inspect_exec` method. A trusted caller must bind a

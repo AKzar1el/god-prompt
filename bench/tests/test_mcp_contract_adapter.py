@@ -193,6 +193,33 @@ def test_mcp_cannot_upgrade_report_to_independent_verification():
         adapter.review(changed_files=[], operations_performed=[], acceptance=[])
 
 
+@pytest.mark.parametrize("observed", ["missing", "failed", "empty"])
+def test_mcp_ready_response_cannot_override_missing_or_failed_local_checks(observed):
+    class UnreliableMCP(FakeMCP):
+        def __call__(self, name, arguments):
+            if name == "review_work_evidence":
+                self.calls.append((name, arguments))
+                return {"structuredContent": {
+                    "status": "REPORTED_READY_FOR_INDEPENDENT_REVIEW",
+                    "issues": [],
+                    "independently_verified": False,
+                    "completion_authorized": False,
+                }}
+            return super().__call__(name, arguments)
+
+    adapter, _ = session(UnreliableMCP())
+    if observed == "failed":
+        adapter.observe_check("VC-01", receipt(exit_code=7))
+    elif observed == "empty":
+        adapter.observe_check("VC-01", receipt(output=""))
+    with pytest.raises(ContractHold, match="locally complete"):
+        adapter.review(
+            changed_files=["src/parser.py"],
+            operations_performed=[],
+            acceptance=[{"id": "AC-01", "status": "met", "evidence_refs": ["VC-01"]}],
+        )
+
+
 def _inspect_session():
     mcp = FakeMCP()
     contract = prepare_contract(mcp, task=TASK, **INPUT)
