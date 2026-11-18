@@ -502,6 +502,53 @@ def preview_benchmark(
     }
 
 
+def format_preview_markdown(plan: dict[str, Any]) -> str:
+    """Render an already validated offline plan for human preflight review."""
+    def safe(value: Any) -> str:
+        if value is None:
+            return "not selected"
+        text = str(value).replace("\r", " ").replace("\n", " ").replace("\t", " ")
+        for char in ("\\", "`", "|", "*", "_"):
+            text = text.replace(char, "\\" + char)
+        return text
+
+    controls = plan["requested_controls"]
+    lines = [
+        "# GodPrompt Bench evaluation plan",
+        "",
+        "**Preview only** - No Docker, model or provider calls; no results written.",
+        "",
+        f"- Profile: {safe(plan['profile'])}",
+        f"- Model: {safe(plan['model'])}",
+        f"- Conditions: {', '.join(safe(c) for c in plan['conditions'])}",
+        f"- Tasks per condition: {plan['tasks_per_condition']}",
+        f"- Epochs: {plan['epochs']}",
+        f"- Planned samples: {plan['planned_samples']}",
+        f"- Max messages per sample: {plan['max_messages_per_sample']}",
+        f"- Max seconds per sample: {plan['max_time_seconds_per_sample']}",
+        f"- Max output tokens per sample: {plan['max_output_tokens_per_sample']}",
+        f"- Fixture SHA256: {safe(plan['fixture_bundles_sha256'])}",
+        "",
+        "## Task categories",
+        "",
+    ]
+    lines.extend(f"- {safe(name)}: {count}" for name, count in plan["categories"].items())
+    lines.extend([
+        "",
+        "## Requested controls",
+        "",
+        f"- Temperature: {safe(controls['temperature'])}",
+        f"- Seed: {safe(controls['seed'])}",
+        f"- Reasoning effort: {safe(controls['reasoning_effort'])}",
+        f"- Reasoning mode: {safe(controls['reasoning_mode'])}",
+        "",
+        "**Cost is unknown:** actual provider cost cannot be inferred from sample limits.",
+        "This preview does not establish Docker daemon readiness, credentials, model "
+        "compatibility or benchmark results.",
+    ])
+    return "\n".join(lines) + "\n"
+
+
 def execute_benchmark(
     repo_root: Path,
     bench_root: Path,
@@ -636,11 +683,15 @@ def main() -> None:
     parser.add_argument("--reasoning-effort", choices=("none", "minimal", "low", "medium", "high", "xhigh", "max"))
     parser.add_argument("--reasoning-mode", choices=("standard", "pro"))
     parser.add_argument("--output", type=Path, default=bench_root / "results")
+    parser.add_argument("--format", choices=("json", "markdown"), default="json",
+                        help="Output format for --dry-run; JSON is the default")
     offline_actions = parser.add_mutually_exclusive_group()
     offline_actions.add_argument("--dry-run", action="store_true", help="Validate fixtures and print planned samples without model calls")
     offline_actions.add_argument("--list-profiles", action="store_true", help="Compare validated bundled profile sizes offline without model calls")
     offline_actions.add_argument("--list-tasks", action="store_true", help="List task IDs, categories and runtimes for a selected profile offline")
     args = parser.parse_args()
+    if args.format == "markdown" and not args.dry_run:
+        parser.error("--format markdown requires --dry-run")
     if not (args.dry_run or args.list_profiles or args.list_tasks) and args.model is None:
         parser.error("--model is required unless --dry-run, --list-profiles, or --list-tasks is specified")
 
@@ -686,7 +737,10 @@ def main() -> None:
             reasoning_effort=args.reasoning_effort,
             reasoning_mode=args.reasoning_mode,
         )
-        print(json.dumps(plan, indent=2, sort_keys=True))
+        if args.format == "markdown":
+            print(format_preview_markdown(plan), end="")
+        else:
+            print(json.dumps(plan, indent=2, sort_keys=True))
         return
     result = execute_benchmark(
         repo_root,
