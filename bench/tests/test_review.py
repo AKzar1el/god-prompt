@@ -79,6 +79,20 @@ def test_review_verifies_exported_scores_and_preserves_denominators(exported: Pa
     }
 
 
+def test_review_flags_mixed_actual_models_as_unverified_comparison(exported: Path):
+    from godprompt_bench.review import review_result
+
+    path = exported / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["actual_models"] = ["provider/model-a", "provider/model-b"]
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    report = review_result(exported)
+    assert report["actual_models"] == ["provider/model-a", "provider/model-b"]
+    assert "mixed_actual_models" in report["cautions"]
+    assert report["performance_claim_verified"] is False
+
+
 def test_review_pairs_conditions_without_leaking_task_ids_or_counting_infra(
     exported: Path, tmp_path: Path,
 ):
@@ -385,6 +399,28 @@ def test_offline_review_cli_require_nondegrading_pairs_rejects_comparison(
     assert "--require-nondegrading-pairs" in capsys.readouterr().err
 
 
+def test_offline_paired_gate_rejects_mixed_actual_models(
+    exported: Path, tmp_path: Path, monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    manifest = json.loads((exported / "manifest.json").read_text(encoding="utf-8"))
+    manifest.update(
+        run_id="mixed-model-pairs", actual_models=["provider/a", "provider/b"],
+        requested_samples=2, completed_samples=2, infrastructure_failures=0,
+    )
+    folder = tmp_path / "mixed-model-pairs"
+    export_run(folder, manifest, [record("baseline"), record("godprompt")], [])
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(folder), "--require-nondegrading-pairs",
+    ])
+
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 1
+    assert "mixed_actual_models" in capsys.readouterr().out
+
+
 @pytest.fixture
 def comparable_exports(exported: Path, tmp_path: Path) -> tuple[Path, Path]:
     common = {
@@ -436,6 +472,26 @@ def test_offline_comparison_reports_condition_deltas_and_no_performance_claim(
     assert "mock_model" in report["before"]["cautions"]
     assert {p.name: p.read_bytes() for p in before.iterdir()} == before_files
     assert {p.name: p.read_bytes() for p in after.iterdir()} == after_files
+
+
+def test_comparison_suppresses_deltas_when_both_runs_route_multiple_models(
+    comparable_exports: tuple[Path, Path],
+):
+    from godprompt_bench.review import compare_results
+
+    before, after = comparable_exports
+    for folder in (before, after):
+        path = folder / "manifest.json"
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        manifest["actual_models"] = ["provider/model-a", "provider/model-b"]
+        path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    report = compare_results(before, after)
+    assert report["metadata_aligned"] is False
+    assert "before:mixed_actual_models" in report["comparison_cautions"]
+    assert "after:mixed_actual_models" in report["comparison_cautions"]
+    assert report["condition_pass_rate_delta"] is None
+    assert report["condition_pass_transitions"] is None
 
 
 def test_comparison_counts_joint_condition_pair_transitions_without_task_ids(

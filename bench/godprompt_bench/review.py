@@ -42,7 +42,7 @@ _COMPARISON_FIELDS = (
 )
 _COMPARISON_DISQUALIFIERS = {
     "incomplete_coverage", "missing_model_identity",
-    "missing_actual_model_identity", "incomplete_commit_provenance",
+    "missing_actual_model_identity", "mixed_actual_models", "incomplete_commit_provenance",
     "unverified_clean_source",
 }
 _RESOURCE_FIELDS = ("input_tokens", "output_tokens", "failed_tool_calls", "retries")
@@ -285,6 +285,9 @@ def review_result(folder: Path) -> dict[str, Any]:
     ):
         cautions.append("missing_actual_model_identity")
         actual_models = []
+    elif len(set(actual_models)) > 1:
+        # A shared model list does not establish which model served each condition.
+        cautions.append("mixed_actual_models")
     if any(not isinstance(sha, str) or not _SHA.fullmatch(sha)
            for sha in (benchmark_sha, prompt_sha)):
         cautions.append("incomplete_commit_provenance")
@@ -650,7 +653,7 @@ def _fully_model_evaluable(report: dict[str, Any]) -> bool:
 
 def _nondegrading_condition_pairs(report: dict[str, Any]) -> bool:
     """Require complete matched evidence and no net baseline-only advantage."""
-    if not _fully_model_evaluable(report):
+    if not _fully_model_evaluable(report) or "mixed_actual_models" in report["cautions"]:
         return False
     pairs = report["within_run_condition_pairs"]
     return (
