@@ -76,6 +76,18 @@ an unapproved execution shortcut. No default agent invokes this factory:
 it is an offline-tested building block, **not** an enabled live third arm,
 an independent approval, or an outcome/uplift result.
 
+An opt-in `godprompt_bench.agent.experimental_contract_coding_agent` now
+assembles that receipt-producing `bash` tool alongside the stock `text_editor`
+inside a **single** GodPrompt ReAct agent with the same named
+`bash`/`text_editor` approval policy, one attempt, timeout, and prompt as the
+existing treatment. Its host must supply a fresh `EvidenceSession` with a
+matching `InspectExecutionScope` for every sample and attempt. Scope mismatch
+is rejected before assembly. The regular `coding_agent` and benchmark
+`build_task` still use their original two-arm setup; nothing invokes the
+experimental builder automatically or requests a model run. The remaining
+per-sample host orchestration and native Inspect ToolCall correlation are
+required before this scaffold can produce trustworthy third-arm traces.
+
 The remaining work under
 [Bench 2.0 issue #348](https://github.com/AKzar1el/god-prompt/issues/348)
 is to wire the new tool into an isolated per-sample, approval-controlled
