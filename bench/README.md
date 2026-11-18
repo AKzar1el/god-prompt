@@ -98,6 +98,23 @@ later evidence review. A matching fingerprint detects alteration, **not** MCP
 origin or independent proof. This helper does not register a solver or third
 arm, attest native ToolCall IDs, run a model or change existing two-arm runs.
 
+For a host that has **not yet prepared the contract**, opt-in
+`prepare_experimental_contract_sample_agent` in `godprompt_bench.agent`
+accepts a real Inspect `TaskState`, the injected deterministic MCP client,
+and explicit **public** success criteria and forbidden actions. It forwards
+only `state.input`, `allowed_paths` and
+`expected_verification_commands` from the trusted host metadata, not
+unrelated metadata or hidden verifiers. It validates sample/epoch identity
+and required inputs before calling `classify_task` and
+`create_work_contract`, then binds the prepared contract to a new agent
+and evidence session. It returns `(agent, session, contract)` so the host
+can retain the scope and review receipts later. Ambiguous classifications,
+invalid requirements and mismatched contracts hold without creating an
+agent. Call it separately for each sample/epoch. This is deterministic
+**preparation only**: it does not register a third arm, run the resulting
+agent, execute sandbox commands, invoke a model, authenticate the MCP origin,
+or establish native Inspect ToolCall-ID provenance.
+
 The remaining work under
 [Bench 2.0 issue #348](https://github.com/AKzar1el/god-prompt/issues/348)
 is to wire the new tool into an isolated per-sample, approval-controlled
