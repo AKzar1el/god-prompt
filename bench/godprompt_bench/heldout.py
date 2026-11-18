@@ -10,10 +10,13 @@ import argparse
 from collections import Counter
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
-from .corpus import _reject_duplicate_json_keys, load_manifest, validate_manifest
+from .corpus import (
+    _reject_duplicate_json_keys, load_fixture_bundle, load_manifest,
+    validate_manifest,
+)
 
 SCHEMA = "godprompt.heldout_modes.v1"
 FAILURE_MODES = (
@@ -27,6 +30,8 @@ FAILURE_MODES = (
     "stale_context",
 )
 _MAX_MANIFEST_BYTES = 1024 * 1024
+_MAX_FIXTURE_BYTES = 1024 * 1024
+_MAX_TOTAL_FIXTURE_BYTES = 64 * 1024 * 1024
 
 
 def _read_small(path: Path) -> bytes:
@@ -39,9 +44,55 @@ def _fingerprint(raw: bytes) -> str:
     return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
+def _linked(path: Path) -> bool:
+    return path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction())
+
+
+def _bounded_fixture_bytes(path: Path) -> bytes:
+    with path.open("rb") as handle:
+        raw = handle.read(_MAX_FIXTURE_BYTES + 1)
+    if len(raw) > _MAX_FIXTURE_BYTES:
+        raise ValueError("held-out fixture bundle is too large")
+    return raw
+
+
+def _fixture_bundle_fingerprint(fixture_root: Path, tasks: list[Any]) -> str:
+    """Freeze bytes of private fixture.json bundles without disclosing their contents."""
+    root = Path(fixture_root)
+    if _linked(root) or not root.is_dir():
+        raise ValueError("fixture root must be an existing unlinked directory")
+    resolved_root = root.resolve()
+    entries: list[tuple[str, str]] = []
+    total_bytes = 0
+    for task in sorted(tasks, key=lambda item: item.id.casefold()):
+        bundle = root
+        for component in (*PurePosixPath(task.fixture_dir).parts, "fixture.json"):
+            bundle = bundle / component
+            if _linked(bundle):
+                raise ValueError("linked fixture bundle or directory is not allowed")
+        if not bundle.resolve().is_relative_to(resolved_root):
+            raise ValueError("held-out fixture escaped its root")
+        if not bundle.is_file():
+            raise ValueError("missing fixture bundle")
+        raw = _bounded_fixture_bytes(bundle)
+        total_bytes += len(raw)
+        if total_bytes > _MAX_TOTAL_FIXTURE_BYTES:
+            raise ValueError("total held-out fixture bundles are too large")
+        try:
+            load_fixture_bundle(bundle)
+        except (ValueError, OSError, UnicodeError) as exc:
+            raise ValueError("invalid held-out fixture bundle") from exc
+        if _bounded_fixture_bytes(bundle) != raw:
+            raise ValueError("held-out fixture bundle changed during validation")
+        entries.append((task.id.casefold(), _fingerprint(raw)))
+    encoded = json.dumps(entries, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return _fingerprint(encoded)
+
+
 def preflight_heldout_corpus(
     reference_manifest: Path, heldout_manifest: Path, mode_manifest: Path,
     *, min_cases_per_mode: int | None = None,
+    fixture_root: Path | None = None,
 ) -> dict[str, Any]:
     """Validate disjoint held-out task metadata without invoking models or tools.
 
@@ -125,7 +176,7 @@ def preflight_heldout_corpus(
     ))):
         raise ValueError("preflight manifest changed during validation")
 
-    return {
+    report = {
         "schema": "godprompt.heldout_preflight.v1",
         "preview_only": True,
         "reference_task_count": len(reference_tasks),
@@ -141,6 +192,10 @@ def preflight_heldout_corpus(
             "third-arm registration, novelty proof or independent result verification."
         ),
     }
+    if fixture_root is not None:
+        report["fixture_bundle_count"] = len(heldout_tasks)
+        report["fixture_bundle_sha256"] = _fixture_bundle_fingerprint(fixture_root, heldout_tasks)
+    return report
 
 
 def main() -> None:
@@ -156,6 +211,10 @@ def main() -> None:
     parser.add_argument("--heldout", type=Path, required=True)
     parser.add_argument("--modes", type=Path, required=True)
     parser.add_argument(
+        "--fixture-root", type=Path, default=None,
+        help="opt-in private fixture root; verify and hash fixture.json bytes without executing them",
+    )
+    parser.add_argument(
         "--min-cases-per-mode", type=int, default=None,
         help="optional strict coverage gate: require N cases for every supported failure mode",
     )
@@ -164,6 +223,7 @@ def main() -> None:
         result = preflight_heldout_corpus(
             args.reference, args.heldout, args.modes,
             min_cases_per_mode=args.min_cases_per_mode,
+            fixture_root=args.fixture_root,
         )
     except (ValueError, OSError) as exc:
         parser.error(str(exc))

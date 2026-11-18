@@ -175,12 +175,29 @@ labels/counts if the manifest is incomplete. Leave the flag off for exploratory
 partial pilots. Passing this metadata gate does not establish sufficient
 statistical power, fixture integrity, novelty, or measured model improvement.
 
-This preflight does **not** read or execute private fixture bundles, prove that
-tasks are truly held out from training, install the third arm, run agents,
-validate hidden verifiers, or call a model/provider. Keep private corpus files
-outside the public repository and independently audit novelty and verifier
-isolation before any controlled paired evaluation. Existing two-arm Bench
-behavior and publication/export requirements remain unchanged.
+To freeze the **actual fixture-bundle bytes**, not just manifest metadata,
+opt into a read-only check of a private fixture directory:
+
+```sh
+python -m godprompt_bench.heldout --heldout ../private-heldout/tasks.json --modes ../private-heldout/modes.json --fixture-root ../private-heldout
+```
+
+Each task's `fixture_dir/fixture.json` must exist under this root and pass
+the existing bundle schema. The report adds a deterministic aggregate SHA-256
+for the fixture bytes (including hidden verifier source), but no private
+contents, case paths or per-case hashes. Missing, linked, malformed or oversized
+bundles fail closed. Re-run this preflight before both arms of a comparison and
+keep identical fingerprints; changing fixture bytes invalidates a frozen run
+even when task/mode manifests have not changed. The opt-in check is capped at
+1 MiB per bundle and 64 MiB total and never executes the verifier.
+
+Without `--fixture-root`, the preflight remains metadata-only and does **not**
+read private fixture bundles. Neither mode proves that tasks are truly held out
+from training, installs the third arm, runs agents, validates verifier
+correctness, or calls a model/provider. Keep private corpus files outside the
+public repository and independently audit novelty and verifier isolation
+before any controlled paired evaluation. Existing two-arm Bench behavior and
+publication/export requirements remain unchanged.
 
 ## Metrics
 
