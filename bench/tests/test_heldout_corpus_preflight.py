@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -100,6 +101,88 @@ def test_fixture_fingerprint_is_independent_of_manifest_order(manifests, tmp_pat
     }), encoding="utf-8")
     second = preflight_heldout_corpus(reference, heldout, sidecar, fixture_root=tmp_path)
     assert second["fixture_bundle_sha256"] == first["fixture_bundle_sha256"]
+
+
+def test_expected_report_gate_accepts_unchanged_private_corpus(manifests, tmp_path):
+    reference, heldout, sidecar, tasks, _ = manifests
+    _make_private_fixtures(tmp_path, tasks)
+    initial = preflight_heldout_corpus(reference, heldout, sidecar, fixture_root=tmp_path)
+    lock = tmp_path / "frozen-preflight.json"
+    lock.write_text(json.dumps(initial), encoding="utf-8")
+    checked = preflight_heldout_corpus(
+        reference, heldout, sidecar, fixture_root=tmp_path, expected_report=lock,
+    )
+    assert checked["input_fingerprints_match"] is True
+    assert checked["fixture_bundle_sha256"] == initial["fixture_bundle_sha256"]
+    assert "PRIVATE_HIDDEN_VERIFIER_SENTINEL" not in json.dumps(checked)
+
+
+def test_expected_report_gate_rejects_private_verifier_drift(manifests, tmp_path):
+    reference, heldout, sidecar, tasks, _ = manifests
+    _make_private_fixtures(tmp_path, tasks)
+    initial = preflight_heldout_corpus(reference, heldout, sidecar, fixture_root=tmp_path)
+    lock = tmp_path / "frozen-preflight.json"
+    lock.write_text(json.dumps(initial), encoding="utf-8")
+    target = tmp_path / tasks[0]["fixture_dir"] / "fixture.json"
+    target.write_text(target.read_text(encoding="utf-8").replace(
+        "PRIVATE_HIDDEN_VERIFIER_SENTINEL", "PRIVATE_MODIFIED_VERIFIER",
+    ), encoding="utf-8")
+    with pytest.raises(ValueError, match="fixture_bundle_sha256") as error:
+        preflight_heldout_corpus(
+            reference, heldout, sidecar, fixture_root=tmp_path, expected_report=lock,
+        )
+    assert "PRIVATE_MODIFIED_VERIFIER" not in str(error.value)
+
+
+def test_expected_report_gate_rejects_manifest_byte_drift(manifests, tmp_path):
+    reference, heldout, sidecar, tasks, _ = manifests
+    _make_private_fixtures(tmp_path, tasks)
+    initial = preflight_heldout_corpus(reference, heldout, sidecar, fixture_root=tmp_path)
+    lock = tmp_path / "frozen-preflight.json"
+    lock.write_text(json.dumps(initial), encoding="utf-8")
+    heldout.write_text(heldout.read_text(encoding="utf-8") + " ", encoding="utf-8")
+    with pytest.raises(ValueError, match="heldout_manifest_sha256"):
+        preflight_heldout_corpus(
+            reference, heldout, sidecar, fixture_root=tmp_path, expected_report=lock,
+        )
+
+
+def test_expected_report_requires_full_fixture_check(manifests, tmp_path):
+    reference, heldout, sidecar, _, _ = manifests
+    lock = tmp_path / "frozen-preflight.json"
+    lock.write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="fixture_root"):
+        preflight_heldout_corpus(reference, heldout, sidecar, expected_report=lock)
+
+
+def test_expected_report_rejects_incomplete_or_malformed_lock(manifests, tmp_path):
+    reference, heldout, sidecar, tasks, _ = manifests
+    _make_private_fixtures(tmp_path, tasks)
+    initial = preflight_heldout_corpus(reference, heldout, sidecar, fixture_root=tmp_path)
+    lock = tmp_path / "frozen-preflight.json"
+    for bad in ({key: val for key, val in initial.items() if key != "fixture_bundle_sha256"},
+                {**initial, "schema": "other"},
+                {**initial, "fixture_bundle_sha256": "sha256:not-a-hash"}):
+        lock.write_text(json.dumps(bad), encoding="utf-8")
+        with pytest.raises(ValueError, match="expected report"):
+            preflight_heldout_corpus(
+                reference, heldout, sidecar, fixture_root=tmp_path, expected_report=lock,
+            )
+
+
+def test_expected_report_cli_checks_frozen_private_inputs(manifests, tmp_path, monkeypatch, capsys):
+    reference, heldout, sidecar, tasks, _ = manifests
+    _make_private_fixtures(tmp_path, tasks)
+    initial = preflight_heldout_corpus(reference, heldout, sidecar, fixture_root=tmp_path)
+    lock = tmp_path / "frozen-preflight.json"
+    lock.write_text(json.dumps(initial), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [
+        "heldout", "--reference", str(reference), "--heldout", str(heldout),
+        "--modes", str(sidecar), "--fixture-root", str(tmp_path),
+        "--expected-report", str(lock),
+    ])
+    heldout_module.main()
+    assert json.loads(capsys.readouterr().out)["input_fingerprints_match"] is True
 
 
 def test_opt_in_fixture_fingerprint_rejects_missing_invalid_or_oversized_bundle(manifests, tmp_path):

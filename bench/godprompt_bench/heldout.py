@@ -10,6 +10,7 @@ import argparse
 from collections import Counter
 import hashlib
 import json
+import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -32,6 +33,10 @@ FAILURE_MODES = (
 _MAX_MANIFEST_BYTES = 1024 * 1024
 _MAX_FIXTURE_BYTES = 1024 * 1024
 _MAX_TOTAL_FIXTURE_BYTES = 64 * 1024 * 1024
+_FROZEN_INPUT_HASHES = (
+    "reference_manifest_sha256", "heldout_manifest_sha256",
+    "mode_manifest_sha256", "fixture_bundle_sha256",
+)
 
 
 def _read_small(path: Path) -> bytes:
@@ -89,10 +94,39 @@ def _fixture_bundle_fingerprint(fixture_root: Path, tasks: list[Any]) -> str:
     return _fingerprint(encoded)
 
 
+def _verify_frozen_report(report: dict[str, Any], expected_path: Path) -> None:
+    """Compare all input fingerprints to a previously saved, owner-controlled report."""
+    raw = _read_small(Path(expected_path))
+    try:
+        expected = json.loads(raw, object_pairs_hook=_reject_duplicate_json_keys)
+    except (ValueError, UnicodeError) as exc:
+        raise ValueError("invalid expected report JSON") from exc
+    if (
+        not isinstance(expected, dict)
+        or expected.get("schema") != report["schema"]
+        or expected.get("preview_only") is not True
+        or type(expected.get("fixture_bundle_count")) is not int
+        or expected["fixture_bundle_count"] < 1
+    ):
+        raise ValueError("invalid expected report schema or fixture count")
+    for key in _FROZEN_INPUT_HASHES:
+        digest = expected.get(key)
+        if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+            raise ValueError(f"expected report missing or invalid {key}")
+        if digest != report[key]:
+            raise ValueError(f"held-out input fingerprint mismatch: {key}")
+    if expected["fixture_bundle_count"] != report["fixture_bundle_count"]:
+        raise ValueError("held-out input fingerprint mismatch: fixture_bundle_count")
+    if _read_small(Path(expected_path)) != raw:
+        raise ValueError("expected report changed during verification")
+    report["input_fingerprints_match"] = True
+
+
 def preflight_heldout_corpus(
     reference_manifest: Path, heldout_manifest: Path, mode_manifest: Path,
     *, min_cases_per_mode: int | None = None,
     fixture_root: Path | None = None,
+    expected_report: Path | None = None,
 ) -> dict[str, Any]:
     """Validate disjoint held-out task metadata without invoking models or tools.
 
@@ -106,6 +140,8 @@ def preflight_heldout_corpus(
         or not 1 <= min_cases_per_mode <= 10000
     ):
         raise ValueError("min_cases_per_mode must be an integer from 1 to 10000")
+    if expected_report is not None and fixture_root is None:
+        raise ValueError("expected_report requires fixture_root for complete input verification")
     paths = tuple(Path(path).resolve() for path in (
         reference_manifest, heldout_manifest, mode_manifest,
     ))
@@ -195,6 +231,8 @@ def preflight_heldout_corpus(
     if fixture_root is not None:
         report["fixture_bundle_count"] = len(heldout_tasks)
         report["fixture_bundle_sha256"] = _fixture_bundle_fingerprint(fixture_root, heldout_tasks)
+    if expected_report is not None:
+        _verify_frozen_report(report, expected_report)
     return report
 
 
@@ -215,6 +253,10 @@ def main() -> None:
         help="opt-in private fixture root; verify and hash fixture.json bytes without executing them",
     )
     parser.add_argument(
+        "--expected-report", type=Path, default=None,
+        help="fail if any current input fingerprint differs from a saved full preflight report; requires --fixture-root",
+    )
+    parser.add_argument(
         "--min-cases-per-mode", type=int, default=None,
         help="optional strict coverage gate: require N cases for every supported failure mode",
     )
@@ -224,6 +266,7 @@ def main() -> None:
             args.reference, args.heldout, args.modes,
             min_cases_per_mode=args.min_cases_per_mode,
             fixture_root=args.fixture_root,
+            expected_report=args.expected_report,
         )
     except (ValueError, OSError) as exc:
         parser.error(str(exc))
