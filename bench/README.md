@@ -138,6 +138,43 @@ Version 1 contains exactly 40 small deterministic tasks:
 
 Python and JavaScript fixtures use standard-library/runtime features only. Each task stores its model-visible files separately from its hidden deterministic verifier. The verifier is materialized only after the agent finishes.
 
+### Held-out failure corpus preflight (Bench 2.0, opt-in)
+
+Keep the reference 40-task `tasks/manifest.json` unchanged. Author a **separate**
+private task manifest using the same TaskSpec fields as the reference corpus,
+and a failure-mode sidecar that contains only case IDs and public labels:
+
+```json
+{
+  "schema": "godprompt.heldout_modes.v1",
+  "cases": [
+    {"id": "heldout-example-001", "failure_mode": "false_completion"}
+  ]
+}
+```
+
+Run the read-only metadata preflight from `bench/`:
+
+```sh
+python -m godprompt_bench.heldout --heldout ../private-heldout/tasks.json --modes ../private-heldout/modes.json
+```
+
+It rejects duplicate/overlapping reference task IDs and fixture directories,
+invalid paths, incomplete case mappings, duplicate JSON keys and unknown
+failure modes. Its JSON report includes task/mode counts, missing failure-mode
+coverage and SHA-256 fingerprints, **not** prompts, private fixture contents
+or verifier code. Supported modes cover false completion, scope creep, missing
+verification, multi-session handoff, misleading receipts, negative instructions,
+hidden dependency changes and stale context. Partial pilots report missing
+categories instead of pretending to provide full coverage.
+
+This preflight does **not** read or execute private fixture bundles, prove that
+tasks are truly held out from training, install the third arm, run agents,
+validate hidden verifiers, or call a model/provider. Keep private corpus files
+outside the public repository and independently audit novelty and verifier
+isolation before any controlled paired evaluation. Existing two-arm Bench
+behavior and publication/export requirements remain unchanged.
+
 ## Metrics
 
 **Primary metric:** hidden deterministic task pass rate.
