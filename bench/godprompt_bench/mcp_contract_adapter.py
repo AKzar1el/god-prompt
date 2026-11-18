@@ -286,4 +286,20 @@ class EvidenceSession:
             raise ContractHold("MCP review cannot claim independent verification or authorization")
         if reviewed["status"] == "REPORTED_READY_FOR_INDEPENDENT_REVIEW" and reviewed.get("issues"):
             raise ContractHold("contradictory MCP review result")
+        if reviewed["status"] == "REPORTED_READY_FOR_INDEPENDENT_REVIEW":
+            # A buggy or mismatched MCP response must not upgrade local failed
+            # evidence to readiness, even when it correctly disclaims approval.
+            try:
+                required = {item["id"] for item in self.contract["verification_commands"]}
+            except (KeyError, TypeError) as exc:
+                raise ContractHold("malformed local verification requirements") from exc
+            if (
+                not required
+                or set(self._checks) != required
+                or any(
+                    check["exit_code"] != 0 or not check["evidence_excerpt"]
+                    for check in self._checks.values()
+                )
+            ):
+                raise ContractHold("MCP ready response lacks locally complete, passing checks")
         return reviewed
