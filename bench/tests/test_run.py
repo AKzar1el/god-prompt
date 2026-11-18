@@ -93,6 +93,70 @@ def test_cli_dry_run_without_model_previews_fixtures_offline(monkeypatch, capsys
     assert not output_dir.exists()
 
 
+def test_cli_dry_run_markdown_produces_copyable_offline_plan(monkeypatch, capsys, tmp_path):
+    import godprompt_bench.run as run_module
+
+    output_dir = tmp_path / 'must-not-exist'
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--dry-run', '--format', 'markdown',
+        '--profile', 'smoke', '--output', str(output_dir),
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('preview must not execute evaluator'))
+
+    run_module.main()
+    report = capsys.readouterr().out
+    assert report.startswith('# GodPrompt Bench evaluation plan')
+    assert 'Preview only' in report
+    assert 'Model: not selected' in report
+    assert 'Planned samples: 12' in report
+    assert 'Tasks per condition: 6' in report
+    assert 'Epochs: 1' in report
+    assert 'baseline' in report and 'godprompt' in report
+    assert 'Fixture SHA256:' in report
+    assert 'provider cost cannot be inferred' in report.lower()
+    assert 'No Docker, model or provider calls' in report
+    assert not output_dir.exists()
+
+
+def test_cli_dry_run_markdown_escapes_user_model_and_shows_controls(monkeypatch, capsys):
+    import godprompt_bench.run as run_module
+
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--dry-run', '--format', 'markdown',
+        '--model', 'mockllm/a|b\n# fake heading', '--temperature', '0.25',
+        '--seed', '42', '--reasoning-effort', 'high', '--reasoning-mode', 'pro',
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('preview must not evaluate'))
+    run_module.main()
+    report = capsys.readouterr().out
+    assert 'mockllm/a\\|b # fake heading' in report
+    assert '\n# fake heading' not in report
+    assert 'Temperature: 0.25' in report
+    assert 'Seed: 42' in report
+    assert 'Reasoning effort: high' in report
+    assert 'Reasoning mode: pro' in report
+
+
+@pytest.mark.parametrize('offline_action', ([], ['--list-profiles'], ['--list-tasks']))
+def test_cli_markdown_format_rejects_non_dry_run_without_execution(
+    monkeypatch, capsys, offline_action,
+):
+    import godprompt_bench.run as run_module
+
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--model', 'mockllm/test',
+        '--format', 'markdown', *offline_action,
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('format selection must not evaluate'))
+    with pytest.raises(SystemExit) as exc:
+        run_module.main()
+    assert exc.value.code == 2
+    assert '--format markdown requires --dry-run' in capsys.readouterr().err
+
+
 def test_cli_paid_run_still_requires_explicit_model(monkeypatch, capsys):
     import godprompt_bench.run as run_module
 
