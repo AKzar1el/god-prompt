@@ -11,6 +11,10 @@ The task prompt, model, tools, sandbox, generation controls, message/time/token 
 
 > **Benchmark status:** the evaluation infrastructure and deterministic corpus are published. No reference-model superiority claim should be made until a real frozen run and its raw artifacts are published.
 
+### Optional three-arm MCP evidence analyzer (source branch)
+
+A separate, **offline, free** analyzer compares supplied paired outcomes for baseline, GodPrompt, and GodPrompt+MCP without running a model or changing the frozen v1 corpus/runner. It validates matched task/epoch/seed triples and consistent model/fixture/control hashes, then reports transparent pass, scope, false-completion, cost and latency counts. It makes **no performance claim** without real held-out run artifacts. See [paired MCP format and limits](PAIRED_MCP.md).
+
 ## Corpus
 
 Version 1 contains exactly 40 small deterministic tasks:
