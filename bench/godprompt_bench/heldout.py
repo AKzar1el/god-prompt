@@ -1,0 +1,150 @@
+"""Read-only preflight for a separate, opt-in Bench 2.0 held-out corpus.
+
+The reference corpus is never edited, and neither prompts nor hidden verifier
+contents are returned. This checks manifest provenance and failure-mode
+coverage, NOT whether a corpus is truly unseen by a model or ready to run.
+"""
+from __future__ import annotations
+
+import argparse
+from collections import Counter
+import hashlib
+import json
+from pathlib import Path
+from typing import Any
+
+from .corpus import _reject_duplicate_json_keys, load_manifest, validate_manifest
+
+SCHEMA = "godprompt.heldout_modes.v1"
+FAILURE_MODES = (
+    "false_completion",
+    "scope_creep",
+    "missing_verification",
+    "multi_session_handoff",
+    "misleading_receipt",
+    "negative_instructions",
+    "hidden_dependency_changes",
+    "stale_context",
+)
+_MAX_MANIFEST_BYTES = 1024 * 1024
+
+
+def _read_small(path: Path) -> bytes:
+    if path.stat().st_size > _MAX_MANIFEST_BYTES:
+        raise ValueError("held-out preflight manifest is too large")
+    return path.read_bytes()
+
+
+def _fingerprint(raw: bytes) -> str:
+    return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def preflight_heldout_corpus(
+    reference_manifest: Path, heldout_manifest: Path, mode_manifest: Path
+) -> dict[str, Any]:
+    """Validate disjoint held-out task metadata without invoking models or tools.
+
+    The held-out task manifest uses the existing Bench TaskSpec schema; the
+    separate mode sidecar contains ONLY case IDs and failure-mode labels.
+    Validity of private fixtures, hidden verifiers, novelty and statistical
+    independence must be established separately by the evaluation owner.
+    """
+    paths = tuple(Path(path).resolve() for path in (
+        reference_manifest, heldout_manifest, mode_manifest,
+    ))
+    if len(set(paths)) != len(paths):
+        raise ValueError("reference, held-out and failure-mode manifests must be distinct")
+
+    reference_raw, heldout_raw, mode_raw = tuple(_read_small(path) for path in paths)
+    reference_tasks = load_manifest(paths[0])
+    heldout_tasks = load_manifest(paths[1])
+    validate_manifest(reference_tasks)
+    validate_manifest(heldout_tasks)
+    if not heldout_tasks:
+        raise ValueError("held-out corpus must contain at least one task")
+
+    reference_ids = {task.id.casefold() for task in reference_tasks}
+    heldout_ids = {task.id.casefold() for task in heldout_tasks}
+    if reference_ids & heldout_ids:
+        raise ValueError("held-out task ID overlaps a reference task ID")
+
+    reference_fixtures = {task.fixture_dir.casefold() for task in reference_tasks}
+    heldout_fixtures = [task.fixture_dir.casefold() for task in heldout_tasks]
+    if reference_fixtures.intersection(heldout_fixtures):
+        raise ValueError("held-out fixture overlaps a reference fixture")
+    if len(set(heldout_fixtures)) != len(heldout_fixtures):
+        raise ValueError("held-out fixture directory is reused")
+
+    modes = json.loads(mode_raw, object_pairs_hook=_reject_duplicate_json_keys)
+    if not isinstance(modes, dict) or modes.get("schema") != SCHEMA:
+        raise ValueError("unsupported held-out failure-mode schema")
+    if set(modes) != {"schema", "cases"}:
+        raise ValueError("failure-mode manifest has unknown fields")
+    cases = modes["cases"]
+    if not isinstance(cases, list):
+        raise ValueError("failure-mode cases must be a list")
+    seen: set[str] = set()
+    counts: Counter[str] = Counter()
+    for i, case in enumerate(cases):
+        if not isinstance(case, dict) or set(case) != {"id", "failure_mode"}:
+            raise ValueError(f"case {i} has unknown fields or missing fields")
+        task_id, mode = case["id"], case["failure_mode"]
+        if not isinstance(task_id, str):
+            raise ValueError("failure-mode case ID must be a string")
+        folded = task_id.casefold()
+        if folded in seen:
+            raise ValueError("duplicate case ID")
+        seen.add(folded)
+        if not isinstance(mode, str) or mode not in FAILURE_MODES:
+            raise ValueError("unknown failure mode")
+        counts[mode] += 1
+    if seen != heldout_ids:
+        raise ValueError("failure-mode cases must exactly match held-out task IDs")
+
+    # The fingerprint must describe the exact manifest bytes that were validated,
+    # not a stale snapshot if another process changed an input during this read.
+    if any(_read_small(path) != raw for path, raw in zip(paths, (
+        reference_raw, heldout_raw, mode_raw,
+    ))):
+        raise ValueError("preflight manifest changed during validation")
+
+    return {
+        "schema": "godprompt.heldout_preflight.v1",
+        "preview_only": True,
+        "reference_task_count": len(reference_tasks),
+        "heldout_task_count": len(heldout_tasks),
+        "failure_mode_counts": dict(sorted(counts.items())),
+        "uncovered_failure_modes": sorted(set(FAILURE_MODES) - counts.keys()),
+        "reference_manifest_sha256": _fingerprint(reference_raw),
+        "heldout_manifest_sha256": _fingerprint(heldout_raw),
+        "mode_manifest_sha256": _fingerprint(mode_raw),
+        "cost_estimate_usd": None,
+        "note": (
+            "Metadata-only preflight. No fixture/verifier execution, provider call, "
+            "third-arm registration, novelty proof or independent result verification."
+        ),
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Validate a separate Bench 2.0 held-out task/mode pair offline"
+    )
+    parser.add_argument(
+        "--reference",
+        type=Path,
+        default=Path(__file__).resolve().parents[1] / "tasks" / "manifest.json",
+        help="frozen 40-task reference manifest (read only)",
+    )
+    parser.add_argument("--heldout", type=Path, required=True)
+    parser.add_argument("--modes", type=Path, required=True)
+    args = parser.parse_args()
+    try:
+        result = preflight_heldout_corpus(args.reference, args.heldout, args.modes)
+    except (ValueError, OSError) as exc:
+        parser.error(str(exc))
+    print(json.dumps(result, indent=2, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()
