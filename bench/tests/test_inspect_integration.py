@@ -138,3 +138,123 @@ def test_experimental_sample_agent_rejects_unusable_inspect_scope(sample_id, epo
         experimental_contract_sample_agent(
             REPO_ROOT, state=state, client=lambda *_: {}, contract=contract,
         )
+
+
+def _contract_planning_client(calls, *, ambiguous=False):
+    def client(name, payload):
+        calls.append((name, payload))
+        if name == 'classify_task':
+            return {'structuredContent': {'task_type': 'BUILD', 'ambiguous': ambiguous}}
+        if name == 'create_work_contract':
+            contract = {
+                'schema': 'godprompt.work_contract.v1',
+                'task': payload['task'],
+                'task_type': payload['task_type'],
+                'risk_level': payload['risk_level'],
+                'allowed_paths': payload['allowed_paths'],
+                'forbidden_actions': payload['forbidden_actions'],
+                'success_criteria': [
+                    {'id': f'AC-{index:02}', 'text': text}
+                    for index, text in enumerate(payload['success_criteria'], 1)
+                ],
+                'verification_commands': [
+                    {'id': f'VC-{index:02}', 'command': command}
+                    for index, command in enumerate(payload['verification_commands'], 1)
+                ],
+            }
+            contract['contract_id'] = _contract_sha(contract)
+            return {'structuredContent': {
+                'definition_status': 'DEFINED', 'issues': [], 'contract': contract,
+            }}
+        raise AssertionError(f'unexpected MCP call: {name}')
+    return client
+
+
+def test_experimental_sample_preparation_uses_only_public_host_requirements(monkeypatch):
+    from godprompt_bench.agent import prepare_experimental_contract_sample_agent
+    import godprompt_bench.agent as agent
+
+    state, _ = _sample_and_contract(epoch=2)
+    state.metadata['hidden_verifier_secret'] = 'never forward me'
+    calls = []
+    monkeypatch.setattr(
+        agent, 'experimental_contract_coding_agent',
+        lambda root, *, session, scope: ('agent', scope),
+    )
+    built, session, contract = prepare_experimental_contract_sample_agent(
+        REPO_ROOT, state=state, client=_contract_planning_client(calls),
+        success_criteria=['Public acceptance criterion'],
+        forbidden_actions=['network access'],
+    )
+    assert built == ('agent', InspectExecutionScope('impl-py-slugify', 'epoch-2-attempt-1'))
+    assert session.contract == contract
+    assert [name for name, _ in calls] == ['classify_task', 'create_work_contract']
+    assert calls[1][1]['task'] == state.input
+    assert calls[1][1]['allowed_paths'] == ['src/text.py']
+    assert calls[1][1]['verification_commands'] == ['python -m pytest tests/test_parser.py']
+    assert calls[1][1]['success_criteria'] == ['Public acceptance criterion']
+    assert 'hidden_verifier_secret' not in repr(calls)
+
+
+@pytest.mark.parametrize('invalid', [
+    'sample_scope', 'missing_metadata', 'missing_paths', 'duplicate_commands',
+    'missing_public_criteria', 'missing_forbidden_actions',
+])
+def test_experimental_sample_preparation_fails_before_mcp_for_invalid_host_data(invalid):
+    from godprompt_bench.agent import prepare_experimental_contract_sample_agent
+
+    state, _ = _sample_and_contract(
+        sample_id='bad/sample' if invalid == 'sample_scope' else 'impl-py-slugify',
+    )
+    criteria = ['Public acceptance criterion']
+    forbidden = ['network access']
+    if invalid == 'missing_metadata':
+        state.metadata = None
+    elif invalid == 'missing_paths':
+        state.metadata['allowed_paths'] = []
+    elif invalid == 'duplicate_commands':
+        state.metadata['expected_verification_commands'] *= 2
+    elif invalid == 'missing_public_criteria':
+        criteria = []
+    elif invalid == 'missing_forbidden_actions':
+        forbidden = []
+    calls = []
+    with pytest.raises(ContractHold):
+        prepare_experimental_contract_sample_agent(
+            REPO_ROOT, state=state, client=_contract_planning_client(calls),
+            success_criteria=criteria, forbidden_actions=forbidden,
+        )
+    assert calls == []
+
+
+def test_experimental_sample_preparation_builds_installed_inspect_agent_offline():
+    from godprompt_bench.agent import prepare_experimental_contract_sample_agent
+
+    state, _ = _sample_and_contract()
+    calls = []
+    built, session, contract = prepare_experimental_contract_sample_agent(
+        REPO_ROOT, state=state, client=_contract_planning_client(calls),
+        success_criteria=['Public acceptance criterion'],
+        forbidden_actions=['network access'],
+    )
+    assert built is not None
+    assert session.contract == contract
+    assert session.execution_scope == InspectExecutionScope(
+        'impl-py-slugify', 'epoch-1-attempt-1',
+    )
+    assert [name for name, _ in calls] == ['classify_task', 'create_work_contract']
+
+
+def test_experimental_sample_preparation_holds_ambiguous_mcp_without_agent():
+    from godprompt_bench.agent import prepare_experimental_contract_sample_agent
+
+    state, _ = _sample_and_contract()
+    calls = []
+    with pytest.raises(ContractHold, match='ambiguous'):
+        prepare_experimental_contract_sample_agent(
+            REPO_ROOT, state=state,
+            client=_contract_planning_client(calls, ambiguous=True),
+            success_criteria=['Public acceptance criterion'],
+            forbidden_actions=['network access'],
+        )
+    assert [name for name, _ in calls] == ['classify_task']

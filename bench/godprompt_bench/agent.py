@@ -77,18 +77,11 @@ def experimental_contract_coding_agent(repo_root: Path, *, session, scope):
     )
 
 
-def experimental_contract_sample_agent(repo_root: Path, *, state, client, contract):
-    """Bind one opt-in agent/evidence session to an actual Inspect sample epoch.
-
-    The host must pass its TaskState and an already prepared MCP contract.
-    This only assembles an agent; it does not install a solver, run a model,
-    or turn surrogate sandbox invocation IDs into native ToolCall IDs.
-    """
+def _inspect_sample_inputs(state):
+    """Extract only the public, host-supplied contract inputs for one sample."""
     from inspect_ai.solver import TaskState
 
-    from .mcp_contract_adapter import (
-        ContractHold, EvidenceSession, InspectExecutionScope, _contract_sha,
-    )
+    from .mcp_contract_adapter import ContractHold
 
     if not isinstance(state, TaskState):
         raise ContractHold("expected host Inspect TaskState")
@@ -101,22 +94,41 @@ def experimental_contract_sample_agent(repo_root: Path, *, state, client, contra
         raise ContractHold("invalid Inspect sample/epoch scope")
     if not isinstance(state.input, str) or not isinstance(state.metadata, Mapping):
         raise ContractHold("missing Inspect sample task metadata")
+    paths = state.metadata.get("allowed_paths")
+    commands = state.metadata.get("expected_verification_commands")
+    if any(
+        not isinstance(values, list)
+        or not values
+        or any(not isinstance(item, str) or not item.strip() for item in values)
+        or len(values) != len(set(values))
+        for values in (paths, commands)
+    ):
+        raise ContractHold("invalid Inspect sample contract requirements")
+    return state.input, list(paths), list(commands)
+
+
+def experimental_contract_sample_agent(repo_root: Path, *, state, client, contract):
+    """Bind one opt-in agent/evidence session to an actual Inspect sample epoch.
+
+    The host must pass its TaskState and an already prepared MCP contract.
+    This only assembles an agent; it does not install a solver, run a model,
+    or turn surrogate sandbox invocation IDs into native ToolCall IDs.
+    """
+    from .mcp_contract_adapter import (
+        ContractHold, EvidenceSession, InspectExecutionScope, _contract_sha,
+    )
+
+    task, expected_paths, expected_commands = _inspect_sample_inputs(state)
     if not isinstance(contract, Mapping):
         raise ContractHold("missing prepared MCP contract")
     try:
         commands = [item["command"] for item in contract["verification_commands"]]
-        expected_commands = state.metadata["expected_verification_commands"]
-        expected_paths = state.metadata["allowed_paths"]
         digest = _contract_sha({
             key: value for key, value in contract.items() if key != "contract_id"
         })
         if (
-            not isinstance(expected_commands, list)
-            or not expected_commands
-            or not isinstance(expected_paths, list)
-            or not expected_paths
-            or any(not isinstance(item, str) or not item for item in commands)
-            or contract["task"] != state.input
+            any(not isinstance(item, str) or not item for item in commands)
+            or contract["task"] != task
             or commands != expected_commands
             or contract["allowed_paths"] != expected_paths
             or contract["contract_id"] != digest
@@ -130,3 +142,45 @@ def experimental_contract_sample_agent(repo_root: Path, *, state, client, contra
     return experimental_contract_coding_agent(
         repo_root, session=session, scope=scope,
     ), session
+
+
+def prepare_experimental_contract_sample_agent(
+    repo_root: Path, *, state, client, success_criteria, forbidden_actions,
+    risk_level: str = "medium",
+):
+    """Prepare an opt-in MCP contract from an Inspect sample before agent assembly.
+
+    Only public criteria supplied explicitly by the host are forwarded. Hidden
+    verifier material and unrelated TaskState metadata never enter MCP calls.
+    No model, sandbox, or benchmark evaluation is run by this helper.
+    """
+    from .mcp_contract_adapter import ContractHold, prepare_contract
+
+    task, paths, commands = _inspect_sample_inputs(state)
+    for label, values in (
+        ("public success criteria", success_criteria),
+        ("forbidden actions", forbidden_actions),
+    ):
+        if (
+            not isinstance(values, (list, tuple))
+            or not values
+            or any(not isinstance(value, str) or not value.strip() for value in values)
+            or len(values) != len(set(values))
+        ):
+            raise ContractHold(f"missing or invalid {label}")
+    if not callable(client):
+        raise ContractHold("missing MCP contract client")
+
+    contract = prepare_contract(
+        client,
+        task=task,
+        allowed_paths=paths,
+        forbidden_actions=forbidden_actions,
+        success_criteria=success_criteria,
+        verification_commands=commands,
+        risk_level=risk_level,
+    )
+    agent, session = experimental_contract_sample_agent(
+        repo_root, state=state, client=client, contract=contract,
+    )
+    return agent, session, contract
