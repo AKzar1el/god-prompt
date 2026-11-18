@@ -58,9 +58,28 @@ MCP review payload. This **does not** install an Inspect hook or replace
 into the evidence bridge would still be unsound. No live third-arm use is
 enabled by this helper.
 
+The opt-in `godprompt_bench.inspect_receipt_bash.receipt_bash_tool` now
+implements a **bash-named Inspect tool factory** for future third-arm wiring.
+It keeps the stock `command` input, executes the same
+`bash --login -c` sandbox call, and returns the same stderr/stdout text while
+capturing the sandbox's actual `ExecResult.returncode` for commands that
+exactly match one contract verification requirement. A failed, missing,
+inconsistent, duplicate, or cross-attempt receipt cannot become a passing
+check; unrelated commands do not create verification evidence. It sends
+only digest summaries to MCP review, not raw command output.
+Each sample and attempt needs its own host-created `EvidenceSession` and
+`InspectExecutionScope`. The factory generates surrogate invocation IDs,
+**not** native Inspect model tool-call IDs; they cannot establish external
+trace correlation. It must only be installed in the original
+`bash`/`text_editor` approval-controlled ReAct scaffold, never invoked as
+an unapproved execution shortcut. No default agent invokes this factory:
+it is an offline-tested building block, **not** an enabled live third arm,
+an independent approval, or an outcome/uplift result.
+
 The remaining work under
 [Bench 2.0 issue #348](https://github.com/AKzar1el/god-prompt/issues/348)
-is to wire those hooks into the existing approved Inspect execution context,
+is to wire the new tool into an isolated per-sample, approval-controlled
+Inspect execution context (including exact tool-call provenance),
 freeze a separate held-out corpus and three-arm run manifest, retain
 identical sandboxes/controls, and validate paired uncertainty and raw
 anonymized trajectories. Live providers remain separately spend-gated.
