@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -258,3 +259,140 @@ def test_experimental_sample_preparation_holds_ambiguous_mcp_without_agent():
             forbidden_actions=['network access'],
         )
     assert [name for name, _ in calls] == ['classify_task']
+
+
+def test_opt_in_sample_solver_is_lazy_and_registered_without_provider_calls():
+    from inspect_ai._util.registry import registry_info
+    from godprompt_bench.agent import experimental_contract_sample_solver
+
+    calls = []
+    prepared = []
+    solver = experimental_contract_sample_solver(
+        REPO_ROOT, client=_contract_planning_client(calls),
+        success_criteria_by_sample={'impl-py-slugify': ['Public criterion']},
+        forbidden_actions=['network access'],
+        on_prepared=lambda *args: prepared.append(args),
+    )
+    assert callable(solver)
+    assert registry_info(solver).type == 'solver'
+    assert calls == [] and prepared == []
+
+
+def test_opt_in_sample_solver_runs_independent_epochs_and_retains_sessions(monkeypatch):
+    import inspect_ai.agent
+    from godprompt_bench.agent import experimental_contract_sample_solver
+
+    calls, prepared, executed = [], [], []
+    real_as_solver = inspect_ai.agent.as_solver
+
+    def fake_as_solver(agent):
+        assert agent is not None
+        assert callable(real_as_solver(agent))
+
+        async def run(state, generate):
+            executed.append((state.sample_id, state.epoch, generate))
+            return state
+
+        return run
+
+    monkeypatch.setattr(inspect_ai.agent, 'as_solver', fake_as_solver)
+    solver = experimental_contract_sample_solver(
+        REPO_ROOT, client=_contract_planning_client(calls),
+        success_criteria_by_sample={'impl-py-slugify': ['Public criterion']},
+        forbidden_actions=['network access'],
+        on_prepared=lambda *args: prepared.append(args),
+    )
+    marker = object()
+    first, _ = _sample_and_contract(epoch=1)
+    second, _ = _sample_and_contract(epoch=2)
+    assert asyncio.run(solver(first, marker)) is first
+    assert asyncio.run(solver(second, marker)) is second
+    assert executed == [
+        ('impl-py-slugify', 1, marker), ('impl-py-slugify', 2, marker),
+    ]
+    assert [name for name, _ in calls] == [
+        'classify_task', 'create_work_contract',
+        'classify_task', 'create_work_contract',
+    ]
+    assert [scope for scope, *_ in prepared] == [
+        InspectExecutionScope('impl-py-slugify', 'epoch-1-attempt-1'),
+        InspectExecutionScope('impl-py-slugify', 'epoch-2-attempt-1'),
+    ]
+    assert prepared[0][1] is not prepared[1][1]
+    assert prepared[0][1].execution_scope != prepared[1][1].execution_scope
+
+
+def test_opt_in_sample_solver_rejects_missing_criteria_before_mcp_or_model(monkeypatch):
+    import inspect_ai.agent
+    from godprompt_bench.agent import experimental_contract_sample_solver
+
+    monkeypatch.setattr(inspect_ai.agent, 'as_solver',
+                        lambda agent: pytest.fail('model solver must not be invoked'))
+    calls, prepared = [], []
+    solver = experimental_contract_sample_solver(
+        REPO_ROOT, client=_contract_planning_client(calls),
+        success_criteria_by_sample={'different-task': ['Wrong public criterion']},
+        forbidden_actions=['network access'],
+        on_prepared=lambda *args: prepared.append(args),
+    )
+    state, _ = _sample_and_contract()
+    with pytest.raises(ContractHold, match='public success criteria'):
+        asyncio.run(solver(state, object()))
+    assert calls == [] and prepared == []
+
+
+def test_opt_in_sample_solver_rejects_duplicate_epoch_before_mcp(monkeypatch):
+    import inspect_ai.agent
+    from godprompt_bench.agent import experimental_contract_sample_solver
+
+    async def fake_run(state, generate):
+        return state
+
+    monkeypatch.setattr(inspect_ai.agent, 'as_solver', lambda agent: fake_run)
+    calls, prepared = [], []
+    solver = experimental_contract_sample_solver(
+        REPO_ROOT, client=_contract_planning_client(calls),
+        success_criteria_by_sample={'impl-py-slugify': ['Public criterion']},
+        forbidden_actions=['network access'],
+        on_prepared=lambda *args: prepared.append(args),
+    )
+    state, _ = _sample_and_contract()
+    asyncio.run(solver(state, object()))
+    with pytest.raises(ContractHold, match='duplicate'):
+        asyncio.run(solver(state, object()))
+    assert len(calls) == 2 and len(prepared) == 1
+
+
+def test_opt_in_sample_solver_refuses_invalid_sink_before_any_execution():
+    from godprompt_bench.agent import experimental_contract_sample_solver
+
+    with pytest.raises(ContractHold, match='host preparation callback'):
+        experimental_contract_sample_solver(
+            REPO_ROOT, client=lambda *_: {},
+            success_criteria_by_sample={'impl-py-slugify': ['Public criterion']},
+            forbidden_actions=['network access'], on_prepared=None,
+        )
+
+
+def test_opt_in_sample_solver_freezes_host_public_requirements(monkeypatch):
+    import inspect_ai.agent
+    from godprompt_bench.agent import experimental_contract_sample_solver
+
+    async def fake_run(state, generate):
+        return state
+
+    monkeypatch.setattr(inspect_ai.agent, 'as_solver', lambda agent: fake_run)
+    calls = []
+    criteria = ['Public criterion']
+    forbidden = ['network access']
+    solver = experimental_contract_sample_solver(
+        REPO_ROOT, client=_contract_planning_client(calls),
+        success_criteria_by_sample={'impl-py-slugify': criteria},
+        forbidden_actions=forbidden, on_prepared=lambda *args: None,
+    )
+    criteria[0] = 'Changed after configuration'
+    forbidden[0] = 'Changed after configuration'
+    state, _ = _sample_and_contract()
+    assert asyncio.run(solver(state, object())) is state
+    assert calls[1][1]['success_criteria'] == ['Public criterion']
+    assert calls[1][1]['forbidden_actions'] == ['network access']
