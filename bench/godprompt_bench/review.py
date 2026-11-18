@@ -680,6 +680,25 @@ def _no_net_godprompt_regression_between_runs(report: dict[str, Any]) -> bool:
     )
 
 
+def _no_godprompt_category_regression_between_runs(report: dict[str, Any]) -> bool:
+    """Refuse a category-specific loss even when gains elsewhere hide it."""
+    if not _no_net_godprompt_regression_between_runs(report):
+        return False
+    categories = report["category_pass_transitions"]
+    paired = report["cross_run_condition_pair_transitions"]["paired_task_epochs"]
+    if not categories:
+        return False
+    changes = [conditions["godprompt"] for conditions in categories.values()]
+    return (
+        sum(change["paired_samples"] for change in changes) == paired
+        and all(
+            change["paired_samples"] > 0
+            and change["fail_to_pass"] >= change["pass_to_fail"]
+            for change in changes
+        )
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Review an existing GodPrompt benchmark export offline; never calls a model"
@@ -697,6 +716,8 @@ def main() -> None:
                         help="For one run, exit 1 on missing/unpaired evidence or more baseline-only wins")
     parser.add_argument("--require-no-godprompt-regression", action="store_true",
                         help="With --compare, exit 1 on incomplete/unpaired evidence or net GodPrompt pass loss")
+    parser.add_argument("--require-no-godprompt-category-regression", action="store_true",
+                        help="With --compare, exit 1 if any category loses net GodPrompt passes or evidence is incomplete")
     args = parser.parse_args()
     if args.require_aligned and args.compare is None:
         parser.error("--require-aligned requires --compare")
@@ -704,6 +725,8 @@ def main() -> None:
         parser.error("--require-nondegrading-pairs reviews one run; omit --compare")
     if args.require_no_godprompt_regression and args.compare is None:
         parser.error("--require-no-godprompt-regression requires --compare")
+    if args.require_no_godprompt_category_regression and args.compare is None:
+        parser.error("--require-no-godprompt-category-regression requires --compare")
     try:
         report = compare_results(args.result_dir, args.compare) if args.compare else review_result(args.result_dir)
     except (OSError, ValueError) as exc:
@@ -721,6 +744,8 @@ def main() -> None:
     if args.require_nondegrading_pairs and not _nondegrading_condition_pairs(report):
         raise SystemExit(1)
     if args.require_no_godprompt_regression and not _no_net_godprompt_regression_between_runs(report):
+        raise SystemExit(1)
+    if args.require_no_godprompt_category_regression and not _no_godprompt_category_regression_between_runs(report):
         raise SystemExit(1)
 
 

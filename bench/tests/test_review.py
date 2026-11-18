@@ -1094,3 +1094,109 @@ def test_offline_comparison_no_regression_flag_requires_compare(
         review.main()
     assert exc.value.code == 2
     assert "--compare" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("output_format", ["json", "markdown"])
+@pytest.mark.parametrize(
+    ("outcomes", "missing", "infra", "misaligned", "expected_exit"),
+    [
+        # Two verification recoveries must not mask one implementation regression.
+        ([("implementation", True, False),
+          ("verification", False, True),
+          ("verification", False, True)], False, False, False, 1),
+        ([("implementation", False, True),
+          ("verification", True, True)], False, False, False, 0),
+        ([("implementation", True, False),
+          ("implementation", False, True),
+          ("verification", False, False)], False, False, False, 0),
+        ([("implementation", True, False),
+          ("verification", False, False)], False, False, False, 1),
+        ([("implementation", True, True)], True, False, False, 1),
+        ([("implementation", True, True)], False, True, False, 1),
+        ([("implementation", True, True)], False, False, True, 1),
+    ],
+)
+def test_offline_comparison_cli_requires_no_godprompt_category_regression(
+    comparable_exports: tuple[Path, Path], tmp_path: Path, monkeypatch, capsys,
+    outcomes: list[tuple[str, bool, bool]], missing: bool, infra: bool,
+    misaligned: bool, expected_exit: int, output_format: str,
+):
+    from godprompt_bench import review
+
+    template = json.loads(
+        (comparable_exports[0] / "manifest.json").read_text(encoding="utf-8")
+    )
+    runs = []
+    for label, index in (("earlier", 1), ("later", 2)):
+        rows = []
+        for sample_index, (category, before_passed, after_passed) in enumerate(outcomes):
+            task_id = f"private-task-{sample_index}"
+            rows.append(replace(record("baseline"), task_id=task_id, category=category))
+            rows.append(replace(
+                record(
+                    "godprompt", passed=before_passed if index == 1 else after_passed,
+                    infra="offline failure" if infra and index == 2 else None,
+                ),
+                task_id=task_id, category=category,
+            ))
+        failures = sum(row.infrastructure_error is not None for row in rows)
+        manifest = {
+            **template, "run_id": label,
+            "requested_samples": len(rows) + (int(missing) if index == 2 else 0),
+            "completed_samples": len(rows) - failures,
+            "infrastructure_failures": failures,
+            "godprompt_commit_sha": ("b" if index == 1 else "3") * 40,
+        }
+        if misaligned and index == 2:
+            manifest["seed"] = 999
+        folder = tmp_path / label
+        export_run(folder, manifest, rows, [])
+        runs.append(folder)
+
+    snapshots = {
+        folder: {path.name: path.read_bytes() for path in folder.iterdir()}
+        for folder in runs
+    }
+    report = review.compare_results(*runs)
+    if len(outcomes) == 3 and outcomes[0] == ("implementation", True, False):
+        # The existing net gate allows this total improvement, proving that
+        # category-level gating adds protection rather than renaming the net gate.
+        assert review._no_net_godprompt_regression_between_runs(report)
+
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(runs[0]), "--compare", str(runs[1]),
+        "--require-no-godprompt-category-regression", "--format", output_format,
+    ])
+    if expected_exit:
+        with pytest.raises(SystemExit) as exc:
+            review.main()
+        assert exc.value.code == expected_exit
+    else:
+        review.main()
+    output = capsys.readouterr().out
+    if output_format == "json":
+        parsed = json.loads(output)
+        assert parsed["performance_claim_verified"] is False
+        assert "category_pass_transitions" in parsed
+    else:
+        assert "not a performance claim" in output.lower()
+    assert "private-task-" not in output
+    assert all(
+        {path.name: path.read_bytes() for path in folder.iterdir()} == original
+        for folder, original in snapshots.items()
+    )
+
+
+def test_offline_comparison_category_regression_flag_requires_compare(
+    exported: Path, monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(exported),
+        "--require-no-godprompt-category-regression",
+    ])
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "--compare" in capsys.readouterr().err
