@@ -11,7 +11,6 @@ import json
 from math import isfinite
 from pathlib import Path
 import re
-from statistics import median
 import sys
 from typing import Any
 
@@ -149,6 +148,17 @@ def _rate(numerator: int, denominator: int) -> float | None:
     return numerator / denominator if denominator else None
 
 
+def _safe_median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    lower, upper = ordered[middle - 1], ordered[middle]
+    return lower + (upper - lower) / 2
+
+
 def _arm_summary(rows: list[dict[str, Any]], planned: int) -> dict[str, Any]:
     n = len(rows)
     passed = sum(_effective_pass(row) for row in rows)
@@ -180,7 +190,7 @@ def _arm_summary(rows: list[dict[str, Any]], planned: int) -> dict[str, Any]:
         "input_tokens_total": tokens_in,
         "output_tokens_total": tokens_out,
         "reported_latency_samples": len(known_latency),
-        "median_latency_seconds": median(known_latency) if known_latency else None,
+        "median_latency_seconds": _safe_median(known_latency),
     }
 
 
