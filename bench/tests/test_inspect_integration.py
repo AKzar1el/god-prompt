@@ -6,7 +6,7 @@ pytest.importorskip('inspect_ai')
 
 from godprompt_bench.eval import build_task
 from godprompt_bench.agent import experimental_contract_coding_agent
-from godprompt_bench.mcp_contract_adapter import ContractHold, EvidenceSession, InspectExecutionScope
+from godprompt_bench.mcp_contract_adapter import ContractHold, EvidenceSession, InspectExecutionScope, _contract_sha
 
 ROOT = Path(__file__).parents[1]
 REPO_ROOT = ROOT.parent
@@ -40,3 +40,101 @@ def test_experimental_agent_assembles_with_real_inspect_and_rejects_cross_sample
     other_scope = InspectExecutionScope('fixture-002', 'attempt-001')
     with pytest.raises(ContractHold, match='scope'):
         experimental_contract_coding_agent(REPO_ROOT, session=session, scope=other_scope)
+
+
+def _sample_and_contract(*, epoch=1, sample_id='impl-py-slugify'):
+    from inspect_ai.solver import TaskState
+
+    command = 'python -m pytest tests/test_parser.py'
+    task = 'Implement the requested slug normalizer'
+    state = TaskState(
+        model='mockllm/test', sample_id=sample_id, epoch=epoch,
+        input=task, messages=[],
+        metadata={
+            'allowed_paths': ['src/text.py'],
+            'expected_verification_commands': [command],
+        },
+    )
+    contract = {
+        'schema': 'godprompt.work_contract.v1',
+        'task': task,
+        'allowed_paths': ['src/text.py'],
+        'verification_commands': [{'id': 'VC-01', 'command': command}],
+        'forbidden_actions': ['network access'],
+        'success_criteria': [{'id': 'SC-01', 'text': 'Slug normalizer works'}],
+    }
+    contract['contract_id'] = _contract_sha(contract)
+    return state, contract
+
+
+def test_experimental_sample_agent_creates_fresh_epoch_bound_sessions(monkeypatch):
+    import godprompt_bench.agent as agent
+
+    assembled = []
+    def fake_agent(root, *, session, scope):
+        assembled.append((root, session, scope))
+        return ('agent', scope)
+    monkeypatch.setattr(agent, 'experimental_contract_coding_agent', fake_agent)
+    state, contract = _sample_and_contract(epoch=1)
+    a1, session1 = agent.experimental_contract_sample_agent(
+        REPO_ROOT, state=state, client=lambda *_: {}, contract=contract,
+    )
+    state2, _ = _sample_and_contract(epoch=2)
+    a2, session2 = agent.experimental_contract_sample_agent(
+        REPO_ROOT, state=state2, client=lambda *_: {}, contract=contract,
+    )
+    assert a1[0] == a2[0] == 'agent'
+    assert session1 is not session2
+    assert session1.execution_scope == InspectExecutionScope('impl-py-slugify', 'epoch-1-attempt-1')
+    assert session2.execution_scope == InspectExecutionScope('impl-py-slugify', 'epoch-2-attempt-1')
+    assert assembled[0][1] is session1 and assembled[1][1] is session2
+
+
+def test_experimental_sample_agent_builds_with_installed_inspect():
+    from godprompt_bench.agent import experimental_contract_sample_agent
+
+    state, contract = _sample_and_contract()
+    built, session = experimental_contract_sample_agent(
+        REPO_ROOT, state=state, client=lambda *_: {}, contract=contract,
+    )
+    assert built is not None
+    assert session.execution_scope == InspectExecutionScope('impl-py-slugify', 'epoch-1-attempt-1')
+
+
+@pytest.mark.parametrize('invalid', [
+    'wrong_task', 'wrong_paths', 'wrong_checks', 'wrong_digest', 'missing_metadata',
+])
+def test_experimental_sample_agent_rejects_unbound_contracts(invalid):
+    from godprompt_bench.agent import experimental_contract_sample_agent
+
+    state, contract = _sample_and_contract()
+    if invalid == 'wrong_task':
+        contract['task'] = 'Different task'
+    elif invalid == 'wrong_paths':
+        contract['allowed_paths'] = ['other.py']
+    elif invalid == 'wrong_checks':
+        contract['verification_commands'][0]['command'] = 'echo skipped'
+    elif invalid == 'wrong_digest':
+        contract['contract_id'] = 'sha256:' + '0' * 64
+    else:
+        state.metadata = None
+    if invalid in ('wrong_task', 'wrong_paths', 'wrong_checks'):
+        # Even a correctly re-fingerprinted contract cannot cross the sample boundary.
+        contract['contract_id'] = _contract_sha({
+            key: value for key, value in contract.items() if key != 'contract_id'
+        })
+    with pytest.raises(ContractHold):
+        experimental_contract_sample_agent(
+            REPO_ROOT, state=state, client=lambda *_: {}, contract=contract,
+        )
+
+
+@pytest.mark.parametrize('sample_id,epoch', [(12, 1), ('impl-py-slugify', 0), ('a/b', 1)])
+def test_experimental_sample_agent_rejects_unusable_inspect_scope(sample_id, epoch):
+    from godprompt_bench.agent import experimental_contract_sample_agent
+
+    state, contract = _sample_and_contract(sample_id=sample_id, epoch=epoch)
+    with pytest.raises(ContractHold, match='scope'):
+        experimental_contract_sample_agent(
+            REPO_ROOT, state=state, client=lambda *_: {}, contract=contract,
+        )

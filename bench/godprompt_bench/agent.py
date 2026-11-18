@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from pathlib import Path
 
 from .policy import inspect_workspace_approver
@@ -73,3 +75,58 @@ def experimental_contract_coding_agent(repo_root: Path, *, session, scope):
         approval=approval,
         attempts=1,
     )
+
+
+def experimental_contract_sample_agent(repo_root: Path, *, state, client, contract):
+    """Bind one opt-in agent/evidence session to an actual Inspect sample epoch.
+
+    The host must pass its TaskState and an already prepared MCP contract.
+    This only assembles an agent; it does not install a solver, run a model,
+    or turn surrogate sandbox invocation IDs into native ToolCall IDs.
+    """
+    from inspect_ai.solver import TaskState
+
+    from .mcp_contract_adapter import (
+        ContractHold, EvidenceSession, InspectExecutionScope, _contract_sha,
+    )
+
+    if not isinstance(state, TaskState):
+        raise ContractHold("expected host Inspect TaskState")
+    if (
+        not isinstance(state.sample_id, str)
+        or not re.fullmatch(r"[A-Za-z0-9_-]{3,80}", state.sample_id)
+        or type(state.epoch) is not int
+        or state.epoch < 1
+    ):
+        raise ContractHold("invalid Inspect sample/epoch scope")
+    if not isinstance(state.input, str) or not isinstance(state.metadata, Mapping):
+        raise ContractHold("missing Inspect sample task metadata")
+    if not isinstance(contract, Mapping):
+        raise ContractHold("missing prepared MCP contract")
+    try:
+        commands = [item["command"] for item in contract["verification_commands"]]
+        expected_commands = state.metadata["expected_verification_commands"]
+        expected_paths = state.metadata["allowed_paths"]
+        digest = _contract_sha({
+            key: value for key, value in contract.items() if key != "contract_id"
+        })
+        if (
+            not isinstance(expected_commands, list)
+            or not expected_commands
+            or not isinstance(expected_paths, list)
+            or not expected_paths
+            or any(not isinstance(item, str) or not item for item in commands)
+            or contract["task"] != state.input
+            or commands != expected_commands
+            or contract["allowed_paths"] != expected_paths
+            or contract["contract_id"] != digest
+        ):
+            raise ContractHold("MCP contract is not bound to the Inspect sample")
+    except (KeyError, TypeError, ValueError, OverflowError) as exc:
+        raise ContractHold("malformed Inspect sample contract") from exc
+
+    scope = InspectExecutionScope(state.sample_id, f"epoch-{state.epoch}-attempt-1")
+    session = EvidenceSession(client, contract, execution_scope=scope)
+    return experimental_contract_coding_agent(
+        repo_root, session=session, scope=scope,
+    ), session
