@@ -88,6 +88,16 @@ experimental builder automatically or requests a model run. The remaining
 per-sample host orchestration and native Inspect ToolCall correlation are
 required before this scaffold can produce trustworthy third-arm traces.
 
+For opt-in per-sample assembly, `experimental_contract_sample_agent` accepts
+the host's actual Inspect `TaskState` and an already prepared contract. It
+rejects mismatched task text, allowed paths, verification commands or contract
+fingerprint, then returns an agent and **new** in-memory evidence session scoped
+to that sample ID, epoch and the scaffold's single attempt. The host still must
+call this separately for each sample and must retain the returned session for
+later evidence review. A matching fingerprint detects alteration, **not** MCP
+origin or independent proof. This helper does not register a solver or third
+arm, attest native ToolCall IDs, run a model or change existing two-arm runs.
+
 The remaining work under
 [Bench 2.0 issue #348](https://github.com/AKzar1el/god-prompt/issues/348)
 is to wire the new tool into an isolated per-sample, approval-controlled
