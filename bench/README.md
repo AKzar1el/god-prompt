@@ -121,6 +121,15 @@ python -m godprompt_bench.run --profile smoke --dry-run
 
 For a copyable, human-readable preflight plan, run `python -m godprompt_bench.run --profile smoke --dry-run --format markdown`. This shows the validated profile, sample/limit budget, categories, optional model and controls, and fixture fingerprint without saving files. JSON remains the default for scripts. The Markdown option is deliberately restricted to `--dry-run`; it neither validates Docker/provider readiness nor estimates spend or proves performance.
 
+To evaluate a smaller, explicitly selected subset of the bundled corpus, copy a JSON file from `configs/smoke.json`, give it a distinct lowercase `name` (for example `my-check`), and edit `task_ids` and the resource limits. Preview it before any potentially paid run:
+
+```bash
+python -m godprompt_bench.run --profile-file my-check.json --list-tasks
+python -m godprompt_bench.run --profile-file my-check.json --dry-run --format markdown
+```
+
+`--profile-file` is mutually exclusive with `--profile`. Custom profiles may only select existing corpus tasks, have no more than three epochs, and may not exceed the bundled full profile's per-sample limits (30 messages, 300 seconds, 8192 output tokens). Files must be regular JSON files of at most 64 KiB. Reports prefix their profile identity with `custom-` to distinguish them from frozen reference runs. For live evaluation, supplying `--model` remains mandatory and **may incur provider charges**; preview and task listing never contact Docker or a model provider. Custom subset results are not the published full-profile reference benchmark.
+
 Smoke run:
 
 ```bash

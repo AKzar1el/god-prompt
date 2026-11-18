@@ -57,6 +57,34 @@ def load_profile(path: Path) -> RunProfile:
     return profile
 
 
+def load_custom_profile(path: Path, bench_root: Path) -> RunProfile:
+    """Allow smaller local plans without impersonating frozen reference profiles."""
+    if path.suffix.lower() != ".json" or path.is_symlink() or not path.is_file():
+        raise ValueError("custom profile must be an existing regular JSON file")
+    if path.stat().st_size > 65536:
+        raise ValueError("custom profile JSON exceeds 64 KiB")
+    profile = load_profile(path)
+    if not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", profile.name):
+        raise ValueError("custom profile name must be a short lowercase identifier")
+    if profile.name in ("smoke", "half", "full") or profile.name.startswith("half-frozen"):
+        raise ValueError("custom profile cannot reuse a bundled reference name")
+    full = load_profile(bench_root / "configs" / "full.json")
+    limits = ("epochs", "max_messages", "max_time_seconds", "max_output_tokens")
+    if any(getattr(profile, key) > getattr(full, key) for key in limits):
+        raise ValueError("custom profile limits cannot exceed the bundled full profile")
+    known_ids = {task.id for task in load_manifest(bench_root / "tasks" / "manifest.json")}
+    if not set(profile.task_ids).issubset(known_ids):
+        raise ValueError("custom profile task IDs must belong to the bundled corpus")
+    return RunProfile(
+        name=f"custom-{profile.name}",
+        task_ids=profile.task_ids,
+        epochs=profile.epochs,
+        max_messages=profile.max_messages,
+        max_time_seconds=profile.max_time_seconds,
+        max_output_tokens=profile.max_output_tokens,
+    )
+
+
 def validate_sample_coverage(
     profile: RunProfile, records: list[SampleRecord], task_categories: Mapping[str, str]
 ) -> None:
@@ -676,7 +704,10 @@ def main() -> None:
     bench_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description="Run the GodPrompt baseline-vs-GodPrompt benchmark")
     profile_names = ("smoke", "half", "full")
-    parser.add_argument("--profile", choices=profile_names, default="smoke")
+    profile_selection = parser.add_mutually_exclusive_group()
+    profile_selection.add_argument("--profile", choices=profile_names, default=None)
+    profile_selection.add_argument("--profile-file", type=Path,
+                                   help="Local bounded JSON profile (non-reference run)")
     parser.add_argument("--model", help="Inspect model name (required for a live evaluation, optional for --dry-run)")
     parser.add_argument("--temperature", type=float)
     parser.add_argument("--seed", type=int)
@@ -690,6 +721,8 @@ def main() -> None:
     offline_actions.add_argument("--list-profiles", action="store_true", help="Compare validated bundled profile sizes offline without model calls")
     offline_actions.add_argument("--list-tasks", action="store_true", help="List task IDs, categories and runtimes for a selected profile offline")
     args = parser.parse_args()
+    if args.profile_file is not None and args.list_profiles:
+        parser.error("--list-profiles only lists bundled profiles, not --profile-file")
     if args.format == "markdown" and not args.dry_run:
         parser.error("--format markdown requires --dry-run")
     if not (args.dry_run or args.list_profiles or args.list_tasks) and args.model is None:
@@ -710,13 +743,19 @@ def main() -> None:
             })
         print(json.dumps({"preview_only": True, "profiles": profiles}, indent=2, sort_keys=True))
         return
-    profile = load_profile(bench_root / "configs" / f"{args.profile}.json")
+    if args.profile_file is not None:
+        try:
+            profile = load_custom_profile(args.profile_file, bench_root)
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+            parser.error(f"invalid custom profile: {exc}")
+    else:
+        profile = load_profile(bench_root / "configs" / f"{args.profile or 'smoke'}.json")
     if args.list_tasks:
         plan = preview_benchmark(bench_root, profile)
         canonical_tasks = {task.id: task for task in load_manifest(bench_root / "tasks" / "manifest.json")}
         print(json.dumps({
             "preview_only": True,
-            "profile": args.profile,
+            "profile": "custom" if args.profile_file is not None else (args.profile or "smoke"),
             "profile_id": plan["profile"],
             "tasks_per_condition": plan["tasks_per_condition"],
             "fixture_bundles_sha256": plan["fixture_bundles_sha256"],

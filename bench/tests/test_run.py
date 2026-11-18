@@ -93,6 +93,112 @@ def test_cli_dry_run_without_model_previews_fixtures_offline(monkeypatch, capsys
     assert not output_dir.exists()
 
 
+def _custom_profile_file(tmp_path, *, name='one-off', task_count=2, epochs=1, max_output_tokens=4096):
+    profile = json.loads((ROOT / 'configs' / 'smoke.json').read_text(encoding='utf-8'))
+    profile.update(name=name, task_ids=profile['task_ids'][:task_count],
+                   epochs=epochs, max_output_tokens=max_output_tokens)
+    path = tmp_path / 'local-profile.json'
+    path.write_text(json.dumps(profile), encoding='utf-8')
+    return path
+
+
+def test_cli_custom_profile_preview_and_task_list_are_offline(monkeypatch, capsys, tmp_path):
+    import godprompt_bench.run as run_module
+
+    path = _custom_profile_file(tmp_path)
+    output = tmp_path / 'never-created'
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('custom preview must not run models'))
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--profile-file', str(path), '--dry-run',
+        '--output', str(output),
+    ])
+    run_module.main()
+    plan = json.loads(capsys.readouterr().out)
+    assert plan['profile'] == 'custom-one-off'
+    assert plan['tasks_per_condition'] == 2
+    assert plan['planned_samples'] == 4
+    assert not output.exists()
+
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--profile-file', str(path), '--list-tasks',
+    ])
+    run_module.main()
+    tasks = json.loads(capsys.readouterr().out)
+    assert tasks['profile'] == 'custom'
+    assert tasks['profile_id'] == 'custom-one-off'
+    assert len(tasks['tasks']) == 2
+    assert not output.exists()
+
+
+def test_cli_custom_profile_live_requires_model_and_preserves_selected_limits(
+    monkeypatch, capsys, tmp_path,
+):
+    import godprompt_bench.run as run_module
+
+    path = _custom_profile_file(tmp_path, task_count=1, epochs=2)
+    calls = []
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: calls.append((args, kwargs)) or Path('mock-output'))
+    monkeypatch.setattr(sys, 'argv', ['godprompt_bench.run', '--profile-file', str(path)])
+    with pytest.raises(SystemExit) as exc:
+        run_module.main()
+    assert exc.value.code == 2
+    assert not calls
+    capsys.readouterr()
+
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--profile-file', str(path), '--model', 'mockllm/test',
+    ])
+    run_module.main()
+    assert len(calls) == 1
+    assert calls[0][0][2].name == 'custom-one-off'
+    assert calls[0][0][2].task_ids == ('impl-py-slugify',)
+    assert calls[0][0][2].epochs == 2
+    assert calls[0][1]['model'] == 'mockllm/test'
+
+
+@pytest.mark.parametrize('invalid', [
+    {'epochs': 4},
+    {'max_messages': 31},
+    {'max_time_seconds': 301},
+    {'max_output_tokens': 8193},
+    {'name': 'full'},
+])
+def test_cli_custom_profile_rejects_unbounded_or_reference_claims(
+    monkeypatch, capsys, tmp_path, invalid,
+):
+    import godprompt_bench.run as run_module
+
+    path = _custom_profile_file(tmp_path)
+    profile = json.loads(path.read_text(encoding='utf-8'))
+    profile.update(invalid)
+    path.write_text(json.dumps(profile), encoding='utf-8')
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--profile-file', str(path), '--dry-run',
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('invalid profile must not evaluate'))
+    with pytest.raises(SystemExit) as exc:
+        run_module.main()
+    assert exc.value.code == 2
+    assert 'custom profile' in capsys.readouterr().err
+
+
+def test_cli_custom_profile_cannot_override_builtin_or_profile_list(monkeypatch, capsys, tmp_path):
+    import godprompt_bench.run as run_module
+
+    path = _custom_profile_file(tmp_path)
+    for extra in (['--profile', 'smoke'], ['--list-profiles']):
+        monkeypatch.setattr(sys, 'argv', [
+            'godprompt_bench.run', '--profile-file', str(path), *extra,
+        ])
+        with pytest.raises(SystemExit) as exc:
+            run_module.main()
+        assert exc.value.code == 2
+        capsys.readouterr()
+
+
 def test_cli_dry_run_markdown_produces_copyable_offline_plan(monkeypatch, capsys, tmp_path):
     import godprompt_bench.run as run_module
 
