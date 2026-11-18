@@ -41,6 +41,20 @@ lost on context reset rather than restored from unverifiable self-report.
 The MCP's ready state is *reported ready for independent review*, never an
 independent verification, release approval or completed benchmark.
 
+For host-side Inspect integration, `EvidenceSession` now has an opt-in
+`observe_inspect_exec` method. A trusted caller must bind a
+`InspectExecutionScope(sample_id, attempt_id)` when it creates the session,
+then supply the matching scope, real Inspect sandbox `ExecResult`, tool-call
+ID, exact approved command, and a complete execution-event indicator. The
+method reads the actual process return code, refuses missing/inconsistent
+status, cross-sample or cross-attempt receipts, cancelled/incomplete events,
+non-text output and oversized captures, and forwards only a digest in its
+MCP review payload. This **does not** install an Inspect hook or replace
+`bash`/`text_editor` or their existing approval policy. The stock Inspect
+`bash` ToolEvent omits the sandbox process return code, so feeding it directly
+into the evidence bridge would still be unsound. No live third-arm use is
+enabled by this helper.
+
 The remaining work under
 [Bench 2.0 issue #348](https://github.com/AKzar1el/god-prompt/issues/348)
 is to wire those hooks into the existing approved Inspect execution context,

@@ -11,6 +11,7 @@ import pytest
 from godprompt_bench.mcp_contract_adapter import (
     ContractHold,
     EvidenceSession,
+    InspectExecutionScope,
     ObservedToolResult,
     prepare_contract,
 )
@@ -190,3 +191,92 @@ def test_mcp_cannot_upgrade_report_to_independent_verification():
     adapter.observe_check("VC-01", receipt())
     with pytest.raises(ContractHold, match="independent"):
         adapter.review(changed_files=[], operations_performed=[], acceptance=[])
+
+
+def _inspect_session():
+    mcp = FakeMCP()
+    contract = prepare_contract(mcp, task=TASK, **INPUT)
+    scope = InspectExecutionScope("fixture-001", "attempt-001")
+    return EvidenceSession(mcp, contract, execution_scope=scope), scope, mcp
+
+
+def _inspect_result(returncode=0, *, stdout="1 passed", stderr="", success=None):
+    from inspect_ai.util import ExecResult
+
+    return ExecResult(
+        success=(returncode == 0) if success is None else success,
+        returncode=returncode,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+
+def _observe_inspect(adapter, scope, result, **kwargs):
+    adapter.observe_inspect_exec(
+        "VC-01",
+        scope=kwargs.pop("scope", scope),
+        tool_call_id=kwargs.pop("tool_call_id", "inspect-tool-001"),
+        command=kwargs.pop("command", INPUT["verification_commands"][0]),
+        exec_result=result,
+        event_complete=kwargs.pop("event_complete", True),
+        **kwargs,
+    )
+
+
+def test_inspect_exec_captures_actual_status_and_hashes_output():
+    adapter, scope, mcp = _inspect_session()
+    _observe_inspect(adapter, scope, _inspect_result(stdout="SECRET=example", stderr="warning"))
+    review = adapter.review(
+        changed_files=["src/parser.py"],
+        operations_performed=[],
+        acceptance=[{"id": "AC-01", "status": "met", "evidence_refs": ["VC-01"]}],
+    )
+    sent = mcp.calls[-1][1]["checks"][0]
+    assert review["status"] == "REPORTED_READY_FOR_INDEPENDENT_REVIEW"
+    assert sent["exit_code"] == 0
+    assert "SECRET" not in json.dumps(mcp.calls[-1][1])
+    assert "sha256:" in sent["evidence_excerpt"]
+
+
+def test_identical_output_with_different_real_exit_code_must_hold():
+    adapter, scope, _ = _inspect_session()
+    _observe_inspect(adapter, scope, _inspect_result(returncode=8, stdout="1 passed"))
+    review = adapter.review(changed_files=[], operations_performed=[], acceptance=[])
+    assert review["status"] == "HOLD"
+    assert "VERIFICATION_FAILED" in {issue["code"] for issue in review["issues"]}
+
+
+@pytest.mark.parametrize("scope,event_complete", [
+    (InspectExecutionScope("other-001", "attempt-001"), True),
+    (InspectExecutionScope("fixture-001", "other-001"), True),
+    (InspectExecutionScope("fixture-001", "attempt-001"), False),
+    (InspectExecutionScope("fixture-001", "attempt-001"), None),
+])
+def test_inspect_exec_cross_sample_attempt_or_missing_event_rejected(scope, event_complete):
+    adapter, _, _ = _inspect_session()
+    with pytest.raises(ContractHold):
+        _observe_inspect(adapter, scope, _inspect_result(), event_complete=event_complete)
+
+
+@pytest.mark.parametrize("result", [
+    _inspect_result(returncode=0, success=False),
+    _inspect_result(returncode=3, success=True),
+    _inspect_result(stdout=b"bytes"),
+    _inspect_result(stdout="x" * 65537),
+    None,
+])
+def test_inspect_exec_inconsistent_or_truncated_result_rejected(result):
+    adapter, scope, _ = _inspect_session()
+    with pytest.raises(ContractHold):
+        _observe_inspect(adapter, scope, result)
+
+
+def test_inspect_exec_replay_and_context_reset_fail_closed():
+    adapter, scope, mcp = _inspect_session()
+    _observe_inspect(adapter, scope, _inspect_result())
+    with pytest.raises(ContractHold):
+        _observe_inspect(adapter, scope, _inspect_result())
+    recovered = EvidenceSession(mcp, adapter.contract, execution_scope=scope)
+    assert recovered.review(changed_files=[], operations_performed=[], acceptance=[])["status"] == "HOLD"
+    with pytest.raises(ContractHold):
+        EvidenceSession(mcp, adapter.contract, execution_scope=InspectExecutionScope("", "attempt-001"))

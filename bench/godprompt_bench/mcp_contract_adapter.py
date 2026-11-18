@@ -39,6 +39,14 @@ class ObservedToolResult:
     output: str
 
 
+@dataclass(frozen=True)
+class InspectExecutionScope:
+    """Host-assigned sample and attempt identity for an Inspect sandbox result."""
+
+    sample_id: str
+    attempt_id: str
+
+
 def _mcp_json(result: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(result, Mapping) or result.get("isError") is True:
         raise ContractHold("MCP tool call failed")
@@ -137,13 +145,73 @@ def prepare_contract(
 class EvidenceSession:
     """Ephemeral evidence bridge; a context reset intentionally drops receipts."""
 
-    def __init__(self, client: MCPCall, contract: Mapping[str, Any]):
+    def __init__(
+        self,
+        client: MCPCall,
+        contract: Mapping[str, Any],
+        *,
+        execution_scope: InspectExecutionScope | None = None,
+    ):
         if not isinstance(contract, Mapping) or contract.get("schema") != CONTRACT_SCHEMA:
             raise ContractHold("invalid work contract")
+        if execution_scope is not None and (
+            not isinstance(execution_scope, InspectExecutionScope)
+            or not all(
+                isinstance(part, str) and re.fullmatch(r"[A-Za-z0-9_-]{3,80}", part)
+                for part in (execution_scope.sample_id, execution_scope.attempt_id)
+            )
+        ):
+            raise ContractHold("invalid Inspect execution scope")
         self.client = client
         self.contract = dict(contract)
+        self.execution_scope = execution_scope
         self._checks: dict[str, dict[str, Any]] = {}
         self._tool_call_ids: set[str] = set()
+
+    def observe_inspect_exec(
+        self,
+        check_id: str,
+        *,
+        scope: InspectExecutionScope,
+        tool_call_id: str,
+        command: str,
+        exec_result: Any,
+        event_complete: bool,
+    ) -> None:
+        """Capture a trusted sandbox ExecResult without guessing from ToolEvent.
+
+        Call only from host-controlled instrumentation *after* the ordinary
+        Inspect tool approval and sandbox execution. This helper neither runs
+        commands nor proves that its caller was trusted. The stock Inspect
+        bash ToolEvent is insufficient: it discards the process return code.
+        """
+        if self.execution_scope is None or scope != self.execution_scope:
+            raise ContractHold("missing or cross-sample Inspect execution scope")
+        if event_complete is not True:
+            raise ContractHold("incomplete or cancelled Inspect execution event")
+        try:
+            from inspect_ai.util import ExecResult
+        except ImportError as exc:
+            raise ContractHold("pinned Inspect runtime is unavailable") from exc
+        if not isinstance(exec_result, ExecResult):
+            raise ContractHold("not an Inspect sandbox ExecResult")
+        if (
+            type(exec_result.returncode) is not int
+            or type(exec_result.success) is not bool
+            or exec_result.success != (exec_result.returncode == 0)
+        ):
+            raise ContractHold("inconsistent or missing sandbox process status")
+        if type(exec_result.stdout) is not str or type(exec_result.stderr) is not str:
+            raise ContractHold("sandbox output is not complete text")
+        output = "\n".join(
+            part for part in (exec_result.stdout, exec_result.stderr) if part
+        )
+        if len(output.encode("utf-8")) > 65536:
+            raise ContractHold("sandbox output exceeds capture limit")
+        self.observe_check(
+            check_id,
+            ObservedToolResult(tool_call_id, command, exec_result.returncode, output),
+        )
 
     def observe_check(self, check_id: str, result: ObservedToolResult) -> None:
         """Ingest one event only at the trusted Inspect tool-result boundary.
