@@ -13,6 +13,7 @@ import json
 from dataclasses import fields
 from math import isfinite
 from pathlib import Path
+from random import Random
 import re
 from typing import Any
 
@@ -46,6 +47,13 @@ _COMPARISON_DISQUALIFIERS = {
     "unverified_clean_source",
 }
 _RESOURCE_FIELDS = ("input_tokens", "output_tokens", "failed_tool_calls", "retries")
+_UNCERTAINTY_RESAMPLES = 2048
+_UNCERTAINTY_MIN_TASKS = 10
+_UNCERTAINTY_DISQUALIFIERS = {
+    "mock_model", "non_full_profile", "incomplete_coverage",
+    "missing_model_identity", "missing_actual_model_identity", "mixed_actual_models",
+    "incomplete_commit_provenance", "unverified_clean_source",
+}
 
 
 def _no_nonfinite(value: str) -> Any:
@@ -173,6 +181,81 @@ def _pair_outcome(baseline_passed: bool, godprompt_passed: bool) -> str:
     return "baseline_pass_godprompt_fail" if baseline_passed else "baseline_fail_godprompt_pass"
 
 
+def _effective_pass(record: SampleRecord) -> bool:
+    """Match aggregate's scope-aware definition for imported historical rows."""
+    return bool(record.passed and not record.scope_violation)
+
+
+def _paired_cluster_uncertainty(
+    records: list[SampleRecord], cautions: list[str],
+) -> dict[str, Any]:
+    """Exploratory paired pass delta, resampling tasks rather than repeated epochs.
+
+    The interval describes variation across observed task clusters only, not
+    model-run authenticity, unseen benchmark generalization or causal effect.
+    """
+    pairs: dict[tuple[str, int], dict[str, SampleRecord]] = {}
+    for record in records:
+        pairs.setdefault((record.task_id, record.epoch), {})[record.condition] = record
+    clusters: dict[str, list[int]] = {}
+    excluded = 0
+    for (task_id, _), pair in pairs.items():
+        baseline, godprompt = pair.get("baseline"), pair.get("godprompt")
+        if (baseline is None or godprompt is None
+                or baseline.category != godprompt.category
+                or baseline.infrastructure_error is not None
+                or godprompt.infrastructure_error is not None):
+            excluded += 1
+            continue
+        delta = int(_effective_pass(godprompt)) - int(_effective_pass(baseline))
+        clusters.setdefault(task_id, []).append(delta)
+
+    matched = sum(len(values) for values in clusters.values())
+    limitations = sorted(set(cautions) & _UNCERTAINTY_DISQUALIFIERS)
+    if excluded:
+        limitations.append("unpaired_or_infrastructure_failed")
+    if len(clusters) < _UNCERTAINTY_MIN_TASKS:
+        limitations.append("fewer_than_10_distinct_tasks")
+
+    result: dict[str, Any] = {
+        "method": "paired_task_cluster_bootstrap_percentile",
+        "confidence_level": 0.95,
+        "resamples": 0,
+        "matched_task_epochs": matched,
+        "excluded_task_epochs": excluded,
+        "distinct_tasks": len(clusters),
+        "observed_pass_rate_delta": (
+            sum(sum(values) for values in clusters.values()) / matched if matched else None
+        ),
+        "interval_95": None,
+        "limitations": limitations,
+    }
+    if limitations:
+        return result
+
+    # Sorting makes the fixed-seed exploratory interval independent of CSV order.
+    # Resampling the entire per-task epoch bundle avoids treating epochs as
+    # independent tasks. No provider calls or external dependencies are needed.
+    task_groups = [clusters[key] for key in sorted(clusters)]
+    n = len(task_groups)
+    rng = Random(348)
+    samples: list[float] = []
+    for _ in range(_UNCERTAINTY_RESAMPLES):
+        sampled = [task_groups[rng.randrange(n)] for _ in range(n)]
+        samples.append(sum(sum(group) for group in sampled) / sum(len(group) for group in sampled))
+    samples.sort()
+
+    def percentile(probability: float) -> float:
+        position = (len(samples) - 1) * probability
+        index = int(position)
+        fraction = position - index
+        return samples[index] + fraction * (samples[min(index + 1, len(samples) - 1)] - samples[index])
+
+    result["resamples"] = _UNCERTAINTY_RESAMPLES
+    result["interval_95"] = [percentile(0.025), percentile(0.975)]
+    return result
+
+
 def _within_run_condition_pairs(
     records: list[SampleRecord],
 ) -> dict[str, Any]:
@@ -194,7 +277,7 @@ def _within_run_condition_pairs(
                 or godprompt.infrastructure_error is not None):
             totals["unpaired_task_epochs"] += 1
             continue
-        outcome = _pair_outcome(baseline.passed, godprompt.passed)
+        outcome = _pair_outcome(_effective_pass(baseline), _effective_pass(godprompt))
         totals[outcome] += 1
         totals["paired_task_epochs"] += 1
         by_category[baseline.category][outcome] += 1
@@ -314,6 +397,7 @@ def review_result(folder: Path) -> dict[str, Any]:
         "conditions": {name: recomputed[name] for name in ("baseline", "godprompt")},
         "by_category": recomputed["by_category"],
         "within_run_condition_pairs": _within_run_condition_pairs(records),
+        "paired_pass_uncertainty": _paired_cluster_uncertainty(records, cautions),
         "cautions": cautions,
         "note": "Counts and summaries were checked against local export rows; "
                 "this does not independently verify model execution, provenance or a performance claim.",
@@ -330,12 +414,12 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
     # Matching manifest fingerprints alone cannot establish which rows were scored.
     before_samples = {
         (row.task_id, row.condition, row.epoch):
-        (row.category, row.infrastructure_error is None, row.passed)
+        (row.category, row.infrastructure_error is None, _effective_pass(row))
         for row in _read_scores(before_folder)
     }
     after_samples = {
         (row.task_id, row.condition, row.epoch):
-        (row.category, row.infrastructure_error is None, row.passed)
+        (row.category, row.infrastructure_error is None, _effective_pass(row))
         for row in _read_scores(after_folder)
     }
 
@@ -638,6 +722,26 @@ def render_markdown(report: dict[str, Any]) -> str:
                 f"{counts['both_pass']} | {counts['both_fail']} | "
                 f"{counts['paired_task_epochs']} |"
             )
+        uncertainty = report["paired_pass_uncertainty"]
+        bounds = uncertainty["interval_95"]
+        interval_text = (
+            f"{_percentage_points(bounds[0])} to {_percentage_points(bounds[1])}"
+            if bounds is not None else "n/a (insufficient comparable evidence)"
+        )
+        lines += [
+            "", "**Task-cluster uncertainty (exploratory):** "
+            f"GodPrompt minus baseline {_percentage_points(uncertainty['observed_pass_rate_delta'])}; "
+            f"95% percentile interval {interval_text}; "
+            f"{uncertainty['distinct_tasks']} distinct task clusters, "
+            f"{uncertainty['matched_task_epochs']} matched task-epochs.",
+            "The resampling keeps each task's epochs together. It is not a performance claim, "
+            "not a causal confidence interval, and cannot authenticate model execution "
+            "or establish generalization beyond the observed tasks.",
+        ]
+        if uncertainty["limitations"]:
+            lines.append("**Interval limitations:** " + ", ".join(
+                _markdown_text(value) for value in uncertainty["limitations"]
+            ))
     lines += ["", "*Local artifact consistency does not authenticate a model run or establish a causal benefit.*"]
     return "\n".join(lines)
 

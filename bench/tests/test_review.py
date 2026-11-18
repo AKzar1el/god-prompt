@@ -141,6 +141,87 @@ def test_review_pairs_conditions_without_leaking_task_ids_or_counting_infra(
     assert "not a performance claim" in markdown.lower()
 
 
+def test_paired_cluster_bootstrap_is_deterministic_and_keeps_epochs_together():
+    from godprompt_bench.review import _paired_cluster_uncertainty
+
+    rows = []
+    for task in range(12):
+        for epoch in (1, 2, 3):
+            rows.extend([
+                replace(record("baseline", passed=task >= 8),
+                        task_id=f"private-task-{task}", epoch=epoch),
+                replace(record("godprompt", passed=task < 8),
+                        task_id=f"private-task-{task}", epoch=epoch),
+            ])
+    report = _paired_cluster_uncertainty(rows, [])
+    single_epoch = [row for row in rows if row.epoch == 1]
+    once = _paired_cluster_uncertainty(single_epoch, [])
+    assert report["method"] == "paired_task_cluster_bootstrap_percentile"
+    assert report["confidence_level"] == 0.95
+    assert report["resamples"] == 2048
+    assert report["matched_task_epochs"] == 36
+    assert report["distinct_tasks"] == 12
+    assert report["observed_pass_rate_delta"] == pytest.approx(1 / 3)
+    assert report["interval_95"] == once["interval_95"]
+    assert report["interval_95"] == _paired_cluster_uncertainty(list(reversed(rows)), [])["interval_95"]
+    assert report["interval_95"][0] <= 1 / 3 <= report["interval_95"][1]
+    assert "private-task" not in json.dumps(report)
+
+
+def test_paired_cluster_uncertainty_fails_closed_for_small_mock_or_missing_pairs():
+    from godprompt_bench.review import _paired_cluster_uncertainty
+
+    rows = [replace(record(condition), task_id=f"private-{i}")
+            for i in range(12) for condition in ("baseline", "godprompt")]
+    small = _paired_cluster_uncertainty(rows[:12], [])
+    assert small["interval_95"] is None
+    assert "fewer_than_10_distinct_tasks" in small["limitations"]
+    mock = _paired_cluster_uncertainty(rows, ["mock_model"])
+    assert mock["interval_95"] is None
+    assert "mock_model" in mock["limitations"]
+    missing = _paired_cluster_uncertainty(rows[:-1], [])
+    assert missing["matched_task_epochs"] == 11
+    assert missing["excluded_task_epochs"] == 1
+    assert missing["interval_95"] is None
+    assert "unpaired_or_infrastructure_failed" in missing["limitations"]
+
+
+def test_paired_outcomes_use_scope_aware_passes_for_historical_exports(tmp_path: Path):
+    from godprompt_bench.review import review_result
+
+    rows = [
+        replace(record("baseline"), scope_violation=True),
+        replace(record("godprompt"), scope_violation=False),
+    ]
+    folder = tmp_path / "scope-aware-pairs"
+    manifest = {
+        "run_id": "scope-aware-pairs", "profile": "smoke",
+        "requested_model": "mockllm/test", "actual_models": ["mockllm/test"],
+        "requested_samples": 2, "completed_samples": 2, "infrastructure_failures": 0,
+        "benchmark_commit_sha": "a" * 40, "godprompt_commit_sha": "b" * 40,
+        "working_tree_dirty": False,
+    }
+    export_run(folder, manifest, rows, [])
+    report = review_result(folder)
+    assert report["conditions"]["baseline"]["passed"] == 0
+    assert report["conditions"]["godprompt"]["passed"] == 1
+    assert report["within_run_condition_pairs"]["baseline_fail_godprompt_pass"] == 1
+    assert report["paired_pass_uncertainty"]["observed_pass_rate_delta"] == 1.0
+
+
+def test_review_renders_conservative_uncertainty_not_a_performance_claim(exported: Path):
+    from godprompt_bench.review import review_result, render_markdown
+
+    report = review_result(exported)
+    uncertainty = report["paired_pass_uncertainty"]
+    assert uncertainty["observed_pass_rate_delta"] == -1.0
+    assert uncertainty["matched_task_epochs"] == 1
+    assert uncertainty["interval_95"] is None
+    markdown = render_markdown(report)
+    assert "Task-cluster uncertainty" in markdown
+    assert "not a performance claim" in markdown.lower()
+
+
 def test_review_refuses_changed_summary(exported: Path):
     from godprompt_bench.review import review_result
 
