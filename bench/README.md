@@ -191,6 +191,24 @@ keep identical fingerprints; changing fixture bytes invalidates a frozen run
 even when task/mode manifests have not changed. The opt-in check is capped at
 1 MiB per bundle and 64 MiB total and never executes the verifier.
 
+For an automated **freeze check**, save the first complete preflight JSON report
+outside the public repository, review and retain it under owner control, then
+pass its path on every subsequent preflight:
+
+```sh
+python -m godprompt_bench.heldout --heldout ../private-heldout/tasks.json --modes ../private-heldout/modes.json --fixture-root ../private-heldout > ../private-heldout/frozen-preflight.json
+python -m godprompt_bench.heldout --heldout ../private-heldout/tasks.json --modes ../private-heldout/modes.json --fixture-root ../private-heldout --expected-report ../private-heldout/frozen-preflight.json
+```
+
+The second command exits nonzero when the reference manifest, private task
+manifest, mode sidecar, or fixture bytes differ, even if the private verifier
+alone changed. It requires a valid saved full report with all four SHA-256
+fingerprints and an unchanged fixture count; the result includes
+`input_fingerprints_match: true` only when those checks pass. Error messages
+identify the changed field but never print private fixture content or hashes.
+The saved report is **not signed**: this detects drift relative to the supplied
+owner-controlled report, not tampering with that report or corpus novelty.
+
 Without `--fixture-root`, the preflight remains metadata-only and does **not**
 read private fixture bundles. Neither mode proves that tasks are truly held out
 from training, installs the third arm, runs agents, validates verifier
