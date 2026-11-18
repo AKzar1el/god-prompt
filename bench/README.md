@@ -11,6 +11,43 @@ The task prompt, model, tools, sandbox, generation controls, message/time/token 
 
 > **Benchmark status:** the evaluation infrastructure and deterministic corpus are published. No reference-model superiority claim should be made until a real frozen run and its raw artifacts are published.
 
+## Experimental MCP task-contract arm (Bench 2.0 groundwork)
+
+The original two-condition, frozen 40-task reference benchmark is unchanged.
+An **opt-in, offline-only** preview shows the additional sample count and the
+exact released MCP source that an eventual third arm would use:
+
+```bash
+python -m godprompt_bench.run --profile smoke --dry-run --experimental-mcp-contract
+python -m godprompt_bench.run --profile smoke --dry-run --experimental-mcp-contract --format markdown
+```
+
+The preview pins GodPrompt MCP `v1.1.1` at
+`5934340cd4279d7ce103f344279058f54e0c6668` but performs **no**
+MCP, model, Docker, provider, or command calls and writes no results. The
+optional third arm is **not** yet connected to Inspect AI evaluation, and
+non-dry-run use of the experimental flag is rejected even when a model is set.
+This is not evidence of model improvement or approval to spend.
+
+The pure-Python `godprompt_bench.mcp_contract_adapter` supplies the
+first offline integration boundary for `classify_task`,
+`create_work_contract` and `review_work_evidence`.
+It accepts an injected MCP client and only accepts verification events from
+trusted tool-result instrumentation, **not agent-written command receipts**.
+Each captured output is summarized with a digest rather than exposing raw
+output; empty output, missing/nonzero checks, duplicate receipts, unscoped
+paths and forbidden operations must remain a hold. In-memory receipts are
+lost on context reset rather than restored from unverifiable self-report.
+The MCP's ready state is *reported ready for independent review*, never an
+independent verification, release approval or completed benchmark.
+
+The remaining work under
+[Bench 2.0 issue #348](https://github.com/AKzar1el/god-prompt/issues/348)
+is to wire those hooks into the existing approved Inspect execution context,
+freeze a separate held-out corpus and three-arm run manifest, retain
+identical sandboxes/controls, and validate paired uncertainty and raw
+anonymized trajectories. Live providers remain separately spend-gated.
+
 ## Corpus
 
 Version 1 contains exactly 40 small deterministic tasks:

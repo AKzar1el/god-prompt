@@ -74,6 +74,61 @@ def test_cli_dry_run_reports_offline_plan_without_executing_or_writing(monkeypat
     assert not output_dir.exists()
 
 
+def test_cli_experimental_mcp_arm_is_opt_in_offline_and_preserves_reference(monkeypatch, capsys, tmp_path):
+    import godprompt_bench.run as run_module
+
+    output_dir = tmp_path / 'never-written'
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--profile', 'smoke', '--model', 'mockllm/test',
+        '--dry-run', '--experimental-mcp-contract', '--output', str(output_dir),
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('experimental preview ran a model'))
+    run_module.main()
+    preview = json.loads(capsys.readouterr().out)
+    assert preview['preview_only'] is True
+    assert preview['conditions'] == ['baseline', 'godprompt']
+    assert preview['planned_samples'] == 12
+    extra = preview['experimental_arm']
+    assert extra['name'] == 'godprompt_mcp_contract'
+    assert extra['planned_additional_samples'] == 6
+    assert extra['reference_conditions_unchanged'] is True
+    assert extra['live_execution_enabled'] is False
+    assert extra['requires_separate_provider_spend_approval'] is True
+    assert len(extra['mcp_release_sha']) == 40
+    assert not output_dir.exists()
+
+
+def test_cli_experimental_mcp_arm_refuses_live_model_even_with_explicit_model(monkeypatch, capsys):
+    import godprompt_bench.run as run_module
+
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--experimental-mcp-contract', '--model', 'mockllm/test',
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('experimental arm must be blocked'))
+    with pytest.raises(SystemExit) as exc:
+        run_module.main()
+    assert exc.value.code == 2
+    assert 'requires --dry-run' in capsys.readouterr().err
+
+
+def test_cli_experimental_mcp_arm_markdown_discloses_gate(monkeypatch, capsys):
+    import godprompt_bench.run as run_module
+
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--dry-run', '--experimental-mcp-contract',
+        '--format', 'markdown',
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('markdown preview ran a model'))
+    run_module.main()
+    text = capsys.readouterr().out
+    assert 'Experimental MCP task-contract arm (preview only)' in text
+    assert 'Live execution is disabled' in text
+    assert 'Reference baseline and GodPrompt conditions are unchanged' in text
+
+
 def test_cli_dry_run_without_model_previews_fixtures_offline(monkeypatch, capsys, tmp_path):
     import godprompt_bench.run as run_module
 

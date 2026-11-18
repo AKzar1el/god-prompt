@@ -574,6 +574,18 @@ def format_preview_markdown(plan: dict[str, Any]) -> str:
         "This preview does not establish Docker daemon readiness, credentials, model "
         "compatibility or benchmark results.",
     ])
+    if "experimental_arm" in plan:
+        arm = plan["experimental_arm"]
+        lines.extend([
+            "",
+            "## Experimental MCP task-contract arm (preview only)",
+            "",
+            f"- Planned additional samples: {arm['planned_additional_samples']}",
+            f"- Pinned MCP release: {safe(arm['mcp_release_tag'])} ({safe(arm['mcp_release_sha'])})",
+            "- Reference baseline and GodPrompt conditions are unchanged.",
+            "- Live execution is disabled; trusted tool-output receipts and separate",
+            "  provider-spend approval are required before any paired evaluation.",
+        ])
     return "\n".join(lines) + "\n"
 
 
@@ -716,11 +728,17 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=bench_root / "results")
     parser.add_argument("--format", choices=("json", "markdown"), default="json",
                         help="Output format for --dry-run; JSON is the default")
+    parser.add_argument(
+        "--experimental-mcp-contract", action="store_true",
+        help="Preview the opt-in third MCP contract arm offline; live execution is not enabled",
+    )
     offline_actions = parser.add_mutually_exclusive_group()
     offline_actions.add_argument("--dry-run", action="store_true", help="Validate fixtures and print planned samples without model calls")
     offline_actions.add_argument("--list-profiles", action="store_true", help="Compare validated bundled profile sizes offline without model calls")
     offline_actions.add_argument("--list-tasks", action="store_true", help="List task IDs, categories and runtimes for a selected profile offline")
     args = parser.parse_args()
+    if args.experimental_mcp_contract and not args.dry_run:
+        parser.error("--experimental-mcp-contract currently requires --dry-run; live MCP evaluation is not enabled")
     if args.profile_file is not None and args.list_profiles:
         parser.error("--list-profiles only lists bundled profiles, not --profile-file")
     if args.format == "markdown" and not args.dry_run:
@@ -776,6 +794,21 @@ def main() -> None:
             reasoning_effort=args.reasoning_effort,
             reasoning_mode=args.reasoning_mode,
         )
+        if args.experimental_mcp_contract:
+            from .mcp_contract_adapter import MCP_RELEASE_SHA, MCP_RELEASE_TAG
+
+            plan["experimental_arm"] = {
+                "name": "godprompt_mcp_contract",
+                "preview_only": True,
+                "live_execution_enabled": False,
+                "reference_conditions_unchanged": True,
+                "planned_additional_samples": len(profile.task_ids) * profile.epochs,
+                "mcp_release_tag": MCP_RELEASE_TAG,
+                "mcp_release_sha": MCP_RELEASE_SHA,
+                "requires_trusted_tool_receipts": True,
+                "requires_separate_provider_spend_approval": True,
+                "held_out_failure_corpus": "not selected",
+            }
         if args.format == "markdown":
             print(format_preview_markdown(plan), end="")
         else:
