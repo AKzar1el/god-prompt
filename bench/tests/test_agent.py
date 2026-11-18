@@ -75,3 +75,49 @@ def test_coding_agent_applies_identical_single_attempt_approval_policy(tmp_path:
         assert len(built['approval']) == 1
         assert built['approval'][0].tools == ['bash', 'text_editor']
         assert built['approval'][0].approver == 'approver'
+
+
+def test_opt_in_contract_agent_reuses_named_approval_and_scoped_bash(tmp_path: Path, monkeypatch):
+    import sys
+    import types
+    from godprompt_bench.mcp_contract_adapter import EvidenceSession, InspectExecutionScope
+    import godprompt_bench.agent as agent
+    import godprompt_bench.inspect_receipt_bash as receipt_module
+
+    (tmp_path / 'GodPrompt.md').write_text('# GP', encoding='utf-8')
+    scope = InspectExecutionScope('fixture-001', 'attempt-001')
+    session = EvidenceSession(
+        lambda *_: {},
+        {'schema': 'godprompt.work_contract.v1', 'verification_commands': [
+            {'id': 'VC-01', 'command': 'python -m pytest tests/test_parser.py'},
+        ]},
+        execution_scope=scope,
+    )
+    fake_agent = types.ModuleType('inspect_ai.agent')
+    fake_tool = types.ModuleType('inspect_ai.tool')
+    fake_approval = types.ModuleType('inspect_ai.approval')
+    fake_agent.react = lambda **kwargs: kwargs
+    fake_tool.text_editor = lambda **kwargs: ('text_editor', kwargs)
+    class ApprovalPolicy:
+        def __init__(self, approver, tools):
+            self.approver = approver
+            self.tools = tools
+    fake_approval.ApprovalPolicy = ApprovalPolicy
+    monkeypatch.setitem(sys.modules, 'inspect_ai.agent', fake_agent)
+    monkeypatch.setitem(sys.modules, 'inspect_ai.tool', fake_tool)
+    monkeypatch.setitem(sys.modules, 'inspect_ai.approval', fake_approval)
+    monkeypatch.setattr(agent, 'inspect_workspace_approver', lambda: 'approver')
+    received = []
+    def fake_receipt_bash(actual_session, *, scope, timeout):
+        received.append((actual_session, scope, timeout))
+        return ('bash', 'observed-process-result')
+    monkeypatch.setattr(receipt_module, 'receipt_bash_tool', fake_receipt_bash)
+
+    built = agent.experimental_contract_coding_agent(tmp_path, session=session, scope=scope)
+    assert received == [(session, scope, 60)]
+    assert built['prompt'] == agent.condition_prompt('godprompt', tmp_path)
+    assert built['tools'] == [('bash', 'observed-process-result'), ('text_editor', {'timeout': 60})]
+    assert built['attempts'] == 1
+    assert len(built['approval']) == 1
+    assert built['approval'][0].tools == ['bash', 'text_editor']
+    assert built['approval'][0].approver == 'approver'

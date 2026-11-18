@@ -43,3 +43,33 @@ def coding_agent(condition: str, repo_root: Path):
         approval=approval,
         attempts=1,
     )
+
+
+def experimental_contract_coding_agent(repo_root: Path, *, session, scope):
+    """Assemble one opt-in, scope-bound contract agent under stock approvals.
+
+    The host must create a distinct EvidenceSession and InspectExecutionScope
+    for each sample/attempt. This does not register a third eval condition,
+    authorize a tool call, or run a provider. Native ToolCall correlation and
+    per-sample orchestration are separate prerequisites for a live third arm.
+    """
+    from inspect_ai.agent import react
+    from inspect_ai.approval import ApprovalPolicy
+    from inspect_ai.tool import text_editor
+
+    from .inspect_receipt_bash import receipt_bash_tool
+
+    # Build the receipt tool first so a missing/mismatched scope fails closed.
+    observed_bash = receipt_bash_tool(session, scope=scope, timeout=60)
+    approval = [
+        ApprovalPolicy(
+            approver=inspect_workspace_approver(),
+            tools=["bash", "text_editor"],
+        )
+    ]
+    return react(
+        prompt=condition_prompt("godprompt", repo_root),
+        tools=[observed_bash, text_editor(timeout=60)],
+        approval=approval,
+        attempts=1,
+    )
