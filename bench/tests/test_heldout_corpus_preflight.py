@@ -60,6 +60,42 @@ def test_offline_preflight_is_disjoint_and_does_not_leak_prompts_or_verifiers(ma
     assert reference.read_bytes() == before
 
 
+def test_opt_in_minimum_coverage_rejects_incomplete_failure_families(manifests):
+    reference, heldout, sidecar, _, _ = manifests
+    assert preflight_heldout_corpus(reference, heldout, sidecar)["uncovered_failure_modes"]
+    with pytest.raises(ValueError, match="minimum failure-mode coverage"):
+        preflight_heldout_corpus(reference, heldout, sidecar, min_cases_per_mode=1)
+
+
+@pytest.mark.parametrize("minimum", [0, -1, True, 1.5, "2", 10001])
+def test_minimum_failure_mode_coverage_rejects_invalid_threshold(manifests, minimum):
+    reference, heldout, sidecar, _, _ = manifests
+    with pytest.raises(ValueError, match="min_cases_per_mode"):
+        preflight_heldout_corpus(reference, heldout, sidecar, min_cases_per_mode=minimum)
+
+
+def test_opt_in_minimum_coverage_accepts_all_modes_without_leaking_cases(manifests):
+    reference, heldout, sidecar, _, _ = manifests
+    source = json.loads(reference.read_text(encoding="utf-8"))
+    tasks = []
+    cases = []
+    for index, mode in enumerate(FAILURE_MODES):
+        task = dict(source[index])
+        task["id"] = f"private-heldout-{index}"
+        task["fixture_dir"] = f"private-fixtures/coverage-{index}"
+        task["user_prompt"] = "PRIVATE_COVERAGE_SENTINEL"
+        tasks.append(task)
+        cases.append({"id": task["id"], "failure_mode": mode})
+    heldout.write_text(json.dumps(tasks), encoding="utf-8")
+    sidecar.write_text(json.dumps({"schema": "godprompt.heldout_modes.v1", "cases": cases}), encoding="utf-8")
+    report = preflight_heldout_corpus(reference, heldout, sidecar, min_cases_per_mode=1)
+    assert report["uncovered_failure_modes"] == []
+    assert all(report["failure_mode_counts"][mode] == 1 for mode in FAILURE_MODES)
+    assert "PRIVATE_COVERAGE_SENTINEL" not in json.dumps(report)
+    with pytest.raises(ValueError, match="minimum failure-mode coverage"):
+        preflight_heldout_corpus(reference, heldout, sidecar, min_cases_per_mode=2)
+
+
 def test_reference_task_id_casefold_overlap_is_rejected(manifests):
     reference, heldout, sidecar, tasks, cases = manifests
     original = json.loads(reference.read_text(encoding="utf-8"))[0]["id"]

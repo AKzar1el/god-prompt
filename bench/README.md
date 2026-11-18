@@ -168,6 +168,13 @@ verification, multi-session handoff, misleading receipts, negative instructions,
 hidden dependency changes and stale context. Partial pilots report missing
 categories instead of pretending to provide full coverage.
 
+For a corpus intended to cover **every** supported failure mode, opt into a
+fail-closed coverage gate using `--min-cases-per-mode 1` (or a higher positive
+minimum up to 10000). The command exits nonzero and names only deficient mode
+labels/counts if the manifest is incomplete. Leave the flag off for exploratory
+partial pilots. Passing this metadata gate does not establish sufficient
+statistical power, fixture integrity, novelty, or measured model improvement.
+
 This preflight does **not** read or execute private fixture bundles, prove that
 tasks are truly held out from training, install the third arm, run agents,
 validate hidden verifiers, or call a model/provider. Keep private corpus files
