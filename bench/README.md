@@ -312,6 +312,27 @@ python -m godprompt_bench.run --profile smoke --dry-run
 
 For a copyable, human-readable preflight plan, run `python -m godprompt_bench.run --profile smoke --dry-run --format markdown`. This shows the validated profile, sample/limit budget, categories, optional model and controls, and fixture fingerprint without saving files. JSON remains the default for scripts. The Markdown option is deliberately restricted to `--dry-run`; it neither validates Docker/provider readiness nor estimates spend or proves performance.
 
+For an **opt-in reviewed-plan check** before a potentially billable two-condition run,
+preview with the *same* model, profile, seed and generation controls you intend to
+use live:
+
+```sh
+python -m godprompt_bench.run --profile smoke --model openai/gpt-5.6-sol --seed 7 --dry-run
+```
+
+Review the sample counts and limits, then copy the returned `plan_sha256` into
+the corresponding live command as `--require-plan-sha256` (64 lowercase hex
+characters). The runner recomputes that digest **before** starting Inspect or
+calling a provider, and refuses a mismatch. The digest binds the selected task
+IDs and fixture bytes, task manifest, GodPrompt prompt, sandbox files, benchmark
+Python sources and dependency declaration, profile limits, model and generation controls.
+It does not depend on the output directory or estimated prices. A changed input
+requires a new reviewed preview; omitting the flag preserves existing live-run
+behavior. This is a local drift check, **not** a signature, authorization to
+spend, guarantee against changes after launch, or verification of Docker/model
+readiness. The experimental third MCP arm remains offline-only even when a plan
+fingerprint is provided.
+
 To evaluate a smaller, explicitly selected subset of the bundled corpus, copy a JSON file from `configs/smoke.json`, give it a distinct lowercase `name` (for example `my-check`), and edit `task_ids` and the resource limits. Preview it before any potentially paid run:
 
 ```bash
