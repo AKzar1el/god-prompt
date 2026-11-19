@@ -415,6 +415,7 @@ def build_manifest(
     godprompt_commit_sha: str,
     working_tree_dirty: bool,
     evaluated_godprompt_sha256: str | None = None,
+    evaluated_plan_sha256: str | None = None,
 ) -> dict[str, Any]:
     manifest_path = bench_root / "tasks" / "manifest.json"
     baseline_hash = hashlib.sha256(condition_prompt("baseline", repo_root).encode()).hexdigest()
@@ -448,6 +449,8 @@ def build_manifest(
         "sandbox_compose_sha256": _sha256(bench_root / "sandbox" / "compose.yaml"),
         "baseline_system_prompt_sha256": baseline_hash,
         "godprompt_system_prompt_sha256": godprompt_hash,
+        "plan_sha256_schema": "godprompt.bench.plan.v1" if evaluated_plan_sha256 else None,
+        "plan_sha256": evaluated_plan_sha256,
         "epochs": profile.epochs,
         "requested_samples": len(profile.task_ids) * profile.epochs * 2,
         "completed_samples": len(records) - infrastructure_failures,
@@ -630,9 +633,17 @@ def execute_benchmark(
     seed: int | None = None,
     reasoning_effort: str | None = None,
     reasoning_mode: str | None = None,
+    required_plan_sha256: str | None = None,
 ) -> Path:
     if temperature is not None and not isfinite(temperature):
         raise ValueError("temperature must be finite")
+
+    plan_sha256 = preview_benchmark(
+        bench_root, profile, model=model, temperature=temperature,
+        seed=seed, reasoning_effort=reasoning_effort, reasoning_mode=reasoning_mode,
+    )["plan_sha256"]
+    if required_plan_sha256 is not None and plan_sha256 != required_plan_sha256:
+        raise ValueError("plan fingerprint mismatch before evaluation")
 
     from inspect_ai import eval as inspect_eval
 
@@ -720,6 +731,11 @@ def execute_benchmark(
         raise ValueError("benchmark fixture files changed during evaluation; refusing public export")
     if condition_prompt("godprompt", repo_root) != evaluated_prompt:
         raise ValueError("GodPrompt instructions changed during evaluation; refusing public export")
+    if preview_benchmark(
+        bench_root, profile, model=model, temperature=temperature,
+        seed=seed, reasoning_effort=reasoning_effort, reasoning_mode=reasoning_mode,
+    )["plan_sha256"] != plan_sha256:
+        raise ValueError("benchmark plan inputs changed during evaluation; refusing public export")
 
     manifest = build_manifest(
         repo_root,
@@ -736,6 +752,7 @@ def execute_benchmark(
         godprompt_commit_sha=godprompt_commit_sha,
         working_tree_dirty=working_tree_dirty,
         evaluated_godprompt_sha256=evaluated_prompt_sha256,
+        evaluated_plan_sha256=plan_sha256,
     )
     public_dir = output_dir / manifest["run_id"]
     export_run(public_dir, manifest, records, trajectories)
@@ -873,6 +890,7 @@ def main() -> None:
         seed=args.seed,
         reasoning_effort=args.reasoning_effort,
         reasoning_mode=args.reasoning_mode,
+        required_plan_sha256=args.require_plan_sha256,
     )
     print(result)
 
