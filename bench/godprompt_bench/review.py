@@ -186,6 +186,28 @@ def _effective_pass(record: SampleRecord) -> bool:
     return bool(record.passed and not record.scope_violation)
 
 
+def _task_cluster_interval(clusters: dict[str, list[int]], *, seed: int) -> list[float]:
+    """Resample whole task bundles; repeated epochs are not independent tasks."""
+    task_groups = [clusters[key] for key in sorted(clusters)]
+    n = len(task_groups)
+    rng = Random(seed)
+    samples: list[float] = []
+    for _ in range(_UNCERTAINTY_RESAMPLES):
+        sampled = [task_groups[rng.randrange(n)] for _ in range(n)]
+        samples.append(sum(sum(group) for group in sampled) / sum(len(group) for group in sampled))
+    samples.sort()
+
+    def percentile(probability: float) -> float:
+        position = (len(samples) - 1) * probability
+        index = int(position)
+        fraction = position - index
+        return samples[index] + fraction * (
+            samples[min(index + 1, len(samples) - 1)] - samples[index]
+        )
+
+    return [percentile(0.025), percentile(0.975)]
+
+
 def _paired_cluster_uncertainty(
     records: list[SampleRecord], cautions: list[str],
 ) -> dict[str, Any]:
@@ -233,26 +255,8 @@ def _paired_cluster_uncertainty(
     if limitations:
         return result
 
-    # Sorting makes the fixed-seed exploratory interval independent of CSV order.
-    # Resampling the entire per-task epoch bundle avoids treating epochs as
-    # independent tasks. No provider calls or external dependencies are needed.
-    task_groups = [clusters[key] for key in sorted(clusters)]
-    n = len(task_groups)
-    rng = Random(348)
-    samples: list[float] = []
-    for _ in range(_UNCERTAINTY_RESAMPLES):
-        sampled = [task_groups[rng.randrange(n)] for _ in range(n)]
-        samples.append(sum(sum(group) for group in sampled) / sum(len(group) for group in sampled))
-    samples.sort()
-
-    def percentile(probability: float) -> float:
-        position = (len(samples) - 1) * probability
-        index = int(position)
-        fraction = position - index
-        return samples[index] + fraction * (samples[min(index + 1, len(samples) - 1)] - samples[index])
-
     result["resamples"] = _UNCERTAINTY_RESAMPLES
-    result["interval_95"] = [percentile(0.025), percentile(0.975)]
+    result["interval_95"] = _task_cluster_interval(clusters, seed=348)
     return result
 
 
@@ -322,6 +326,68 @@ def _cross_run_condition_pair_transitions(
         later_outcome = _pair_outcome(later_baseline[2], later_godprompt[2])
         result["transitions"][earlier_outcome][later_outcome] += 1
         result["paired_task_epochs"] += 1
+    return result
+
+
+def _cross_run_paired_cluster_uncertainty(
+    before_samples: dict[tuple[str, str, int], tuple[str, bool, bool]],
+    after_samples: dict[tuple[str, str, int], tuple[str, bool, bool]],
+    before_cautions: list[str],
+    after_cautions: list[str],
+) -> dict[str, Any]:
+    """Exploratory change in the within-task GodPrompt-minus-baseline contrast.
+
+    The caller must establish matching run metadata and scored identities first.
+    This is a descriptive paired comparison, not a causal difference-in-differences
+    estimate or independent authentication of two benchmark executions.
+    """
+    clusters: dict[str, list[int]] = {}
+    excluded = 0
+    task_epochs = {
+        (task, epoch) for task, _, epoch in before_samples.keys() | after_samples.keys()
+    }
+    for task_id, epoch in task_epochs:
+        keys = ((task_id, "baseline", epoch), (task_id, "godprompt", epoch))
+        rows = (
+            before_samples.get(keys[0]), before_samples.get(keys[1]),
+            after_samples.get(keys[0]), after_samples.get(keys[1]),
+        )
+        if (
+            any(row is None for row in rows)
+            or not all(row[1] for row in rows)
+            or len({row[0] for row in rows}) != 1
+        ):
+            excluded += 1
+            continue
+        earlier = int(rows[1][2]) - int(rows[0][2])
+        later = int(rows[3][2]) - int(rows[2][2])
+        clusters.setdefault(task_id, []).append(later - earlier)
+
+    matched = sum(len(values) for values in clusters.values())
+    limitations = sorted(
+        [f"before:{c}" for c in set(before_cautions) & _UNCERTAINTY_DISQUALIFIERS]
+        + [f"after:{c}" for c in set(after_cautions) & _UNCERTAINTY_DISQUALIFIERS]
+    )
+    if excluded:
+        limitations.append("unpaired_or_infrastructure_failed")
+    if len(clusters) < _UNCERTAINTY_MIN_TASKS:
+        limitations.append("fewer_than_10_distinct_tasks")
+    result: dict[str, Any] = {
+        "method": "cross_run_paired_task_cluster_bootstrap_percentile",
+        "confidence_level": 0.95,
+        "resamples": 0,
+        "matched_task_epochs": matched,
+        "excluded_task_epochs": excluded,
+        "distinct_tasks": len(clusters),
+        "observed_contrast_change": (
+            sum(sum(values) for values in clusters.values()) / matched if matched else None
+        ),
+        "interval_95": None,
+        "limitations": limitations,
+    }
+    if not limitations:
+        result["resamples"] = _UNCERTAINTY_RESAMPLES
+        result["interval_95"] = _task_cluster_interval(clusters, seed=349)
     return result
 
 
@@ -453,6 +519,7 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
     pass_transitions = None
     category_pass_transitions = None
     cross_run_pair_transitions = None
+    cross_run_paired_uncertainty = None
     if aligned:
         delta = {
             condition: after["conditions"][condition]["pass_rate"]
@@ -510,6 +577,9 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
         cross_run_pair_transitions = _cross_run_condition_pair_transitions(
             before_samples, after_samples
         )
+        cross_run_paired_uncertainty = _cross_run_paired_cluster_uncertainty(
+            before_samples, after_samples, before["cautions"], after["cautions"]
+        )
     return {
         "comparison_only": True,
         "metadata_aligned": aligned,
@@ -523,6 +593,7 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
         "condition_pass_transitions": pass_transitions,
         "category_pass_transitions": category_pass_transitions,
         "cross_run_condition_pair_transitions": cross_run_pair_transitions,
+        "cross_run_paired_uncertainty": cross_run_paired_uncertainty,
         "note": "Rate differences are descriptive, not a causal effect or verified performance claim. "
                 "Metadata alignment does not independently authenticate model runs; "
                 "non-full or mock results are not publication evidence.",
@@ -655,6 +726,27 @@ def render_markdown(report: dict[str, Any]) -> str:
                     f"| {labels[earlier]} | "
                     + " | ".join(str(row[later]) for later in _PAIR_OUTCOMES) + " |"
                 )
+            contrast = report["cross_run_paired_uncertainty"]
+            bounds = contrast["interval_95"]
+            interval_text = (
+                f"{_percentage_points(bounds[0])} to {_percentage_points(bounds[1])}"
+                if bounds is not None else "n/a (insufficient qualified evidence)"
+            )
+            lines += [
+                "", "**Cross-run paired contrast change (exploratory):** "
+                "(later GodPrompt minus baseline) minus (earlier GodPrompt minus baseline) "
+                f"= {_percentage_points(contrast['observed_contrast_change'])}; "
+                f"95% task-cluster percentile interval {interval_text}.",
+                f"Matched {contrast['matched_task_epochs']} task-epochs across "
+                f"{contrast['distinct_tasks']} distinct tasks; "
+                f"{contrast['excluded_task_epochs']} excluded.",
+                "Resampling keeps a task's repeated epochs together. This is descriptive, "
+                "not a causal confidence interval or an authenticated model result.",
+            ]
+            if contrast["limitations"]:
+                lines.append("**Cross-run interval limitations:** " + ", ".join(
+                    _markdown_text(value) for value in contrast["limitations"]
+                ))
             lines += [
                 "", "**Observed resource deltas:** Later minus earlier; provider tokens may be "
                 "unreported (n/a). No price or efficiency claim is implied.",

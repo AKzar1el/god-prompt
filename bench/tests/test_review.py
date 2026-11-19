@@ -186,6 +186,55 @@ def test_paired_cluster_uncertainty_fails_closed_for_small_mock_or_missing_pairs
     assert "unpaired_or_infrastructure_failed" in missing["limitations"]
 
 
+def test_cross_run_paired_contrast_uncertainty_keeps_task_epochs_together():
+    from godprompt_bench.review import _cross_run_paired_cluster_uncertainty
+
+    before, after = {}, {}
+    for task in range(12):
+        for epoch in (1, 2, 3):
+            for condition in ("baseline", "godprompt"):
+                key = (f"private-task-{task}", condition, epoch)
+                before[key] = ("implementation", True, False)
+                after[key] = ("implementation", True,
+                              task < 8 if condition == "godprompt" else task >= 8)
+    report = _cross_run_paired_cluster_uncertainty(before, after, [], [])
+    once = _cross_run_paired_cluster_uncertainty(
+        {key: value for key, value in before.items() if key[2] == 1},
+        {key: value for key, value in after.items() if key[2] == 1}, [], [],
+    )
+    assert report["method"] == "cross_run_paired_task_cluster_bootstrap_percentile"
+    assert report["resamples"] == 2048
+    assert report["matched_task_epochs"] == 36
+    assert report["distinct_tasks"] == 12
+    assert report["observed_contrast_change"] == pytest.approx(1 / 3)
+    assert report["interval_95"] == once["interval_95"]
+    assert report["interval_95"][0] <= 1 / 3 <= report["interval_95"][1]
+    assert "private-task" not in json.dumps(report)
+
+
+def test_cross_run_paired_contrast_interval_suppresses_unqualified_evidence():
+    from godprompt_bench.review import _cross_run_paired_cluster_uncertainty
+
+    before = {(f"private-{task}", condition, 1): ("implementation", True, True)
+              for task in range(12) for condition in ("baseline", "godprompt")}
+    after = dict(before)
+    mock = _cross_run_paired_cluster_uncertainty(before, after, ["mock_model"], [])
+    assert mock["interval_95"] is None
+    assert "before:mock_model" in mock["limitations"]
+    after.pop(("private-11", "godprompt", 1))
+    missing = _cross_run_paired_cluster_uncertainty(before, after, [], [])
+    assert missing["excluded_task_epochs"] == 1
+    assert missing["interval_95"] is None
+    assert "unpaired_or_infrastructure_failed" in missing["limitations"]
+    small_tasks = {f"private-{task}" for task in range(8)}
+    small = _cross_run_paired_cluster_uncertainty(
+        {key: value for key, value in before.items() if key[0] in small_tasks},
+        {key: value for key, value in before.items() if key[0] in small_tasks}, [], [],
+    )
+    assert small["interval_95"] is None
+    assert "fewer_than_10_distinct_tasks" in small["limitations"]
+
+
 def test_paired_outcomes_use_scope_aware_passes_for_historical_exports(tmp_path: Path):
     from godprompt_bench.review import review_result
 
@@ -551,8 +600,56 @@ def test_offline_comparison_reports_condition_deltas_and_no_performance_claim(
     assert report["before"]["run_id"] == "sample-run"
     assert report["after"]["run_id"] == "later-run"
     assert "mock_model" in report["before"]["cautions"]
+    assert report["cross_run_paired_uncertainty"]["interval_95"] is None
+    assert "before:mock_model" in report["cross_run_paired_uncertainty"]["limitations"]
     assert {p.name: p.read_bytes() for p in before.iterdir()} == before_files
     assert {p.name: p.read_bytes() for p in after.iterdir()} == after_files
+
+
+def test_cross_run_paired_contrast_renders_only_local_descriptive_uncertainty(
+    comparable_exports: tuple[Path, Path], tmp_path: Path,
+):
+    from godprompt_bench.review import compare_results, render_markdown
+
+    template = json.loads(
+        (comparable_exports[0] / "manifest.json").read_text(encoding="utf-8")
+    )
+    template.update(
+        requested_model="provider/test-model", actual_models=["provider/test-model"],
+        requested_samples=72, completed_samples=72, infrastructure_failures=0,
+        epochs=3,
+    )
+    before_rows, after_rows = [], []
+    for task in range(12):
+        for epoch in (1, 2, 3):
+            for condition in ("baseline", "godprompt"):
+                before_rows.append(replace(
+                    record(condition, passed=False),
+                    task_id=f"private-{task}", epoch=epoch,
+                ))
+                after_rows.append(replace(
+                    record(condition, passed=(
+                        task < 8 if condition == "godprompt" else task >= 8
+                    )),
+                    task_id=f"private-{task}", epoch=epoch,
+                ))
+    before, after = tmp_path / "cross-run-before", tmp_path / "cross-run-after"
+    export_run(before, {**template, "run_id": "cross-run-before"}, before_rows, [])
+    export_run(after, {**template, "run_id": "cross-run-after"}, after_rows, [])
+
+    report = compare_results(before, after)
+    assert report["metadata_aligned"] is True
+    contrast = report["cross_run_paired_uncertainty"]
+    assert contrast["observed_contrast_change"] == pytest.approx(1 / 3)
+    assert contrast["interval_95"] is not None
+    assert contrast["limitations"] == []
+    rendered = render_markdown(report)
+    assert "Cross-run paired contrast change" in rendered
+    assert "+33.3 pp" in rendered
+    assert "not a causal confidence interval" in rendered
+    assert "private-" not in rendered
+    assert "private-" not in json.dumps(report)
+    assert report["performance_claim_verified"] is False
 
 
 def test_comparison_suppresses_deltas_when_both_runs_route_multiple_models(
@@ -647,7 +744,9 @@ def test_comparison_suppresses_joint_pair_transitions_if_metadata_is_unaligned(
     report = compare_results(before, after)
     assert report["metadata_aligned"] is False
     assert report["cross_run_condition_pair_transitions"] is None
+    assert report["cross_run_paired_uncertainty"] is None
     assert "Joint baseline/GodPrompt pair transitions" not in render_markdown(report)
+    assert "Cross-run paired contrast change" not in render_markdown(report)
 
 
 def test_offline_comparison_resource_deltas_keep_unknown_tokens_unknown(
