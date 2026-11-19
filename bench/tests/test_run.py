@@ -583,6 +583,74 @@ def test_run_manifest_uses_evaluated_prompt_fingerprint():
     assert manifest['godprompt_system_prompt_sha256'] == evaluated_hash
 
 
+def test_execute_benchmark_exports_plan_fingerprint_for_later_review(monkeypatch, tmp_path):
+    import inspect_ai
+    import godprompt_bench.run as run_module
+
+    profile = load_profile(ROOT / 'configs' / 'smoke.json')
+    expected = run_module.preview_benchmark(
+        ROOT, profile, model='mockllm/model', seed=7,
+    )['plan_sha256']
+    exported = []
+    monkeypatch.setattr(run_module, 'build_task', lambda *args, **kwargs: object())
+    monkeypatch.setattr(run_module, 'validate_sample_coverage', lambda *args: None)
+    monkeypatch.setattr(inspect_ai, 'eval', lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        run_module, 'export_run',
+        lambda directory, manifest, records, trajectories: exported.append(manifest),
+    )
+
+    execute_benchmark(
+        ROOT.parent, ROOT, profile, model='mockllm/model',
+        output_dir=tmp_path, seed=7, required_plan_sha256=expected,
+    )
+    assert len(exported) == 1
+    assert exported[0]['plan_sha256'] == expected
+    assert exported[0]['plan_sha256_schema'] == 'godprompt.bench.plan.v1'
+
+
+def test_execute_benchmark_rechecks_required_digest_at_provider_boundary(monkeypatch, tmp_path):
+    import inspect_ai
+    import godprompt_bench.run as run_module
+
+    profile = load_profile(ROOT / 'configs' / 'smoke.json')
+    monkeypatch.setattr(
+        inspect_ai, 'eval',
+        lambda *args, **kwargs: pytest.fail('mismatched digest must not call provider'),
+    )
+    monkeypatch.setattr(
+        run_module, 'export_run',
+        lambda *args, **kwargs: pytest.fail('mismatched digest must not export'),
+    )
+
+    with pytest.raises(ValueError, match='plan fingerprint mismatch before evaluation'):
+        execute_benchmark(
+            ROOT.parent, ROOT, profile, model='mockllm/model',
+            output_dir=tmp_path, required_plan_sha256='0' * 64,
+        )
+
+
+def test_execute_benchmark_refuses_plan_input_drift_before_export(monkeypatch, tmp_path):
+    import inspect_ai
+    import godprompt_bench.run as run_module
+
+    profile = load_profile(ROOT / 'configs' / 'smoke.json')
+    fingerprints = iter(('a' * 64, 'b' * 64))
+    monkeypatch.setattr(run_module, '_plan_sha256', lambda *args: next(fingerprints))
+    monkeypatch.setattr(run_module, 'build_task', lambda *args, **kwargs: object())
+    monkeypatch.setattr(run_module, 'validate_sample_coverage', lambda *args: None)
+    monkeypatch.setattr(inspect_ai, 'eval', lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        run_module, 'export_run',
+        lambda *args, **kwargs: pytest.fail('changed plan must not be publicly exported'),
+    )
+
+    with pytest.raises(ValueError, match='plan inputs changed during evaluation'):
+        execute_benchmark(
+            ROOT.parent, ROOT, profile, model='mockllm/model', output_dir=tmp_path,
+        )
+
+
 def test_condition_batches_counterbalance_order_without_additional_samples():
     task_ids = tuple(f'task-{i}' for i in range(6))
     batches = condition_batches(task_ids)
@@ -740,7 +808,10 @@ def test_execute_benchmark_refuses_fixture_drift_before_public_export(monkeypatc
 
     with pytest.raises(ValueError, match='fixture.*changed during evaluation'):
         execute_benchmark(ROOT.parent, ROOT, profile, model='mockllm/model', output_dir=tmp_path)
-    assert events == [('snapshot', before), ('evaluate', None), ('snapshot', after)]
+    assert events == [
+        ('snapshot', before), ('snapshot', before),
+        ('evaluate', None), ('snapshot', after),
+    ]
 
 
 def test_execute_benchmark_refuses_prompt_drift_before_public_export(monkeypatch, tmp_path):

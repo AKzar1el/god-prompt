@@ -329,9 +329,16 @@ Python sources and dependency declaration, profile limits, model and generation 
 It does not depend on the output directory or estimated prices. A changed input
 requires a new reviewed preview; omitting the flag preserves existing live-run
 behavior. This is a local drift check, **not** a signature, authorization to
-spend, guarantee against changes after launch, or verification of Docker/model
+spend, a guarantee about external provider or Docker state, or verification of Docker/model
 readiness. The experimental third MCP arm remains offline-only even when a plan
 fingerprint is provided.
+
+For completed two-condition evaluations, the public run manifest also records
+`plan_sha256` and `plan_sha256_schema`. Compare the digest to the reviewed
+offline preview to audit which local inputs and controls were selected. The
+runner captures the digest before evaluation and refuses public export if those
+plan inputs change by the end; this does **not** attest remote provider behavior,
+prove actual charges, or authorize a model run.
 
 To evaluate a smaller, explicitly selected subset of the bundled corpus, copy a JSON file from `configs/smoke.json`, give it a distinct lowercase `name` (for example `my-check`), and edit `task_ids` and the resource limits. Preview it before any potentially paid run:
 
