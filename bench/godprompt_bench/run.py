@@ -486,6 +486,32 @@ def condition_batches(task_ids: tuple[str, ...]) -> list[tuple[str, tuple[str, .
     return batches
 
 
+def _plan_sha256(bench_root: Path, profile: RunProfile, plan: dict[str, Any]) -> str:
+    """Bind an optional live-run guard to the exact offline inputs, not prices."""
+    source_root = bench_root / "godprompt_bench"
+    source_hashes = {
+        path.name: _sha256(path)
+        for path in sorted(source_root.glob("*.py"))
+    }
+    if not source_hashes:
+        raise ValueError("missing benchmark source files for plan fingerprint")
+    inputs = {
+        "schema": "godprompt.bench.plan.v1",
+        "plan": {key: value for key, value in plan.items()
+                 if key not in ("preview_only", "cost_estimate_usd", "cost_note")},
+        "task_ids": list(profile.task_ids),
+        "task_manifest_sha256": _sha256(bench_root / "tasks" / "manifest.json"),
+        "godprompt_sha256": _sha256(bench_root.parent / "GodPrompt.md"),
+        "dockerfile_sha256": _sha256(bench_root / "sandbox" / "Dockerfile"),
+        "compose_sha256": _sha256(bench_root / "sandbox" / "compose.yaml"),
+        "pyproject_sha256": _sha256(bench_root / "pyproject.toml"),
+        "source_sha256": source_hashes,
+    }
+    payload = json.dumps(inputs, sort_keys=True, separators=(",", ":"),
+                         ensure_ascii=True, allow_nan=False).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def preview_benchmark(
     bench_root: Path,
     profile: RunProfile,
@@ -506,7 +532,7 @@ def preview_benchmark(
     if missing:
         raise ValueError(f"profile contains unknown task IDs: {missing}")
     fingerprints = fixture_fingerprints(bench_root, profile.task_ids)
-    return {
+    plan = {
         "preview_only": True,
         "profile": profile.name,
         "model": model,
@@ -528,6 +554,8 @@ def preview_benchmark(
         "cost_estimate_usd": None,
         "cost_note": "Actual provider cost cannot be inferred from configured sample limits.",
     }
+    plan["plan_sha256"] = _plan_sha256(bench_root, profile, plan)
+    return plan
 
 
 def format_preview_markdown(plan: dict[str, Any]) -> str:
@@ -556,6 +584,7 @@ def format_preview_markdown(plan: dict[str, Any]) -> str:
         f"- Max seconds per sample: {plan['max_time_seconds_per_sample']}",
         f"- Max output tokens per sample: {plan['max_output_tokens_per_sample']}",
         f"- Fixture SHA256: {safe(plan['fixture_bundles_sha256'])}",
+        f"- Plan SHA256: {safe(plan['plan_sha256'])}",
         "",
         "## Task categories",
         "",
@@ -583,6 +612,7 @@ def format_preview_markdown(plan: dict[str, Any]) -> str:
             f"- Planned additional samples: {arm['planned_additional_samples']}",
             f"- Pinned MCP release: {safe(arm['mcp_release_tag'])} ({safe(arm['mcp_release_sha'])})",
             "- Reference baseline and GodPrompt conditions are unchanged.",
+            "- No live-run plan SHA is offered for this disabled experimental arm.",
             "- Live execution is disabled; trusted tool-output receipts and separate",
             "  provider-spend approval are required before any paired evaluation.",
         ])
@@ -732,6 +762,10 @@ def main() -> None:
         "--experimental-mcp-contract", action="store_true",
         help="Preview the opt-in third MCP contract arm offline; live execution is not enabled",
     )
+    parser.add_argument(
+        "--require-plan-sha256", metavar="SHA256",
+        help="Opt-in live-run guard: require the same fingerprint shown by --dry-run",
+    )
     offline_actions = parser.add_mutually_exclusive_group()
     offline_actions.add_argument("--dry-run", action="store_true", help="Validate fixtures and print planned samples without model calls")
     offline_actions.add_argument("--list-profiles", action="store_true", help="Compare validated bundled profile sizes offline without model calls")
@@ -739,6 +773,11 @@ def main() -> None:
     args = parser.parse_args()
     if args.experimental_mcp_contract and not args.dry_run:
         parser.error("--experimental-mcp-contract currently requires --dry-run; live MCP evaluation is not enabled")
+    if args.require_plan_sha256 is not None:
+        if args.dry_run or args.list_profiles or args.list_tasks:
+            parser.error("--require-plan-sha256 is only valid for a live run")
+        if re.fullmatch(r"[0-9a-f]{64}", args.require_plan_sha256) is None:
+            parser.error("--require-plan-sha256 must be 64 lowercase hexadecimal characters")
     if args.profile_file is not None and args.list_profiles:
         parser.error("--list-profiles only lists bundled profiles, not --profile-file")
     if args.format == "markdown" and not args.dry_run:
@@ -797,6 +836,8 @@ def main() -> None:
         if args.experimental_mcp_contract:
             from .mcp_contract_adapter import MCP_RELEASE_SHA, MCP_RELEASE_TAG
 
+            # A third-arm preview must not supply a hash that approves a two-arm live run.
+            plan["plan_sha256"] = None
             plan["experimental_arm"] = {
                 "name": "godprompt_mcp_contract",
                 "preview_only": True,
@@ -814,6 +855,14 @@ def main() -> None:
         else:
             print(json.dumps(plan, indent=2, sort_keys=True))
         return
+    if args.require_plan_sha256 is not None:
+        actual = preview_benchmark(
+            bench_root, profile, model=args.model, temperature=args.temperature,
+            seed=args.seed, reasoning_effort=args.reasoning_effort,
+            reasoning_mode=args.reasoning_mode,
+        )["plan_sha256"]
+        if actual != args.require_plan_sha256:
+            parser.error("plan fingerprint mismatch; rerun --dry-run with the intended exact controls and review its plan SHA256")
     result = execute_benchmark(
         repo_root,
         bench_root,

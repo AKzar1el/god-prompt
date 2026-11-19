@@ -74,6 +74,97 @@ def test_cli_dry_run_reports_offline_plan_without_executing_or_writing(monkeypat
     assert not output_dir.exists()
 
 
+def test_preview_plan_fingerprint_is_stable_and_binds_run_controls():
+    from godprompt_bench.run import preview_benchmark
+
+    profile = load_profile(ROOT / 'configs' / 'smoke.json')
+    plan = preview_benchmark(ROOT, profile, model='mockllm/test', seed=42)
+    assert len(plan['plan_sha256']) == 64
+    assert plan['plan_sha256'] == preview_benchmark(
+        ROOT, profile, model='mockllm/test', seed=42,
+    )['plan_sha256']
+    assert plan['plan_sha256'] != preview_benchmark(
+        ROOT, profile, model='mockllm/other', seed=42,
+    )['plan_sha256']
+    assert plan['plan_sha256'] != preview_benchmark(
+        ROOT, profile, model='mockllm/test', seed=43,
+    )['plan_sha256']
+    changed_profile = RunProfile(
+        name=profile.name, task_ids=profile.task_ids,
+        epochs=profile.epochs, max_messages=profile.max_messages + 1,
+        max_time_seconds=profile.max_time_seconds,
+        max_output_tokens=profile.max_output_tokens,
+    )
+    assert plan['plan_sha256'] != preview_benchmark(
+        ROOT, changed_profile, model='mockllm/test', seed=42,
+    )['plan_sha256']
+
+
+def test_preview_plan_fingerprint_binds_godprompt_source(monkeypatch):
+    import godprompt_bench.run as run_module
+
+    profile = load_profile(ROOT / 'configs' / 'smoke.json')
+    before = run_module.preview_benchmark(ROOT, profile, model='mockllm/test')['plan_sha256']
+    original_hash = run_module._sha256
+    monkeypatch.setattr(run_module, '_sha256', lambda path:
+                        'f' * 64 if path.name == 'GodPrompt.md' else original_hash(path))
+    after = run_module.preview_benchmark(ROOT, profile, model='mockllm/test')['plan_sha256']
+    assert before != after
+
+
+def test_cli_required_plan_fingerprint_fails_before_model_on_mismatch(monkeypatch, capsys):
+    import godprompt_bench.run as run_module
+
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--profile', 'smoke', '--model', 'mockllm/test',
+        '--require-plan-sha256', '0' * 64,
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('mismatched plan ran a model'))
+    with pytest.raises(SystemExit) as exc:
+        run_module.main()
+    assert exc.value.code == 2
+    assert 'plan fingerprint mismatch' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('invalid_sha', ('not-a-sha', 'A' * 64))
+def test_cli_required_plan_fingerprint_rejects_malformed_input_without_model(
+    monkeypatch, capsys, invalid_sha,
+):
+    import godprompt_bench.run as run_module
+
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--model', 'mockllm/test',
+        '--require-plan-sha256', invalid_sha,
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('invalid plan ran a model'))
+    with pytest.raises(SystemExit) as exc:
+        run_module.main()
+    assert exc.value.code == 2
+    assert '64 lowercase hexadecimal characters' in capsys.readouterr().err
+
+
+def test_cli_required_matching_plan_fingerprint_allows_existing_run(monkeypatch, capsys):
+    import godprompt_bench.run as run_module
+
+    approved = run_module.preview_benchmark(
+        ROOT, load_profile(ROOT / 'configs' / 'smoke.json'),
+        model='mockllm/test', seed=42,
+    )['plan_sha256']
+    captured = []
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--profile', 'smoke', '--model', 'mockllm/test',
+        '--seed', '42', '--require-plan-sha256', approved,
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: captured.append(kwargs) or Path('mock-only'))
+    run_module.main()
+    assert len(captured) == 1
+    assert captured[0]['seed'] == 42
+    assert 'mock-only' in capsys.readouterr().out
+
+
 def test_cli_experimental_mcp_arm_is_opt_in_offline_and_preserves_reference(monkeypatch, capsys, tmp_path):
     import godprompt_bench.run as run_module
 
@@ -87,6 +178,7 @@ def test_cli_experimental_mcp_arm_is_opt_in_offline_and_preserves_reference(monk
     run_module.main()
     preview = json.loads(capsys.readouterr().out)
     assert preview['preview_only'] is True
+    assert preview['plan_sha256'] is None
     assert preview['conditions'] == ['baseline', 'godprompt']
     assert preview['planned_samples'] == 12
     extra = preview['experimental_arm']
@@ -125,6 +217,7 @@ def test_cli_experimental_mcp_arm_markdown_discloses_gate(monkeypatch, capsys):
     run_module.main()
     text = capsys.readouterr().out
     assert 'Experimental MCP task-contract arm (preview only)' in text
+    assert 'No live-run plan SHA is offered' in text
     assert 'Live execution is disabled' in text
     assert 'Reference baseline and GodPrompt conditions are unchanged' in text
 
