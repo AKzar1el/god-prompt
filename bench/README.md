@@ -340,6 +340,21 @@ runner captures the digest before evaluation and refuses public export if those
 plan inputs change by the end; this does **not** attest remote provider behavior,
 prove actual charges, or authorize a model run.
 
+An offline reviewer can now enforce the same previously approved 64-character
+digest against a **completed** public run, without launching a model:
+
+```sh
+python -m godprompt_bench.review results/<run-id> --require-plan-sha256 <reviewed-64-hex-sha256>
+```
+
+This opt-in gate verifies the saved `manifest.json` plan schema and digest,
+alongside the reviewer's existing public-score consistency checks, and fails
+closed on an absent, unsupported or different plan digest. JSON and Markdown
+reviews display the matched hash. It is for a single result directory, not
+`--compare`; older exports without a plan digest remain reviewable without
+this option. Matching a local manifest to a reviewed preview does **not**
+independently authenticate the run or provider, attest spend, or prove results.
+
 To evaluate a smaller, explicitly selected subset of the bundled corpus, copy a JSON file from `configs/smoke.json`, give it a distinct lowercase `name` (for example `my-check`), and edit `task_ids` and the resource limits. Preview it before any potentially paid run:
 
 ```bash

@@ -1380,3 +1380,66 @@ def test_offline_comparison_category_regression_flag_requires_compare(
         review.main()
     assert exc.value.code == 2
     assert "--compare" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("output_format", ("json", "markdown"))
+def test_review_cli_requires_matching_saved_plan_fingerprint(
+    exported: Path, monkeypatch, capsys, output_format,
+):
+    from godprompt_bench import review
+
+    digest = "a" * 64
+    path = exported / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest.update(plan_sha256_schema="godprompt.bench.plan.v1", plan_sha256=digest)
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    original = {entry.name: entry.read_bytes() for entry in exported.iterdir()}
+
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(exported),
+        "--require-plan-sha256", digest, "--format", output_format,
+    ])
+    review.main()
+    output = capsys.readouterr().out
+    assert digest in output
+    if output_format == "json":
+        assert json.loads(output)["reviewed_plan"]["matched_saved_manifest"] is True
+    else:
+        assert "reviewed plan" in output.lower()
+    assert {entry.name: entry.read_bytes() for entry in exported.iterdir()} == original
+
+
+@pytest.mark.parametrize("manifest_case", ("missing", "wrong_schema", "mismatch"))
+def test_review_rejects_unreviewed_or_mismatched_saved_plan(exported: Path, manifest_case):
+    from godprompt_bench.review import review_result
+
+    path = exported / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    if manifest_case != "missing":
+        manifest["plan_sha256_schema"] = (
+            "unsupported" if manifest_case == "wrong_schema" else "godprompt.bench.plan.v1"
+        )
+        manifest["plan_sha256"] = "b" * 64
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="plan"):
+        review_result(exported, required_plan_sha256="a" * 64)
+
+
+@pytest.mark.parametrize("extra", (
+    ["--compare", "second-run"], ["--require-plan-sha256", "NOT-A-SHA"],
+))
+def test_review_cli_rejects_ambiguous_or_malformed_plan_guard(
+    exported: Path, monkeypatch, capsys, extra,
+):
+    from godprompt_bench import review
+
+    args = ["godprompt_bench.review", str(exported), "--require-plan-sha256", "a" * 64]
+    if extra[0] == "--require-plan-sha256":
+        args[-1] = extra[1]
+    else:
+        args.extend(extra)
+    monkeypatch.setattr(sys, "argv", args)
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "plan" in capsys.readouterr().err.lower()
