@@ -622,6 +622,58 @@ def format_preview_markdown(plan: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def format_discovery_markdown(report: dict[str, Any]) -> str:
+    """Render validated offline profile/task discovery without a model run."""
+    def safe(value: Any) -> str:
+        text = str(value).replace("\r", " ").replace("\n", " ").replace("\t", " ")
+        for char in ("\\", "`", "|", "*", "_"):
+            text = text.replace(char, "\\" + char)
+        return text
+
+    if "profiles" in report:
+        lines = [
+            "# GodPrompt Bench profiles",
+            "",
+            "**Preview only** - No Docker, model or provider calls; no results written.",
+            "",
+            "| Profile | Tasks per condition | Epochs | Planned samples |",
+            "| --- | ---: | ---: | ---: |",
+        ]
+        for profile in report["profiles"]:
+            lines.append(
+                f"| {safe(profile['profile'])} | {profile['tasks_per_condition']} "
+                f"| {profile['epochs']} | {profile['planned_samples']} |"
+            )
+        lines.extend(["", "## Fixture and category coverage", ""])
+        for profile in report["profiles"]:
+            categories = ", ".join(
+                f"{safe(category)}: {count}"
+                for category, count in profile["categories"].items()
+            )
+            lines.append(
+                f"- {safe(profile['profile'])} ({safe(profile['profile_id'])}): "
+                f"{categories}; Fixture SHA256: {safe(profile['fixture_bundles_sha256'])}"
+            )
+    else:
+        lines = [
+            "# GodPrompt Bench tasks",
+            "",
+            "**Preview only** - No Docker, model or provider calls; no results written.",
+            "",
+            f"- Profile: {safe(report['profile'])} ({safe(report['profile_id'])})",
+            f"- Tasks per condition: {report['tasks_per_condition']}",
+            f"- Fixture SHA256: {safe(report['fixture_bundles_sha256'])}",
+            "",
+            "| ID | Category | Runtime |",
+            "| --- | --- | --- |",
+        ]
+        lines.extend(
+            f"| {safe(task['id'])} | {safe(task['category'])} | {safe(task['runtime'])} |"
+            for task in report["tasks"]
+        )
+    return "\n".join(lines) + "\n"
+
+
 def execute_benchmark(
     repo_root: Path,
     bench_root: Path,
@@ -774,7 +826,7 @@ def main() -> None:
     parser.add_argument("--reasoning-mode", choices=("standard", "pro"))
     parser.add_argument("--output", type=Path, default=bench_root / "results")
     parser.add_argument("--format", choices=("json", "markdown"), default="json",
-                        help="Output format for --dry-run; JSON is the default")
+                        help="Output format for offline previews/discovery; JSON is the default")
     parser.add_argument(
         "--experimental-mcp-contract", action="store_true",
         help="Preview the opt-in third MCP contract arm offline; live execution is not enabled",
@@ -797,8 +849,8 @@ def main() -> None:
             parser.error("--require-plan-sha256 must be 64 lowercase hexadecimal characters")
     if args.profile_file is not None and args.list_profiles:
         parser.error("--list-profiles only lists bundled profiles, not --profile-file")
-    if args.format == "markdown" and not args.dry_run:
-        parser.error("--format markdown requires --dry-run")
+    if args.format == "markdown" and not (args.dry_run or args.list_profiles or args.list_tasks):
+        parser.error("--format markdown requires an offline action")
     if not (args.dry_run or args.list_profiles or args.list_tasks) and args.model is None:
         parser.error("--model is required unless --dry-run, --list-profiles, or --list-tasks is specified")
 
@@ -815,7 +867,9 @@ def main() -> None:
                     "categories", "fixture_bundles_sha256",
                 )},
             })
-        print(json.dumps({"preview_only": True, "profiles": profiles}, indent=2, sort_keys=True))
+        report = {"preview_only": True, "profiles": profiles}
+        print(format_discovery_markdown(report) if args.format == "markdown"
+              else json.dumps(report, indent=2, sort_keys=True))
         return
     if args.profile_file is not None:
         try:
@@ -827,7 +881,7 @@ def main() -> None:
     if args.list_tasks:
         plan = preview_benchmark(bench_root, profile)
         canonical_tasks = {task.id: task for task in load_manifest(bench_root / "tasks" / "manifest.json")}
-        print(json.dumps({
+        report = {
             "preview_only": True,
             "profile": "custom" if args.profile_file is not None else (args.profile or "smoke"),
             "profile_id": plan["profile"],
@@ -838,7 +892,9 @@ def main() -> None:
                  "runtime": canonical_tasks[task_id].runtime}
                 for task_id in profile.task_ids
             ],
-        }, indent=2, sort_keys=True))
+        }
+        print(format_discovery_markdown(report) if args.format == "markdown"
+              else json.dumps(report, indent=2, sort_keys=True))
         return
     if args.dry_run:
         plan = preview_benchmark(
