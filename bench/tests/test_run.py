@@ -393,22 +393,46 @@ def test_cli_dry_run_markdown_escapes_user_model_and_shows_controls(monkeypatch,
     assert 'Reasoning mode: pro' in report
 
 
-@pytest.mark.parametrize('offline_action', ([], ['--list-profiles'], ['--list-tasks']))
-def test_cli_markdown_format_rejects_non_dry_run_without_execution(
-    monkeypatch, capsys, offline_action,
-):
+def test_cli_markdown_format_rejects_live_run_without_execution(monkeypatch, capsys):
     import godprompt_bench.run as run_module
 
     monkeypatch.setattr(sys, 'argv', [
         'godprompt_bench.run', '--model', 'mockllm/test',
-        '--format', 'markdown', *offline_action,
+        '--format', 'markdown',
     ])
     monkeypatch.setattr(run_module, 'execute_benchmark',
                         lambda *args, **kwargs: pytest.fail('format selection must not evaluate'))
     with pytest.raises(SystemExit) as exc:
         run_module.main()
     assert exc.value.code == 2
-    assert '--format markdown requires --dry-run' in capsys.readouterr().err
+    assert '--format markdown requires an offline action' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(('discovery_args', 'expected_heading', 'expected_row'), (
+    (['--list-profiles'], '# GodPrompt Bench profiles', '| smoke |'),
+    (['--profile', 'smoke', '--list-tasks'], '# GodPrompt Bench tasks', '| impl-py-slugify |'),
+))
+def test_cli_markdown_discovery_is_copyable_offline_and_does_not_write(
+    monkeypatch, capsys, tmp_path, discovery_args, expected_heading, expected_row,
+):
+    import godprompt_bench.run as run_module
+
+    output_dir = tmp_path / 'must-not-exist'
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', *discovery_args, '--format', 'markdown',
+        '--output', str(output_dir),
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('discovery ran a model'))
+
+    run_module.main()
+    report = capsys.readouterr().out
+    assert expected_heading in report
+    assert expected_row in report
+    assert '**Preview only**' in report
+    assert 'Fixture SHA256' in report
+    assert 'hidden_verifier' not in report
+    assert not output_dir.exists()
 
 
 def test_cli_paid_run_still_requires_explicit_model(monkeypatch, capsys):
