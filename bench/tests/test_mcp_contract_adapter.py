@@ -342,7 +342,47 @@ def test_native_inspect_tool_call_correlates_to_completed_result():
         changed_files=["src/parser.py"], operations_performed=[],
         acceptance=[{"id": "AC-01", "status": "met", "evidence_refs": ["VC-01"]}],
     )["status"] == "REPORTED_READY_FOR_INDEPENDENT_REVIEW"
-    assert "inspect-tool-001" in mcp.calls[-1][1]["checks"][0]["evidence_excerpt"]
+    sent = mcp.calls[-1][1]["checks"][0]["evidence_excerpt"]
+    assert "inspect-tool-001" not in sent
+    assert "tool_id_sha256:" in sent
+
+
+@pytest.mark.parametrize("call_id", ["tool.call:42/attempt-1", "inspect-tool-\u03bb-001"])
+def test_native_tool_call_ids_are_opaque_and_not_exposed_to_mcp(call_id):
+    """Inspect identities are equality tokens, not ASCII path-like names."""
+    adapter, scope, mcp = _inspect_session()
+    call = ToolCall(
+        id=call_id, function="bash",
+        arguments={"command": INPUT["verification_commands"][0]},
+    )
+    adapter.observe_native_inspect_exec(
+        "VC-01", scope=scope, tool_call=call,
+        completed_call_id=call_id, exec_result=_inspect_result(),
+        event_complete=True,
+    )
+    excerpt = adapter.review(
+        changed_files=["src/parser.py"], operations_performed=[],
+        acceptance=[{"id": "AC-01", "status": "met", "evidence_refs": ["VC-01"]}],
+    )
+    assert excerpt["status"] == "REPORTED_READY_FOR_INDEPENDENT_REVIEW"
+    serialized = json.dumps(mcp.calls[-1][1], ensure_ascii=False)
+    assert call_id not in serialized
+    assert "tool_id_sha256:" in serialized
+
+
+@pytest.mark.parametrize("call_id", ["", "a" * 1025])
+def test_native_opaque_tool_call_ids_still_have_size_bounds(call_id):
+    adapter, scope, _ = _inspect_session()
+    call = ToolCall(
+        id=call_id, function="bash",
+        arguments={"command": INPUT["verification_commands"][0]},
+    )
+    with pytest.raises(ContractHold):
+        adapter.observe_native_inspect_exec(
+            "VC-01", scope=scope, tool_call=call,
+            completed_call_id=call_id, exec_result=_inspect_result(),
+            event_complete=True,
+        )
 
 
 @pytest.mark.parametrize("call,completed_id", [

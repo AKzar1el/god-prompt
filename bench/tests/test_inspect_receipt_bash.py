@@ -71,7 +71,7 @@ def test_receipt_bash_is_named_bash_and_preserves_stock_command_surface(monkeypa
     assert sb.calls == [(["bash", "--login", "-c", CHECK], 60, None)]
     assert review(session)["status"] == "REPORTED_READY_FOR_INDEPENDENT_REVIEW"
     sent = captured[-1]["checks"][0]
-    assert re.fullmatch(r"ins-[0-9a-f]{32}", sent["evidence_excerpt"].split(";")[0].split()[-1])
+    assert re.fullmatch(r"tool_id_sha256:[0-9a-f]{64}", sent["evidence_excerpt"].split(";")[0].split()[-1])
     assert sent["exit_code"] == 0
     assert "SECRET" not in str(captured[-1])
 
