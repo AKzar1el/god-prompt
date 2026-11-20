@@ -184,3 +184,56 @@ def prepare_experimental_contract_sample_agent(
         repo_root, state=state, client=client, contract=contract,
     )
     return agent, session, contract
+
+
+def prepare_experimental_contract_sample_batch(
+    repo_root: Path, *, samples, client, risk_level: str = "medium",
+):
+    """Preflight and prepare independent opt-in agents for multiple Inspect samples.
+
+    Validate the entire host-supplied batch before making any MCP calls, so a
+    duplicate epoch or malformed public requirement cannot silently reuse a
+    previous sample's evidence session. This does not execute the agents,
+    register a third evaluation condition or authenticate native ToolCall IDs.
+    """
+    from .mcp_contract_adapter import ContractHold
+
+    if not isinstance(samples, (list, tuple)) or not samples:
+        raise ContractHold("missing Inspect sample batch")
+    if not callable(client):
+        raise ContractHold("missing MCP contract client")
+
+    validated = []
+    seen = set()
+    for item in samples:
+        if not isinstance(item, Mapping):
+            raise ContractHold("malformed Inspect sample batch item")
+        state = item.get("state")
+        _inspect_sample_inputs(state)
+        key = (state.sample_id, state.epoch)
+        if key in seen:
+            raise ContractHold("duplicate Inspect sample/epoch in batch")
+        seen.add(key)
+        criteria = item.get("success_criteria")
+        forbidden = item.get("forbidden_actions")
+        for label, values in (
+            ("success criteria", criteria),
+            ("forbidden actions", forbidden),
+        ):
+            if (
+                not isinstance(values, (list, tuple))
+                or not values
+                or any(not isinstance(value, str) or not value.strip() for value in values)
+                or len(values) != len(set(values))
+            ):
+                raise ContractHold(f"missing or invalid {label} for Inspect sample")
+        validated.append((key, state, list(criteria), list(forbidden)))
+
+    result = {}
+    for key, state, criteria, forbidden in validated:
+        result[key] = prepare_experimental_contract_sample_agent(
+            repo_root, state=state, client=client,
+            success_criteria=criteria, forbidden_actions=forbidden,
+            risk_level=risk_level,
+        )
+    return result

@@ -115,6 +115,19 @@ agent. Call it separately for each sample/epoch. This is deterministic
 agent, execute sandbox commands, invoke a model, authenticate the MCP origin,
 or establish native Inspect ToolCall-ID provenance.
 
+For a host preparing several samples, the opt-in
+`prepare_experimental_contract_sample_batch` helper accepts a list of
+`{"state": TaskState, "success_criteria": [...], "forbidden_actions": [...]}`
+items. It validates **every** host-provided sample and public requirement
+before contacting the injected MCP client, rejects duplicate sample/epoch
+pairs, and returns a separate `(agent, session, contract)` for each
+`(sample_id, epoch)` key. Different epochs of the same task retain separate
+in-memory evidence sessions; hidden task metadata is never forwarded as
+contract input. A later MCP failure can still interrupt preparation after
+earlier MCP calls, so callers must discard an incomplete batch. This is
+preparation only, not model execution, native tool-call attestation, or
+permission to run the experimental third arm.
+
 The remaining work under
 [Bench 2.0 issue #348](https://github.com/AKzar1el/god-prompt/issues/348)
 is to wire the new tool into an isolated per-sample, approval-controlled
