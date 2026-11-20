@@ -280,18 +280,27 @@ class EvidenceSession:
             raise ContractHold("observed tool output must be text")
         if (
             not isinstance(result.tool_call_id, str)
-            or not re.fullmatch(r"[A-Za-z0-9_-]{3,80}", result.tool_call_id)
+            or not result.tool_call_id
             or result.tool_call_id in self._tool_call_ids
         ):
             raise ContractHold("missing, malformed or replayed tool invocation ID")
+        try:
+            tool_id_bytes = result.tool_call_id.encode("utf-8")
+        except UnicodeError as exc:
+            raise ContractHold("tool invocation ID is not valid UTF-8") from exc
+        if len(tool_id_bytes) > 1024:
+            raise ContractHold("tool invocation ID exceeds capture limit")
 
         # Never send raw stdout/stderr (which may contain secrets) to an MCP.
+        # Native Inspect IDs are opaque and might contain arbitrary characters;
+        # hash them rather than requiring an ASCII shape or exporting them.
         # Empty output remains empty evidence so the MCP review must HOLD.
         excerpt = ""
         if result.output.strip():
             encoded = result.output.encode("utf-8")
             excerpt = (
-                f"captured tool result {result.tool_call_id}; bytes={len(encoded)}; "
+                f"captured tool result tool_id_sha256:{hashlib.sha256(tool_id_bytes).hexdigest()}; "
+                f"bytes={len(encoded)}; "
                 f"sha256:{hashlib.sha256(encoded).hexdigest()}"
             )
         self._checks[check_id] = {
