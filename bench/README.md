@@ -117,11 +117,23 @@ or establish native Inspect ToolCall-ID provenance.
 
 The remaining work under
 [Bench 2.0 issue #348](https://github.com/AKzar1el/god-prompt/issues/348)
-is to wire the new tool into an isolated per-sample, approval-controlled
-Inspect execution context (including exact tool-call provenance),
+includes a native Inspect ToolCall-ID correlation and evidence-review bridge,
 freeze a separate held-out corpus and three-arm run manifest, retain
 identical sandboxes/controls, and validate paired uncertainty and raw
 anonymized trajectories. Live providers remain separately spend-gated.
+
+For host-controlled offline integration, `experimental_contract_sample_solver`
+now returns an **opt-in Inspect Solver** that calls the public MCP contract
+preparation helper separately for each actual `TaskState.sample_id` and epoch,
+then converts the scope-bound ReAct agent with Inspect's `as_solver`. Provide
+an explicit `success_criteria_by_sample` mapping, `forbidden_actions`, and a
+synchronous `on_prepared(scope, session, contract)` callback that retains each
+session for later review. Missing criteria, duplicate sample/epoch invocations,
+invalid host metadata, and MCP ambiguity fail closed before model execution.
+This does **not** run a model when constructed, enable a third runner condition,
+claim native model ToolCall-ID provenance, complete evidence review, or authorize
+provider spend. The existing `bash`/`text_editor` approval policy remains in
+force; live experimental comparisons require the separate remaining gates.
 
 ## Corpus
 

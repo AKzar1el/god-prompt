@@ -184,3 +184,75 @@ def prepare_experimental_contract_sample_agent(
         repo_root, state=state, client=client, contract=contract,
     )
     return agent, session, contract
+
+
+def experimental_contract_sample_solver(
+    repo_root: Path, *, client, success_criteria_by_sample,
+    forbidden_actions, on_prepared,
+):
+    """Opt-in Inspect solver that prepares an isolated MCP agent per sample/epoch.
+
+    The host supplies explicit public criteria and a synchronous callback to
+    retain the EvidenceSession. The callback reports *preparation*, not task
+    completion or independent evidence verification. This solver is intentionally
+    not registered as a default Bench condition or exposed through the runner.
+    """
+    from inspect_ai.agent import as_solver
+    from inspect_ai.solver import solver
+
+    from .mcp_contract_adapter import ContractHold
+
+    if not callable(client):
+        raise ContractHold("missing MCP contract client")
+    if not isinstance(success_criteria_by_sample, Mapping):
+        raise ContractHold("missing public success criteria by sample")
+    if not callable(on_prepared):
+        raise ContractHold("missing host preparation callback")
+    if (
+        not isinstance(forbidden_actions, (list, tuple))
+        or not forbidden_actions
+        or any(not isinstance(item, str) or not item.strip() for item in forbidden_actions)
+        or len(forbidden_actions) != len(set(forbidden_actions))
+    ):
+        raise ContractHold("invalid forbidden actions")
+    frozen_forbidden = tuple(forbidden_actions)
+
+    # Freeze the host's public plan for this solver instance across epochs.
+    criteria = {}
+    for sample_id, values in success_criteria_by_sample.items():
+        if (
+            not isinstance(sample_id, str)
+            or not re.fullmatch(r"[A-Za-z0-9_-]{3,80}", sample_id)
+            or not isinstance(values, (list, tuple))
+            or not values
+            or any(not isinstance(item, str) or not item.strip() for item in values)
+            or len(values) != len(set(values))
+        ):
+            raise ContractHold("invalid public success criteria by sample")
+        criteria[sample_id] = tuple(values)
+
+    @solver
+    def scoped_contract_solver():
+        seen_scopes = set()
+
+        async def solve(state, generate):
+            _inspect_sample_inputs(state)
+            if state.sample_id not in criteria:
+                raise ContractHold("missing public success criteria for Inspect sample")
+            scope_key = (state.sample_id, state.epoch)
+            if scope_key in seen_scopes:
+                raise ContractHold("duplicate Inspect sample/epoch invocation")
+
+            agent, session, contract = prepare_experimental_contract_sample_agent(
+                repo_root, state=state, client=client,
+                success_criteria=criteria[state.sample_id],
+                forbidden_actions=frozen_forbidden,
+            )
+            converted = as_solver(agent)
+            seen_scopes.add(scope_key)
+            on_prepared(session.execution_scope, session, contract)
+            return await converted(state, generate)
+
+        return solve
+
+    return scoped_contract_solver()
