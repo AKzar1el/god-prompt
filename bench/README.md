@@ -76,6 +76,14 @@ an unapproved execution shortcut. No default agent invokes this factory:
 it is an offline-tested building block, **not** an enabled live third arm,
 an independent approval, or an outcome/uplift result.
 
+For a future trusted Inspect event hook, `EvidenceSession.observe_native_inspect_exec`
+accepts a real Inspect `ToolCall`, the host-observed completed call ID, and the
+sandbox `ExecResult`. It fails closed on different event IDs, tool names,
+malformed arguments, parse errors, or commands outside the contract before
+capturing evidence. Supplying these objects does not independently prove their
+origin: the host must attest the correlation, and the current surrogate-ID
+`receipt_bash_tool` is **not** wired to this native event path.
+
 An opt-in `godprompt_bench.agent.experimental_contract_coding_agent` now
 assembles that receipt-producing `bash` tool alongside the stock `text_editor`
 inside a **single** GodPrompt ReAct agent with the same named

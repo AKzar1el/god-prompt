@@ -7,6 +7,7 @@ import hashlib
 import json
 
 import pytest
+from inspect_ai.tool import ToolCall
 
 from godprompt_bench.mcp_contract_adapter import (
     ContractHold,
@@ -307,3 +308,41 @@ def test_inspect_exec_replay_and_context_reset_fail_closed():
     assert recovered.review(changed_files=[], operations_performed=[], acceptance=[])["status"] == "HOLD"
     with pytest.raises(ContractHold):
         EvidenceSession(mcp, adapter.contract, execution_scope=InspectExecutionScope("", "attempt-001"))
+
+
+def test_native_inspect_tool_call_correlates_to_completed_result():
+    adapter, scope, mcp = _inspect_session()
+    call = ToolCall(
+        id="inspect-tool-001", function="bash",
+        arguments={"command": INPUT["verification_commands"][0]},
+    )
+    adapter.observe_native_inspect_exec(
+        "VC-01", scope=scope, tool_call=call,
+        completed_call_id=call.id, exec_result=_inspect_result(),
+        event_complete=True,
+    )
+    assert adapter.review(
+        changed_files=["src/parser.py"], operations_performed=[],
+        acceptance=[{"id": "AC-01", "status": "met", "evidence_refs": ["VC-01"]}],
+    )["status"] == "REPORTED_READY_FOR_INDEPENDENT_REVIEW"
+    assert "inspect-tool-001" in mcp.calls[-1][1]["checks"][0]["evidence_excerpt"]
+
+
+@pytest.mark.parametrize("call,completed_id", [
+    (ToolCall(id="inspect-tool-001", function="bash", arguments={"command": INPUT["verification_commands"][0]}), "other-event-001"),
+    (ToolCall(id="inspect-tool-001", function="text_editor", arguments={"command": INPUT["verification_commands"][0]}), "inspect-tool-001"),
+    (ToolCall(id="inspect-tool-001", function="bash", arguments={"command": "echo forged"}), "inspect-tool-001"),
+    (ToolCall(id="inspect-tool-001", function="bash", arguments={"command": INPUT["verification_commands"][0], "extra": True}), "inspect-tool-001"),
+    (ToolCall(id="inspect-tool-001", function="bash", arguments={"command": INPUT["verification_commands"][0]}, parse_error="bad args"), "inspect-tool-001"),
+    ("model-written event", "inspect-tool-001"),
+])
+def test_native_inspect_tool_call_rejects_unbound_or_malformed_events(call, completed_id):
+    adapter, scope, mcp = _inspect_session()
+    with pytest.raises(ContractHold):
+        adapter.observe_native_inspect_exec(
+            "VC-01", scope=scope, tool_call=call,
+            completed_call_id=completed_id, exec_result=_inspect_result(),
+            event_complete=True,
+        )
+    assert adapter.review(changed_files=[], operations_performed=[], acceptance=[])["status"] == "HOLD"
+    assert not mcp.calls[-1][1]["checks"]
