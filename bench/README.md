@@ -461,6 +461,8 @@ For an automated offline coverage check, add `--require-evaluable` to review one
 
 For a conservative, opt-in **within-run CI signal** use `python -m godprompt_bench.review results/<run-id> --require-nondegrading-pairs`. This prints the normal diagnostics and exits 1 if requested samples are missing, an infrastructure error occurred, a task/epoch lacks a matched baseline/GodPrompt pair, no pairs are evaluable, multiple distinct actual models were reported, or baseline-only passes outnumber GodPrompt-only passes. An equal number of one-sided wins passes; both-pass/both-fail pairs are neutral. This flag is for **one** saved run, not `--compare`. It is an observed paired-outcome check, not a statistical significance test, an authenticated run, a causal improvement claim or permission to publish benchmarks; mock/non-full runs retain their explicit cautions. No provider calls or result writes occur.
 
+Public export stages all four files in an unpredictable temporary **sibling directory outside the published run folder**, with owner-only temporary-directory permissions on POSIX; it then attempts to roll back on filesystem errors, with `manifest.json` replaced last. The public artifacts and rollback copies are redacted before promotion, but protecting the parent filesystem and any web server that exposes it remains the operator's responsibility. It is **not crash-atomic** across all four files: after an abrupt process or host failure, inspect existing artifacts for consistency before sharing results. Incomplete rollback preserves its recovery files for manual inspection.
+
 Credential-like fields are recursively redacted from public JSON/JSONL exports.
 
 ## CI

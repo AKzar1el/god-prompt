@@ -3,7 +3,9 @@ from __future__ import annotations
 import csv
 import json
 import re
+import shutil
 import stat
+import tempfile
 from dataclasses import asdict
 from io import StringIO
 from math import isfinite
@@ -227,12 +229,53 @@ def export_run(
         if target.exists() and target.stat().st_nlink > 1:
             raise ValueError(f"refusing linked public artifact: {name}")
 
-    (output_dir / "manifest.json").write_text(serialized_manifest, encoding="utf-8")
-    (output_dir / "summary.json").write_text(serialized_summary, encoding="utf-8")
+    # Keep temporary report and rollback copies OUTSIDE the public run folder.
+    # Use a same-filesystem sibling so Path.replace remains an atomic file
+    # operation; tempfile.mkdtemp creates an unpredictable, owner-only
+    # directory on POSIX. The completed public files remain intentionally
+    # readable; this is not a crash-atomic multi-file transaction.
+    stage = Path(tempfile.mkdtemp(prefix=".godprompt-export-", dir=output_dir.parent))
+    # The manifest is the provenance marker; replace it only after data files.
+    names = ("scores.csv", "trajectories.jsonl", "summary.json", "manifest.json")
+    promoted: list[str] = []
+    existing: set[str] = set()
+    preserve_recovery = False
+    try:
+        (stage / "manifest.json").write_text(serialized_manifest, encoding="utf-8")
+        (stage / "summary.json").write_text(serialized_summary, encoding="utf-8")
+        with (stage / "scores.csv").open("w", newline="", encoding="utf-8") as handle:
+            handle.write(serialized_scores)
+        (stage / "trajectories.jsonl").write_text(
+            "".join(trajectory + "\n" for trajectory in serialized_trajectories), encoding="utf-8"
+        )
 
-    with (output_dir / "scores.csv").open("w", newline="", encoding="utf-8") as handle:
-        handle.write(serialized_scores)
+        backups = stage / "backups"
+        backups.mkdir()
+        for name in names:
+            target = output_dir / name
+            if target.exists():
+                shutil.copy2(target, backups / name)
+                existing.add(name)
 
-    with (output_dir / "trajectories.jsonl").open("w", encoding="utf-8") as handle:
-        for trajectory in serialized_trajectories:
-            handle.write(trajectory + "\n")
+        for name in names:
+            (stage / name).replace(output_dir / name)
+            promoted.append(name)
+    except Exception as error:
+        rollback_errors: list[OSError] = []
+        for name in reversed(promoted):
+            try:
+                if name in existing:
+                    (stage / "backups" / name).replace(output_dir / name)
+                else:
+                    (output_dir / name).unlink()
+            except OSError as rollback_error:
+                rollback_errors.append(rollback_error)
+        if rollback_errors:
+            preserve_recovery = True
+            raise RuntimeError(
+                f"public export rollback incomplete; recovery files preserved at {stage}"
+            ) from error
+        raise
+    finally:
+        if not preserve_recovery:
+            shutil.rmtree(stage)
