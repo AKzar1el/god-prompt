@@ -630,20 +630,34 @@ def format_discovery_markdown(report: dict[str, Any]) -> str:
             text = text.replace(char, "\\" + char)
         return text
 
+    def duration(seconds: int) -> str:
+        if seconds % 3600 == 0:
+            return f"{seconds // 3600} h"
+        if seconds % 60 == 0:
+            return f"{seconds // 60} min"
+        return f"{seconds} s"
+
     if "profiles" in report:
         lines = [
             "# GodPrompt Bench profiles",
             "",
             "**Preview only** - No Docker, model or provider calls; no results written.",
             "",
-            "| Profile | Tasks per condition | Epochs | Planned samples |",
-            "| --- | ---: | ---: | ---: |",
+            "| Profile | Tasks per condition | Epochs | Planned samples | Per-sample limit | Cumulative sample-time ceiling |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
         ]
         for profile in report["profiles"]:
             lines.append(
                 f"| {safe(profile['profile'])} | {profile['tasks_per_condition']} "
-                f"| {profile['epochs']} | {profile['planned_samples']} |"
+                f"| {profile['epochs']} | {profile['planned_samples']} "
+                f"| {profile['max_time_seconds_per_sample']} s "
+                f"| {duration(profile['cumulative_sample_time_limit_seconds'])} |"
             )
+        lines.extend([
+            "",
+            "Cumulative limits sum per-sample time caps across both conditions and all epochs; "
+            "not a wall-clock or cost estimate (parallelism and overhead vary).",
+        ])
         lines.extend(["", "## Fixture and category coverage", ""])
         for profile in report["profiles"]:
             categories = ", ".join(
@@ -864,8 +878,11 @@ def main() -> None:
                 "profile_id": plan["profile"],
                 **{key: plan[key] for key in (
                     "tasks_per_condition", "epochs", "planned_samples",
-                    "categories", "fixture_bundles_sha256",
+                    "max_time_seconds_per_sample", "categories", "fixture_bundles_sha256",
                 )},
+                "cumulative_sample_time_limit_seconds": (
+                    plan["planned_samples"] * plan["max_time_seconds_per_sample"]
+                ),
             })
         report = {"preview_only": True, "profiles": profiles}
         print(format_discovery_markdown(report) if args.format == "markdown"

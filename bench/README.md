@@ -327,7 +327,7 @@ python -m godprompt_bench.run --profile smoke --list-tasks --format markdown
 python -m godprompt_bench.run --profile smoke --dry-run
 ```
 
-`--list-profiles` compares the bundled smoke, half and full profiles in one validated JSON report: task counts, epochs, total planned samples, category coverage and a fixture fingerprint for each. It does not require a model, start Docker, call a provider or write result files. Use it to choose a profile before running the more detailed `--dry-run` preview.
+`--list-profiles` compares the bundled smoke, half and full profiles in one validated JSON report: task counts, epochs, total planned samples, per-sample time limits, the **cumulative sample-time ceiling** (the sum of those limits across both conditions and all epochs), category coverage and a fixture fingerprint for each. Markdown formats the ceilings as durations: 36 min for smoke, 10 h for half and 20 h for full. These are **not** predicted elapsed wall-clock durations or model costs; samples may run concurrently and startup, infrastructure and provider overhead vary. The command does not require a model, start Docker, call a provider or write result files. Use it to choose a profile before running the more detailed `--dry-run` preview.
 
 `--list-tasks` shows the selected profile's task IDs, categories and runtimes in their configured order, plus its validated fixture fingerprint. It helps you inspect the task mix before choosing a potentially paid evaluation. Only public task metadata is shown, never fixture contents or hidden verifiers; like the other preview commands, it makes no model or Docker calls and writes no results. Choose another set with `--profile half` or `--profile full`.
 

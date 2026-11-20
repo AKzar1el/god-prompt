@@ -431,6 +431,12 @@ def test_cli_markdown_discovery_is_copyable_offline_and_does_not_write(
     assert expected_row in report
     assert '**Preview only**' in report
     assert 'Fixture SHA256' in report
+    if discovery_args == ['--list-profiles']:
+        assert '| Per-sample limit | Cumulative sample-time ceiling |' in report
+        assert '| smoke | 6 | 1 | 12 | 180 s | 36 min |' in report
+        assert '| half | 20 | 3 | 120 | 300 s | 10 h |' in report
+        assert '| full | 40 | 3 | 240 | 300 s | 20 h |' in report
+        assert 'not a wall-clock or cost estimate' in report
     assert 'hidden_verifier' not in report
     assert not output_dir.exists()
 
@@ -466,6 +472,10 @@ def test_cli_lists_validated_profiles_offline_without_model_or_output(monkeypatc
                 ('smoke', 6, 1, 12), ('half', 20, 3, 120), ('full', 40, 3, 240),
             ]
     assert report['profiles'][1]['profile_id'] == 'half-frozen-2026-08-29'
+    assert [p['max_time_seconds_per_sample'] for p in report['profiles']] == [180, 300, 300]
+    assert [p['cumulative_sample_time_limit_seconds'] for p in report['profiles']] == [
+        2160, 36000, 72000,
+    ]
     assert all(sum(p['categories'].values()) == p['tasks_per_condition']
                and len(p['fixture_bundles_sha256']) == 64 for p in report['profiles'])
     assert not output_dir.exists()
