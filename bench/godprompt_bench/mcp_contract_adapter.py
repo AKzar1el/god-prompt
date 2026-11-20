@@ -213,6 +213,47 @@ class EvidenceSession:
             ObservedToolResult(tool_call_id, command, exec_result.returncode, output),
         )
 
+    def observe_native_inspect_exec(
+        self,
+        check_id: str,
+        *,
+        scope: InspectExecutionScope,
+        tool_call: Any,
+        completed_call_id: str,
+        exec_result: Any,
+        event_complete: bool,
+    ) -> None:
+        """Bind an observed sandbox result to a native Inspect bash ToolCall.
+
+        Call only from host-controlled instrumentation that observed both the
+        model ToolCall and its completed result. This method validates their
+        correspondence; it cannot itself attest the caller's trustworthiness.
+        """
+        try:
+            from inspect_ai.tool import ToolCall
+        except ImportError as exc:
+            raise ContractHold("pinned Inspect runtime is unavailable") from exc
+        if (
+            not isinstance(tool_call, ToolCall)
+            or tool_call.type != "function"
+            or tool_call.function != "bash"
+            or tool_call.parse_error is not None
+            or not isinstance(tool_call.arguments, dict)
+            or set(tool_call.arguments) != {"command"}
+            or type(tool_call.arguments["command"]) is not str
+            or not isinstance(completed_call_id, str)
+            or completed_call_id != tool_call.id
+        ):
+            raise ContractHold("Inspect ToolCall and completed result do not correspond")
+        self.observe_inspect_exec(
+            check_id,
+            scope=scope,
+            tool_call_id=tool_call.id,
+            command=tool_call.arguments["command"],
+            exec_result=exec_result,
+            event_complete=event_complete,
+        )
+
     def observe_check(self, check_id: str, result: ObservedToolResult) -> None:
         """Ingest one event only at the trusted Inspect tool-result boundary.
 
