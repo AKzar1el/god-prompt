@@ -391,9 +391,18 @@ def _cross_run_paired_cluster_uncertainty(
     return result
 
 
-def review_result(folder: Path) -> dict[str, Any]:
+def review_result(
+    folder: Path, *, required_plan_sha256: str | None = None,
+) -> dict[str, Any]:
     """Validate a saved export and return a compact, non-promotional review."""
     manifest = _read_json(folder, "manifest.json")
+    if required_plan_sha256 is not None:
+        if re.fullmatch(r"[0-9a-f]{64}", required_plan_sha256) is None:
+            raise ValueError("reviewed plan SHA256 must be 64 lowercase hexadecimal characters")
+        if manifest.get("plan_sha256_schema") != "godprompt.bench.plan.v1":
+            raise ValueError("saved run has no supported reviewed plan SHA256 schema")
+        if manifest.get("plan_sha256") != required_plan_sha256:
+            raise ValueError("saved run plan SHA256 does not match the reviewed dry-run plan")
     saved_summary = _read_json(folder, "summary.json")
     records = _read_scores(folder)
     recomputed = aggregate(records)
@@ -447,6 +456,11 @@ def review_result(folder: Path) -> dict[str, Any]:
         "review_only": True,
         "artifact_consistency": "verified",
         "performance_claim_verified": False,
+        **({"reviewed_plan": {
+            "plan_sha256": required_plan_sha256,
+            "matched_saved_manifest": True,
+            "scope": "local_manifest_field_only",
+        }} if required_plan_sha256 is not None else {}),
         "run_id": run_id,
         "profile": profile,
         "requested_model": requested_model,
@@ -760,6 +774,12 @@ def render_markdown(report: dict[str, Any]) -> str:
                     ) + " |"
                 )
     else:
+        if report.get("reviewed_plan"):
+            lines.append(
+                "**Reviewed plan SHA256:** "
+                + report["reviewed_plan"]["plan_sha256"]
+                + " (matches local manifest field/schema; not an attestation)"
+            )
         lines += [
             f"**Run:** {_markdown_text(report['run_id'])}",
             f"**Profile:** {_markdown_text(report['profile'])}",
@@ -908,6 +928,8 @@ def main() -> None:
                         help="With --compare, exit 1 on unaligned results after printing diagnostics")
     parser.add_argument("--require-evaluable", action="store_true",
                         help="Exit 1 unless all requested samples in each reviewed run were model-evaluable")
+    parser.add_argument("--require-plan-sha256", metavar="SHA256",
+                        help="Require one saved run to match a reviewed offline plan digest")
     parser.add_argument("--require-nondegrading-pairs", action="store_true",
                         help="For one run, exit 1 on missing/unpaired evidence or more baseline-only wins")
     parser.add_argument("--require-no-godprompt-regression", action="store_true",
@@ -917,6 +939,11 @@ def main() -> None:
     args = parser.parse_args()
     if args.require_aligned and args.compare is None:
         parser.error("--require-aligned requires --compare")
+    if args.require_plan_sha256 is not None:
+        if args.compare is not None:
+            parser.error("--require-plan-sha256 reviews one run; omit --compare")
+        if re.fullmatch(r"[0-9a-f]{64}", args.require_plan_sha256) is None:
+            parser.error("--require-plan-sha256 must be 64 lowercase hexadecimal characters")
     if args.require_nondegrading_pairs and args.compare is not None:
         parser.error("--require-nondegrading-pairs reviews one run; omit --compare")
     if args.require_no_godprompt_regression and args.compare is None:
@@ -924,7 +951,8 @@ def main() -> None:
     if args.require_no_godprompt_category_regression and args.compare is None:
         parser.error("--require-no-godprompt-category-regression requires --compare")
     try:
-        report = compare_results(args.result_dir, args.compare) if args.compare else review_result(args.result_dir)
+        report = (compare_results(args.result_dir, args.compare) if args.compare
+                  else review_result(args.result_dir, required_plan_sha256=args.require_plan_sha256))
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
     if args.format == "markdown":
