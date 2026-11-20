@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 
@@ -163,7 +164,9 @@ class EvidenceSession:
         ):
             raise ContractHold("invalid Inspect execution scope")
         self.client = client
-        self.contract = dict(contract)
+        # Capture the accepted requirements before a caller can mutate nested
+        # lists or objects and redirect subsequent tool-result matching.
+        self.contract = deepcopy(dict(contract))
         self.execution_scope = execution_scope
         self._checks: dict[str, dict[str, Any]] = {}
         self._tool_call_ids: set[str] = set()

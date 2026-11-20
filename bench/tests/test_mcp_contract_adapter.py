@@ -187,6 +187,23 @@ def test_context_reset_does_not_restore_unattributed_tool_receipts():
     assert "MISSING_VERIFICATION" in [issue["code"] for issue in result["issues"]]
 
 
+def test_evidence_session_snapshots_nested_contract_fields():
+    """Later edits to a caller's contract cannot redirect receipt matching."""
+    mcp = FakeMCP()
+    contract = prepare_contract(mcp, task=TASK, **INPUT)
+    adapter = EvidenceSession(mcp, contract)
+    contract["verification_commands"][0]["command"] = "echo unrelated"
+    contract["allowed_paths"][0] = "../private.txt"
+
+    assert adapter.contract["verification_commands"][0]["command"] == INPUT["verification_commands"][0]
+    assert adapter.contract["allowed_paths"] == INPUT["allowed_paths"]
+    adapter.observe_check("VC-01", receipt())
+    assert adapter.review(
+        changed_files=["src/parser.py"], operations_performed=[],
+        acceptance=[{"id": "AC-01", "status": "met", "evidence_refs": ["VC-01"]}],
+    )["status"] == "REPORTED_READY_FOR_INDEPENDENT_REVIEW"
+
+
 def test_mcp_cannot_upgrade_report_to_independent_verification():
     adapter, _ = session(FakeMCP(self_verified=True))
     adapter.observe_check("VC-01", receipt())
