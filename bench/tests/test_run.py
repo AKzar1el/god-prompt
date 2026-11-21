@@ -75,6 +75,51 @@ def test_cli_dry_run_reports_offline_plan_without_executing_or_writing(monkeypat
     assert not output_dir.exists()
 
 
+@pytest.mark.parametrize('model', (
+    'mockllm/a model; $(echo not-executed)',
+    '--unusual-model-id',
+))
+def test_cli_dry_run_offers_exact_plan_locked_argv_without_shell_interpolation(monkeypatch, capsys, model):
+    import godprompt_bench.run as run_module
+
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--profile', 'smoke', f'--model={model}',
+        '--seed', '7', '--temperature', '0.25', '--reasoning-effort', 'low',
+        '--reasoning-mode', 'standard', '--dry-run',
+    ])
+    captured = []
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: captured.append(kwargs) or Path('mock-only'))
+
+    run_module.main()
+    plan = json.loads(capsys.readouterr().out)
+    reviewed_argv = plan['reviewed_live_argv']
+    assert reviewed_argv == [
+        '--profile=smoke', f'--model={model}', '--temperature=0.25',
+        '--seed=7', '--reasoning-effort=low', '--reasoning-mode=standard',
+        f"--require-plan-sha256={plan['plan_sha256']}",
+    ]
+    assert len(plan['plan_sha256']) == 64
+    assert reviewed_argv[1] == f'--model={model}'
+
+    # Replay through the parser, but replace execution with a pure capture.
+    monkeypatch.setattr(sys, 'argv', ['godprompt_bench.run', *reviewed_argv])
+    run_module.main()
+    assert len(captured) == 1
+    assert captured[0]['model'] == model
+    assert captured[0]['seed'] == 7
+
+
+def test_cli_dry_run_without_model_does_not_offer_live_argv(monkeypatch, capsys):
+    import godprompt_bench.run as run_module
+
+    monkeypatch.setattr(sys, 'argv', ['godprompt_bench.run', '--dry-run'])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('offline discovery ran a model'))
+    run_module.main()
+    assert 'reviewed_live_argv' not in json.loads(capsys.readouterr().out)
+
+
 def test_preview_plan_fingerprint_is_stable_and_binds_run_controls():
     from godprompt_bench.run import preview_benchmark
 
@@ -201,6 +246,7 @@ def test_cli_experimental_mcp_arm_is_opt_in_offline_and_preserves_reference(monk
     preview = json.loads(capsys.readouterr().out)
     assert preview['preview_only'] is True
     assert preview['plan_sha256'] is None
+    assert 'reviewed_live_argv' not in preview
     assert preview['conditions'] == ['baseline', 'godprompt']
     assert preview['planned_samples'] == 12
     extra = preview['experimental_arm']
@@ -299,6 +345,30 @@ def test_cli_custom_profile_preview_and_task_list_are_offline(monkeypatch, capsy
     assert tasks['profile_id'] == 'custom-one-off'
     assert len(tasks['tasks']) == 2
     assert not output.exists()
+
+
+def test_cli_custom_profile_reviewed_argv_preserves_path_and_hash(monkeypatch, capsys, tmp_path):
+    import godprompt_bench.run as run_module
+
+    path = _custom_profile_file(tmp_path, task_count=1)
+    calls = []
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: calls.append((args, kwargs)) or Path('mock-only'))
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--profile-file', str(path), '--model', 'mockllm/test',
+        '--dry-run',
+    ])
+    run_module.main()
+    plan = json.loads(capsys.readouterr().out)
+    argv = plan['reviewed_live_argv']
+    assert argv == [
+        f'--profile-file={path}', '--model=mockllm/test',
+        f"--require-plan-sha256={plan['plan_sha256']}",
+    ]
+    monkeypatch.setattr(sys, 'argv', ['godprompt_bench.run', *argv])
+    run_module.main()
+    assert len(calls) == 1
+    assert calls[0][0][2].name == 'custom-one-off'
 
 
 def test_cli_custom_profile_live_requires_model_and_preserves_selected_limits(
