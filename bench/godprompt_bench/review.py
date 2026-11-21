@@ -971,8 +971,8 @@ def main() -> None:
     parser.add_argument("--require-plan-sha256", metavar="SHA256",
                         help="Require one saved run to match a reviewed offline plan digest")
     parser.add_argument("--require-public-artifact-sha256", action="append",
-                        metavar="NAME=SHA256",
-                        help="For one run, pin all three public evidence files to externally supplied digests")
+                        metavar="[SIDE:]NAME=SHA256",
+                        help="Pin all public files; with --compare, require before:/after: pins for both runs")
     parser.add_argument("--require-nondegrading-pairs", action="store_true",
                         help="For one run, exit 1 on missing/unpaired evidence or more baseline-only wins")
     parser.add_argument("--require-no-godprompt-regression", action="store_true",
@@ -989,20 +989,27 @@ def main() -> None:
             parser.error("--require-plan-sha256 must be 64 lowercase hexadecimal characters")
     expected_artifact_sha256 = None
     if args.require_public_artifact_sha256:
-        if args.compare is not None:
-            parser.error("--require-public-artifact-sha256 reviews one run; omit --compare")
-        expected_artifact_sha256 = {}
+        comparing = args.compare is not None
+        sides = ("before", "after") if comparing else ("single",)
+        expected_artifact_sha256 = {side: {} for side in sides}
         names = {name for name, _ in _PUBLIC_ARTIFACTS}
         for pin in args.require_public_artifact_sha256:
-            name, separator, digest = pin.partition("=")
+            label, separator, digest = pin.partition("=")
+            if comparing:
+                side, colon, name = label.partition(":")
+                if colon != ":" or side not in sides:
+                    parser.error("--require-public-artifact-sha256 with --compare requires before:NAME=SHA256 or after:NAME=SHA256")
+            else:
+                side, name = "single", label
             if (separator != "=" or name not in names
                     or re.fullmatch(r"[0-9a-f]{64}", digest) is None):
-                parser.error("--require-public-artifact-sha256 requires NAME=64-lowercase-hex for a public file")
-            if name in expected_artifact_sha256:
+                parser.error("--require-public-artifact-sha256 requires [SIDE:]NAME=64-lowercase-hex for a public file")
+            if name in expected_artifact_sha256[side]:
                 parser.error("--require-public-artifact-sha256 repeats a public file")
-            expected_artifact_sha256[name] = digest
-        if set(expected_artifact_sha256) != names:
-            parser.error("--require-public-artifact-sha256 requires manifest.json, summary.json and scores.csv")
+            expected_artifact_sha256[side][name] = digest
+        if any(set(expected_artifact_sha256[side]) != names for side in sides):
+            parser.error("--require-public-artifact-sha256 requires all three public files"
+                         + (" for each of before and after with --compare" if comparing else ""))
     if args.require_nondegrading_pairs and args.compare is not None:
         parser.error("--require-nondegrading-pairs reviews one run; omit --compare")
     if args.require_no_godprompt_regression and args.compare is None:
@@ -1019,9 +1026,13 @@ def main() -> None:
     else:
         print(json.dumps(report, indent=2, sort_keys=True, allow_nan=False))
     if expected_artifact_sha256 is not None:
+        reviewed = ({"before": report["before"], "after": report["after"]}
+                    if args.compare else {"single": report})
         mismatches = [
-            name for name, _ in _PUBLIC_ARTIFACTS
-            if report["public_artifact_sha256"][name] != expected_artifact_sha256[name]
+            f"{side}:{name}" if args.compare else name
+            for side, item in reviewed.items()
+            for name, _ in _PUBLIC_ARTIFACTS
+            if item["public_artifact_sha256"][name] != expected_artifact_sha256[side][name]
         ]
         if mismatches:
             parser.exit(1, "public artifact SHA256 mismatch for: " + ", ".join(mismatches) + "\n")

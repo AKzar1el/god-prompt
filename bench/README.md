@@ -500,6 +500,19 @@ public local artifacts, never calls a model or rewrites a result. A fingerprint
 copied from the **same untrusted export** cannot authenticate that export; obtain
 pins through a separately trusted channel and verify that channel's provenance.
 
+For a comparison review, use the same repeatable flag with **six** independent
+pins: prefix each public filename with `before:` or `after:` (three per run).
+For example, after obtaining expected hashes separately from both export owners:
+
+```text
+python -m godprompt_bench.review results/<earlier-run-id> --compare results/<later-run-id> --require-public-artifact-sha256 before:manifest.json=<earlier-manifest-sha256> --require-public-artifact-sha256 before:summary.json=<earlier-summary-sha256> --require-public-artifact-sha256 before:scores.csv=<earlier-scores-sha256> --require-public-artifact-sha256 after:manifest.json=<later-manifest-sha256> --require-public-artifact-sha256 after:summary.json=<later-summary-sha256> --require-public-artifact-sha256 after:scores.csv=<later-scores-sha256>
+```
+
+All six pins must be present and well-formed, with no duplicates or unqualified
+names. On a mismatch, the reviewer prints its normal comparison diagnostics
+before returning exit code 1 and naming the affected side and file. The check
+does not alter either export or authenticate model execution.
+
 ## CI
 
 `.github/workflows/bench-verify.yml` is offline and runs on pull requests and `main`. It:
