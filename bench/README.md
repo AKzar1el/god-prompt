@@ -472,9 +472,18 @@ and `scores.csv` at the ZIP root (no nested folders, private trajectories or
 other entries):
 
 ```bash
+python -m godprompt_bench.pack results/<run-id> public-evidence.zip
 python -m godprompt_bench.review public-evidence.zip --format markdown
 python -m godprompt_bench.review earlier-public.zip --compare later-public.zip
 ```
+
+The separate `pack` command validates the saved public results first, then
+creates a deterministic, new ZIP with only those three public files (never
+`trajectories.jsonl`), without running a model or contacting a provider.
+It refuses to overwrite an existing ZIP. Its JSON receipt contains a copyable
+ZIP SHA256 and the three individual artifact hashes. Share expected hashes
+through a separately trusted channel if the recipient needs tamper detection;
+hashes generated alongside an untrusted ZIP do not authenticate its origin.
 
 The reviewer refuses duplicate, linked, encrypted, oversized and unexpected
 archive entries; only the three size-bounded public files are unpacked into
