@@ -937,6 +937,24 @@ def main() -> None:
             reasoning_effort=args.reasoning_effort,
             reasoning_mode=args.reasoning_mode,
         )
+        if args.model is not None and not args.experimental_mcp_contract:
+            # Keep arguments structured: a model or profile path is not shell code.
+            reviewed_argv = (
+                [f"--profile-file={args.profile_file}"]
+                if args.profile_file is not None
+                else [f"--profile={args.profile or 'smoke'}"]
+            )
+            reviewed_argv.append(f"--model={args.model}")
+            for flag, value in (
+                ("--temperature", args.temperature),
+                ("--seed", args.seed),
+                ("--reasoning-effort", args.reasoning_effort),
+                ("--reasoning-mode", args.reasoning_mode),
+            ):
+                if value is not None:
+                    reviewed_argv.append(f"{flag}={value}")
+            reviewed_argv.append(f"--require-plan-sha256={plan['plan_sha256']}")
+            plan["reviewed_live_argv"] = reviewed_argv
         if args.experimental_mcp_contract:
             from .mcp_contract_adapter import MCP_RELEASE_SHA, MCP_RELEASE_TAG
 
