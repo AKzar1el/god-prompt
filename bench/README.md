@@ -486,6 +486,20 @@ the reviewer checks that the files stay unchanged during its validation.
 These are **unsigned local fingerprints**, not proof of model execution,
 independent provenance or performance. Private trajectories are never included.
 
+For an offline recipient who already has **independently supplied** expected
+fingerprints, the single-run reviewer can enforce all three at once:
+
+```text
+python -m godprompt_bench.review results/<run-id> --require-public-artifact-sha256 manifest.json=<manifest-sha256> --require-public-artifact-sha256 summary.json=<summary-sha256> --require-public-artifact-sha256 scores.csv=<scores-sha256>
+```
+
+Replace each placeholder with its 64-character lowercase SHA256. The command
+rejects partial, duplicate and malformed pins; mismatched file bytes produce
+exit code 1 after the normal JSON or Markdown diagnostic report. This reads only
+public local artifacts, never calls a model or rewrites a result. A fingerprint
+copied from the **same untrusted export** cannot authenticate that export; obtain
+pins through a separately trusted channel and verify that channel's provenance.
+
 ## CI
 
 `.github/workflows/bench-verify.yml` is offline and runs on pull requests and `main`. It:

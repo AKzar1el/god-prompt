@@ -1467,3 +1467,100 @@ def test_review_cli_rejects_ambiguous_or_malformed_plan_guard(
         review.main()
     assert exc.value.code == 2
     assert "plan" in capsys.readouterr().err.lower()
+
+
+@pytest.mark.parametrize("output_format", ("json", "markdown"))
+def test_review_cli_accepts_all_external_public_artifact_sha256_pins(
+    exported: Path, monkeypatch, capsys, output_format,
+):
+    from godprompt_bench import review
+
+    original = {
+        name: (exported / name).read_bytes()
+        for name in ("manifest.json", "summary.json", "scores.csv")
+    }
+    pins = [
+        f"{name}={hashlib.sha256(data).hexdigest()}"
+        for name, data in original.items()
+    ]
+    argv = ["godprompt_bench.review", str(exported), "--format", output_format]
+    for pin in reversed(pins):
+        argv.extend(["--require-public-artifact-sha256", pin])
+    monkeypatch.setattr(sys, "argv", argv)
+
+    review.main()
+    rendered = capsys.readouterr().out
+    for pin in pins:
+        assert pin.split("=", 1)[1] in rendered
+    assert {
+        name: (exported / name).read_bytes() for name in original
+    } == original
+
+
+@pytest.mark.parametrize("output_format", ("json", "markdown"))
+def test_review_cli_fails_on_external_sha256_pin_mismatch_after_valid_file_change(
+    exported: Path, monkeypatch, capsys, output_format,
+):
+    from godprompt_bench import review
+
+    names = ("manifest.json", "summary.json", "scores.csv")
+    expected = {
+        name: hashlib.sha256((exported / name).read_bytes()).hexdigest()
+        for name in names
+    }
+    manifest = exported / "manifest.json"
+    manifest.write_bytes(manifest.read_bytes() + b" ")
+    snapshot = {name: (exported / name).read_bytes() for name in names}
+    argv = ["godprompt_bench.review", str(exported), "--format", output_format]
+    for name in names:
+        argv.extend(["--require-public-artifact-sha256", f"{name}={expected[name]}"])
+    monkeypatch.setattr(sys, "argv", argv)
+
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 1
+    output = capsys.readouterr()
+    assert "manifest.json" in output.err and "SHA256" in output.err
+    assert hashlib.sha256(snapshot["manifest.json"]).hexdigest() in output.out
+    assert {name: (exported / name).read_bytes() for name in names} == snapshot
+
+
+@pytest.mark.parametrize("pins", [
+    ["manifest.json=" + "a" * 64],
+    ["manifest.json=" + "a" * 64, "summary.json=" + "b" * 64,
+     "manifest.json=" + "a" * 64, "scores.csv=" + "c" * 64],
+    ["manifest.json=" + "a" * 64, "summary.json=" + "b" * 64,
+     "private.json=" + "c" * 64],
+    ["manifest.json=" + "A" * 64, "summary.json=" + "b" * 64,
+     "scores.csv=" + "c" * 64],
+    ["manifest.json=bad", "summary.json=" + "b" * 64,
+     "scores.csv=" + "c" * 64],
+])
+def test_review_cli_refuses_partial_duplicate_unknown_or_invalid_pins(
+    exported: Path, monkeypatch, capsys, pins,
+):
+    from godprompt_bench import review
+
+    argv = ["godprompt_bench.review", str(exported)]
+    for pin in pins:
+        argv.extend(["--require-public-artifact-sha256", pin])
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "public-artifact-sha256" in capsys.readouterr().err
+
+
+def test_review_cli_public_hash_pins_are_single_run_only(
+    exported: Path, monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(exported), "--compare", str(exported),
+        "--require-public-artifact-sha256", "manifest.json=" + "a" * 64,
+    ])
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "--compare" in capsys.readouterr().err
