@@ -338,8 +338,11 @@ argument **array**, not a shell command, containing the same profile, model and
 generation controls plus `--require-plan-sha256` set to the reviewed digest.
 Pass these elements as separate arguments to the benchmark module only after
 separate approval for potentially billable execution; never concatenate them
-into a shell string. Custom profile paths must still resolve to the same file,
-and an optional output directory must be chosen separately. The array is
+into a shell string. Custom profile paths must still resolve to the same file.
+An explicitly selected `--output` directory is included in the argument array;
+without one, the live runner retains its default `bench/results` destination.
+The output directory is not bound by the plan digest and can be changed without
+invalidating it, so review the destination separately before a live run. The array is
 omitted when no model is selected or the experimental MCP arm is previewed
 (that arm remains disabled for live evaluation).
 

@@ -110,6 +110,32 @@ def test_cli_dry_run_offers_exact_plan_locked_argv_without_shell_interpolation(m
     assert captured[0]['seed'] == 7
 
 
+def test_cli_reviewed_live_argv_replays_explicit_output_without_writing(monkeypatch, capsys, tmp_path):
+    import godprompt_bench.run as run_module
+
+    output = Path('reviewed results; literal path')
+    monkeypatch.chdir(tmp_path)
+    captured = []
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: captured.append(kwargs) or Path('mock-only'))
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--profile=smoke', '--model=mockllm/test',
+        f'--output={output}', '--dry-run',
+    ])
+    run_module.main()
+    plan = json.loads(capsys.readouterr().out)
+    argv = plan['reviewed_live_argv']
+    assert f'--output={output}' in argv
+    assert not (tmp_path / output).exists()
+
+    # Replaying the structured vector must preserve the exact destination.
+    monkeypatch.setattr(sys, 'argv', ['godprompt_bench.run', *argv])
+    run_module.main()
+    assert len(captured) == 1
+    assert captured[0]['output_dir'] == output
+    assert not (tmp_path / output).exists()
+
+
 def test_cli_dry_run_without_model_does_not_offer_live_argv(monkeypatch, capsys):
     import godprompt_bench.run as run_module
 
