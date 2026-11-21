@@ -488,7 +488,35 @@ def test_cli_dry_run_markdown_produces_copyable_offline_plan(monkeypatch, capsys
     assert 'Fixture SHA256:' in report
     assert 'provider cost cannot be inferred' in report.lower()
     assert 'No Docker, model or provider calls' in report
+    assert '## Reviewed live-run arguments' not in report
     assert not output_dir.exists()
+
+
+def test_cli_markdown_preview_preserves_reviewed_argv_as_json_not_shell(monkeypatch, capsys, tmp_path):
+    import godprompt_bench.run as run_module
+
+    model = 'mockllm/a```\n# fake heading; $(echo unsafe)'
+    output = tmp_path / 'reviewed results; $(echo unsafe)'
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--dry-run', '--format', 'markdown',
+        '--profile', 'smoke', '--model', model, '--seed', '42',
+        '--output', str(output),
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('preview must not execute'))
+
+    run_module.main()
+    report = capsys.readouterr().out
+    assert '## Reviewed live-run arguments (JSON argv)' in report
+    encoded = report.split('```json\n', 1)[1].split('\n```', 1)[0]
+    argv = json.loads(encoded)
+    assert argv == [
+        '--profile=smoke', f'--model={model}', '--seed=42',
+        f'--output={output}',
+        f'--require-plan-sha256={report.split("Plan SHA256: ", 1)[1].splitlines()[0]}',
+    ]
+    assert '\n# fake heading' not in report
+    assert not output.exists()
 
 
 def test_cli_dry_run_markdown_escapes_user_model_and_shows_controls(monkeypatch, capsys):

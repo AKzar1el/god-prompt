@@ -619,6 +619,18 @@ def format_preview_markdown(plan: dict[str, Any]) -> str:
             "- Live execution is disabled; trusted tool-output receipts and separate",
             "  provider-spend approval are required before any paired evaluation.",
         ])
+    if "reviewed_live_argv" in plan:
+        lines.extend([
+            "",
+            "## Reviewed live-run arguments (JSON argv)",
+            "",
+            "Each array element is a separate argument, not a shell command.",
+            "Live evaluation may incur provider charges; review the output destination separately.",
+            "",
+            "```json",
+            json.dumps(plan["reviewed_live_argv"], indent=2, ensure_ascii=True),
+            "```",
+        ])
     return "\n".join(lines) + "\n"
 
 
