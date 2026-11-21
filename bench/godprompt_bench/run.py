@@ -844,7 +844,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int)
     parser.add_argument("--reasoning-effort", choices=("none", "minimal", "low", "medium", "high", "xhigh", "max"))
     parser.add_argument("--reasoning-mode", choices=("standard", "pro"))
-    parser.add_argument("--output", type=Path, default=bench_root / "results")
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--format", choices=("json", "markdown"), default="json",
                         help="Output format for offline previews/discovery; JSON is the default")
     parser.add_argument(
@@ -953,6 +953,8 @@ def main() -> None:
             ):
                 if value is not None:
                     reviewed_argv.append(f"{flag}={value}")
+            if args.output is not None:
+                reviewed_argv.append(f"--output={args.output}")
             reviewed_argv.append(f"--require-plan-sha256={plan['plan_sha256']}")
             plan["reviewed_live_argv"] = reviewed_argv
         if args.experimental_mcp_contract:
@@ -990,7 +992,7 @@ def main() -> None:
         bench_root,
         profile,
         model=args.model,
-        output_dir=args.output,
+        output_dir=args.output if args.output is not None else bench_root / "results",
         temperature=args.temperature,
         seed=args.seed,
         reasoning_effort=args.reasoning_effort,
