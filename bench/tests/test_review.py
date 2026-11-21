@@ -1564,3 +1564,97 @@ def test_review_cli_public_hash_pins_are_single_run_only(
         review.main()
     assert exc.value.code == 2
     assert "--compare" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("output_format", ("json", "markdown"))
+def test_comparison_cli_accepts_independent_external_public_sha256_pins(
+    comparable_exports: tuple[Path, Path], monkeypatch, capsys, output_format,
+):
+    from godprompt_bench import review
+
+    before, after = comparable_exports
+    originals = {
+        side: {name: (folder / name).read_bytes()
+               for name in ("manifest.json", "summary.json", "scores.csv")}
+        for side, folder in (("before", before), ("after", after))
+    }
+    argv = ["godprompt_bench.review", str(before), "--compare", str(after),
+            "--format", output_format]
+    for side, files in originals.items():
+        for name, data in files.items():
+            argv.extend(["--require-public-artifact-sha256",
+                         f"{side}:{name}={hashlib.sha256(data).hexdigest()}"])
+    monkeypatch.setattr(sys, "argv", argv)
+
+    review.main()
+    rendered = capsys.readouterr().out
+    for side, files in originals.items():
+        for name, data in files.items():
+            assert hashlib.sha256(data).hexdigest() in rendered
+        folder = before if side == "before" else after
+        assert {name: (folder / name).read_bytes() for name in files} == files
+
+
+@pytest.mark.parametrize("output_format", ("json", "markdown"))
+@pytest.mark.parametrize("modified_side", ("before", "after"))
+def test_comparison_cli_fails_after_reporting_changed_pinned_artifact(
+    comparable_exports: tuple[Path, Path], monkeypatch, capsys, output_format, modified_side,
+):
+    from godprompt_bench import review
+
+    before, after = comparable_exports
+    names = ("manifest.json", "summary.json", "scores.csv")
+    pins = {
+        side: {name: hashlib.sha256((folder / name).read_bytes()).hexdigest()
+               for name in names}
+        for side, folder in (("before", before), ("after", after))
+    }
+    modified_folder = before if modified_side == "before" else after
+    changed = modified_folder / "manifest.json"
+    changed.write_bytes(changed.read_bytes() + b" ")
+    argv = ["godprompt_bench.review", str(before), "--compare", str(after),
+            "--format", output_format]
+    for side, files in pins.items():
+        for name, digest in files.items():
+            argv.extend(["--require-public-artifact-sha256", f"{side}:{name}={digest}"])
+    monkeypatch.setattr(sys, "argv", argv)
+
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 1
+    output = capsys.readouterr()
+    assert f"{modified_side}:manifest.json" in output.err and "SHA256" in output.err
+    assert hashlib.sha256(changed.read_bytes()).hexdigest() in output.out
+
+
+@pytest.mark.parametrize("invalid", (
+    "partial", "duplicate", "unqualified", "invalid_side", "wrong_digest",
+))
+def test_comparison_cli_rejects_incomplete_or_ambiguous_public_sha256_pins(
+    comparable_exports: tuple[Path, Path], monkeypatch, capsys, invalid,
+):
+    from godprompt_bench import review
+
+    before, after = comparable_exports
+    names = ("manifest.json", "summary.json", "scores.csv")
+    pins = [f"{side}:{name}=" + "a" * 64
+            for side in ("before", "after") for name in names]
+    if invalid == "partial":
+        pins.pop()
+    elif invalid == "duplicate":
+        pins.append(pins[0])
+    elif invalid == "unqualified":
+        pins[0] = pins[0].replace("before:", "", 1)
+    elif invalid == "invalid_side":
+        pins[0] = pins[0].replace("before:", "other:", 1)
+    elif invalid == "wrong_digest":
+        pins[0] = pins[0].replace("a" * 64, "A" * 64)
+    argv = ["godprompt_bench.review", str(before), "--compare", str(after)]
+    for pin in pins:
+        argv.extend(["--require-public-artifact-sha256", pin])
+    monkeypatch.setattr(sys, "argv", argv)
+
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "public-artifact-sha256" in capsys.readouterr().err
