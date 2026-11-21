@@ -678,9 +678,15 @@ def format_discovery_markdown(report: dict[str, Any]) -> str:
             f"- Tasks per condition: {report['tasks_per_condition']}",
             f"- Fixture SHA256: {safe(report['fixture_bundles_sha256'])}",
             "",
-            "| ID | Category | Runtime |",
-            "| --- | --- | --- |",
         ]
+        for heading, counts in (
+            ("Category coverage", report["categories"]),
+            ("Runtime coverage", report["runtimes"]),
+        ):
+            lines.extend([f"## {heading}", ""])
+            lines.extend(f"- {safe(name)}: {count}" for name, count in counts.items())
+            lines.append("")
+        lines.extend(["| ID | Category | Runtime |", "| --- | --- | --- |"])
         lines.extend(
             f"| {safe(task['id'])} | {safe(task['category'])} | {safe(task['runtime'])} |"
             for task in report["tasks"]
@@ -904,6 +910,10 @@ def main() -> None:
             "profile_id": plan["profile"],
             "tasks_per_condition": plan["tasks_per_condition"],
             "fixture_bundles_sha256": plan["fixture_bundles_sha256"],
+            "categories": plan["categories"],
+            "runtimes": dict(sorted(Counter(
+                canonical_tasks[task_id].runtime for task_id in profile.task_ids
+            ).items())),
             "tasks": [
                 {"id": task_id, "category": canonical_tasks[task_id].category,
                  "runtime": canonical_tasks[task_id].runtime}

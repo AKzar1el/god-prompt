@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import sys
+from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -437,6 +438,11 @@ def test_cli_markdown_discovery_is_copyable_offline_and_does_not_write(
         assert '| half | 20 | 3 | 120 | 300 s | 10 h |' in report
         assert '| full | 40 | 3 | 240 | 300 s | 20 h |' in report
         assert 'not a wall-clock or cost estimate' in report
+    else:
+        assert '## Category coverage' in report
+        assert '## Runtime coverage' in report
+        assert '- python: ' in report
+        assert '- javascript: ' in report
     assert 'hidden_verifier' not in report
     assert not output_dir.exists()
 
@@ -521,6 +527,14 @@ def test_cli_lists_selected_task_metadata_offline_without_model_or_output(
     }
     assert {task['runtime'] for task in report['tasks']} == {'python', 'javascript'}
     assert all(set(task) == {'id', 'category', 'runtime'} for task in report['tasks'])
+    assert report['categories'] == dict(sorted(Counter(
+        task['category'] for task in report['tasks']
+    ).items()))
+    assert report['runtimes'] == dict(sorted(Counter(
+        task['runtime'] for task in report['tasks']
+    ).items()))
+    assert sum(report['categories'].values()) == expected_count
+    assert sum(report['runtimes'].values()) == expected_count
     assert 'hidden_verifier' not in json.dumps(report)
     assert not output_dir.exists()
 
