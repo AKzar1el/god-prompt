@@ -478,6 +478,14 @@ For a conservative, opt-in **within-run CI signal** use `python -m godprompt_ben
 
 Credential-like fields are recursively redacted from public JSON/JSONL exports.
 
+The offline reviewer includes `public_artifact_sha256` for the local
+`manifest.json`, `summary.json` and `scores.csv` bytes. Markdown review and
+comparison show the same SHA256 values in copyable tables. Record them when
+handing off review evidence so a recipient can detect modified public files;
+the reviewer checks that the files stay unchanged during its validation.
+These are **unsigned local fingerprints**, not proof of model execution,
+independent provenance or performance. Private trajectories are never included.
+
 ## CI
 
 `.github/workflows/bench-verify.yml` is offline and runs on pull requests and `main`. It:

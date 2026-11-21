@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import sys
 from dataclasses import replace
@@ -48,6 +49,10 @@ def test_review_verifies_exported_scores_and_preserves_denominators(exported: Pa
     report = review_result(exported)
     assert report["review_only"] is True
     assert report["artifact_consistency"] == "verified"
+    assert report["public_artifact_sha256"] == {
+        name: hashlib.sha256((exported / name).read_bytes()).hexdigest()
+        for name in ("manifest.json", "summary.json", "scores.csv")
+    }
     assert report["run_id"] == "sample-run"
     assert report["actual_models"] == ["mockllm/test"]
     assert report["coverage"] == {
@@ -269,6 +274,20 @@ def test_review_renders_conservative_uncertainty_not_a_performance_claim(exporte
     markdown = render_markdown(report)
     assert "Task-cluster uncertainty" in markdown
     assert "not a performance claim" in markdown.lower()
+    assert "Public file SHA256" in markdown
+    assert report["public_artifact_sha256"]["scores.csv"] in markdown
+
+
+def test_review_file_digests_change_for_valid_whitespace_only_edit(exported: Path):
+    from godprompt_bench.review import review_result
+
+    first = review_result(exported)["public_artifact_sha256"]
+    path = exported / "manifest.json"
+    path.write_bytes(path.read_bytes() + b"\n")
+    second = review_result(exported)["public_artifact_sha256"]
+    assert second["manifest.json"] != first["manifest.json"]
+    assert second["summary.json"] == first["summary.json"]
+    assert second["scores.csv"] == first["scores.csv"]
 
 
 def test_review_refuses_changed_summary(exported: Path):
@@ -599,6 +618,11 @@ def test_offline_comparison_reports_condition_deltas_and_no_performance_claim(
     }
     assert report["before"]["run_id"] == "sample-run"
     assert report["after"]["run_id"] == "later-run"
+    from godprompt_bench.review import render_markdown
+    markdown = render_markdown(report)
+    for name in ("manifest.json", "summary.json", "scores.csv"):
+        assert report["before"]["public_artifact_sha256"][name] in markdown
+        assert report["after"]["public_artifact_sha256"][name] in markdown
     assert "mock_model" in report["before"]["cautions"]
     assert report["cross_run_paired_uncertainty"]["interval_95"] is None
     assert "before:mock_model" in report["cross_run_paired_uncertainty"]["limitations"]
