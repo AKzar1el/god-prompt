@@ -1754,3 +1754,88 @@ def test_review_cli_rejects_unsafe_or_incomplete_public_zips(
     assert exc.value.code == 2
     assert "zip" in capsys.readouterr().err.lower()
     assert not list(tmp_path.glob("godprompt_public_review_*"))
+
+
+def test_public_evidence_packer_roundtrips_with_offline_reviewer(exported: Path, tmp_path: Path):
+    from contextlib import ExitStack
+    from godprompt_bench.pack import pack_public_evidence
+    from godprompt_bench.review import _public_zip_directory, review_result
+
+    first = tmp_path / "first.zip"
+    second = tmp_path / "second.zip"
+    receipt = pack_public_evidence(exported, first)
+    pack_public_evidence(exported, second)
+    assert first.read_bytes() == second.read_bytes()
+    assert receipt["public_zip_sha256"] == hashlib.sha256(first.read_bytes()).hexdigest()
+    assert receipt["performance_claim_verified"] is False
+    with ZipFile(first) as archive:
+        assert archive.namelist() == ["manifest.json", "summary.json", "scores.csv"]
+        assert "trajectories.jsonl" not in archive.namelist()
+    with ExitStack() as stack:
+        report = review_result(_public_zip_directory(first, stack))
+    assert receipt["public_artifact_sha256"] == report["public_artifact_sha256"]
+
+
+def test_public_evidence_packer_cli_reports_hashes(exported: Path, tmp_path: Path, monkeypatch, capsys):
+    from godprompt_bench import pack
+
+    output = tmp_path / "share.zip"
+    monkeypatch.setattr(sys, "argv", ["godprompt_bench.pack", str(exported), str(output)])
+    pack.main()
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt["public_zip_sha256"] == hashlib.sha256(output.read_bytes()).hexdigest()
+    assert receipt["public_artifact_sha256"]["manifest.json"] == hashlib.sha256(
+        (exported / "manifest.json").read_bytes()
+    ).hexdigest()
+
+
+@pytest.mark.parametrize("invalid", (
+    "missing_source", "malformed_summary", "existing_target", "non_zip",
+    "missing_parent", "oversized_score", "changed_after_review",
+))
+def test_public_evidence_packer_fails_closed_without_writing_target(
+    exported: Path, tmp_path: Path, monkeypatch, invalid,
+):
+    from godprompt_bench import pack
+
+    source = exported
+    target = tmp_path / "receipt.zip"
+    if invalid == "missing_source":
+        source = tmp_path / "missing"
+    elif invalid == "malformed_summary":
+        (exported / "summary.json").write_text("{}", encoding="utf-8")
+    elif invalid == "existing_target":
+        target.write_bytes(b"existing owner data")
+    elif invalid == "non_zip":
+        target = tmp_path / "receipt.txt"
+    elif invalid == "missing_parent":
+        target = tmp_path / "not-created" / "receipt.zip"
+    elif invalid == "oversized_score":
+        (exported / "scores.csv").write_bytes(b"x" * 20_000_001)
+    elif invalid == "changed_after_review":
+        original = pack.review_result
+
+        def change_after_validation(folder):
+            report = original(folder)
+            (folder / "manifest.json").write_text(
+                (folder / "manifest.json").read_text(encoding="utf-8") + " ",
+                encoding="utf-8",
+            )
+            return report
+
+        monkeypatch.setattr(pack, "review_result", change_after_validation)
+    with pytest.raises((ValueError, OSError)):
+        pack.pack_public_evidence(source, target)
+    if invalid == "existing_target":
+        assert target.read_bytes() == b"existing owner data"
+    else:
+        assert not target.exists()
+
+
+def test_public_evidence_packer_keeps_private_trajectories_out(exported: Path, tmp_path: Path):
+    from godprompt_bench.pack import pack_public_evidence
+
+    (exported / "trajectories.jsonl").write_text("private sentinel not for buyers", encoding="utf-8")
+    output = tmp_path / "buyer.zip"
+    pack_public_evidence(exported, output)
+    assert b"private sentinel" not in output.read_bytes()
