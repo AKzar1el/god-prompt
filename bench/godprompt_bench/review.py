@@ -970,6 +970,9 @@ def main() -> None:
                         help="Exit 1 unless all requested samples in each reviewed run were model-evaluable")
     parser.add_argument("--require-plan-sha256", metavar="SHA256",
                         help="Require one saved run to match a reviewed offline plan digest")
+    parser.add_argument("--require-public-artifact-sha256", action="append",
+                        metavar="NAME=SHA256",
+                        help="For one run, pin all three public evidence files to externally supplied digests")
     parser.add_argument("--require-nondegrading-pairs", action="store_true",
                         help="For one run, exit 1 on missing/unpaired evidence or more baseline-only wins")
     parser.add_argument("--require-no-godprompt-regression", action="store_true",
@@ -984,6 +987,22 @@ def main() -> None:
             parser.error("--require-plan-sha256 reviews one run; omit --compare")
         if re.fullmatch(r"[0-9a-f]{64}", args.require_plan_sha256) is None:
             parser.error("--require-plan-sha256 must be 64 lowercase hexadecimal characters")
+    expected_artifact_sha256 = None
+    if args.require_public_artifact_sha256:
+        if args.compare is not None:
+            parser.error("--require-public-artifact-sha256 reviews one run; omit --compare")
+        expected_artifact_sha256 = {}
+        names = {name for name, _ in _PUBLIC_ARTIFACTS}
+        for pin in args.require_public_artifact_sha256:
+            name, separator, digest = pin.partition("=")
+            if (separator != "=" or name not in names
+                    or re.fullmatch(r"[0-9a-f]{64}", digest) is None):
+                parser.error("--require-public-artifact-sha256 requires NAME=64-lowercase-hex for a public file")
+            if name in expected_artifact_sha256:
+                parser.error("--require-public-artifact-sha256 repeats a public file")
+            expected_artifact_sha256[name] = digest
+        if set(expected_artifact_sha256) != names:
+            parser.error("--require-public-artifact-sha256 requires manifest.json, summary.json and scores.csv")
     if args.require_nondegrading_pairs and args.compare is not None:
         parser.error("--require-nondegrading-pairs reviews one run; omit --compare")
     if args.require_no_godprompt_regression and args.compare is None:
@@ -999,6 +1018,13 @@ def main() -> None:
         print(render_markdown(report))
     else:
         print(json.dumps(report, indent=2, sort_keys=True, allow_nan=False))
+    if expected_artifact_sha256 is not None:
+        mismatches = [
+            name for name, _ in _PUBLIC_ARTIFACTS
+            if report["public_artifact_sha256"][name] != expected_artifact_sha256[name]
+        ]
+        if mismatches:
+            parser.exit(1, "public artifact SHA256 mismatch for: " + ", ".join(mismatches) + "\n")
     if args.require_aligned and not report["metadata_aligned"]:
         raise SystemExit(1)
     if args.require_evaluable:
