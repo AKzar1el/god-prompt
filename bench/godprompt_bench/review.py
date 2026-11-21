@@ -7,6 +7,7 @@ It is not an attestation of model identity, runner execution or publication qual
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import csv
 import hashlib
 from html import escape
@@ -16,7 +17,10 @@ from math import isfinite
 from pathlib import Path
 from random import Random
 import re
+from stat import S_IFMT, S_IFREG
+from tempfile import TemporaryDirectory
 from typing import Any
+from zipfile import BadZipFile, ZipFile
 
 from .aggregate import aggregate
 from .corpus import _reject_duplicate_json_keys
@@ -30,6 +34,7 @@ _PUBLIC_ARTIFACTS = (
     ("summary.json", _JSON_MAX_BYTES),
     ("scores.csv", _CSV_MAX_BYTES),
 )
+_MAX_PUBLIC_ZIP_BYTES = sum(maximum for _, maximum in _PUBLIC_ARTIFACTS) + 1_000_000
 _REPORT_CONTROLS = re.compile(r"[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]")
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 _INT = re.compile(r"(?:0|[1-9][0-9]*)\Z")
@@ -97,6 +102,43 @@ def _public_artifact_sha256(folder: Path) -> dict[str, str]:
         _check_file(path, maximum)
         hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
     return hashes
+
+
+def _public_zip_directory(source: Path, stack: ExitStack) -> Path:
+    """Read only three public ZIP entries into short-lived, isolated local files."""
+    if source.is_dir() or source.suffix.lower() != ".zip":
+        return source
+    if source.is_symlink() or not source.is_file():
+        raise ValueError("missing or linked public evidence ZIP")
+    initial = source.stat()
+    if initial.st_size > _MAX_PUBLIC_ZIP_BYTES:
+        raise ValueError("public evidence ZIP is too large")
+    expected = {name: maximum for name, maximum in _PUBLIC_ARTIFACTS}
+    try:
+        with ZipFile(source) as archive:
+            entries = archive.infolist()
+            if len(entries) != len(expected) or {item.filename for item in entries} != set(expected):
+                raise ValueError("public evidence ZIP requires exactly three root-level public files")
+            output = Path(stack.enter_context(TemporaryDirectory(prefix="godprompt_public_review_")))
+            for item in entries:
+                if item.flag_bits & 1:
+                    raise ValueError("encrypted public evidence ZIP entries are unsupported")
+                if (item.is_dir() or S_IFMT(item.external_attr >> 16) not in (0, S_IFREG)):
+                    raise ValueError("linked or non-regular public evidence ZIP entry")
+                maximum = expected[item.filename]
+                if item.file_size > maximum:
+                    raise ValueError(f"public evidence ZIP entry too large: {item.filename}")
+                with archive.open(item) as handle:
+                    data = handle.read(maximum + 1)
+                    if len(data) > maximum or handle.read(1):
+                        raise ValueError(f"public evidence ZIP entry too large: {item.filename}")
+                (output / item.filename).write_bytes(data)
+    except (BadZipFile, EOFError, RuntimeError, NotImplementedError) as exc:
+        raise ValueError(f"invalid public evidence ZIP: {exc}") from exc
+    final = source.stat()
+    if (initial.st_size, initial.st_mtime_ns) != (final.st_size, final.st_mtime_ns):
+        raise ValueError("public evidence ZIP changed during review")
+    return output
 
 
 def _parse_integer(value: str, name: str, optional: bool = False) -> int | None:
@@ -959,9 +1001,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Review an existing GodPrompt benchmark export offline; never calls a model"
     )
-    parser.add_argument("result_dir", type=Path, help="Directory containing manifest.json, summary.json and scores.csv")
+    parser.add_argument("result_dir", type=Path, help="Directory or public-only ZIP containing manifest.json, summary.json and scores.csv")
     parser.add_argument("--compare", type=Path, metavar="OTHER_RESULT_DIR",
-                        help="Compare with another saved export, without running a model")
+                        help="Compare with another saved directory or public-only ZIP, without running a model")
     parser.add_argument("--format", choices=("json", "markdown"), default="json",
                         help="Output format; Markdown is a read-only, non-promotional summary")
     parser.add_argument("--require-aligned", action="store_true",
@@ -1017,8 +1059,11 @@ def main() -> None:
     if args.require_no_godprompt_category_regression and args.compare is None:
         parser.error("--require-no-godprompt-category-regression requires --compare")
     try:
-        report = (compare_results(args.result_dir, args.compare) if args.compare
-                  else review_result(args.result_dir, required_plan_sha256=args.require_plan_sha256))
+        with ExitStack() as stack:
+            first = _public_zip_directory(args.result_dir, stack)
+            second = _public_zip_directory(args.compare, stack) if args.compare else None
+            report = (compare_results(first, second) if second is not None
+                      else review_result(first, required_plan_sha256=args.require_plan_sha256))
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
     if args.format == "markdown":

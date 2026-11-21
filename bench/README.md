@@ -466,6 +466,24 @@ To inspect an **existing** public result directory without re-running a potentia
 python -m godprompt_bench.review results/<run-id>
 ```
 
+For a portable buyer/reviewer handoff, the input may instead be one
+public-only `.zip` containing **exactly** `manifest.json`, `summary.json`
+and `scores.csv` at the ZIP root (no nested folders, private trajectories or
+other entries):
+
+```bash
+python -m godprompt_bench.review public-evidence.zip --format markdown
+python -m godprompt_bench.review earlier-public.zip --compare later-public.zip
+```
+
+The reviewer refuses duplicate, linked, encrypted, oversized and unexpected
+archive entries; only the three size-bounded public files are unpacked into
+short-lived local temporary storage, removed after inspection. It does not
+modify the archive, run Docker or call a model. Existing optional externally
+supplied SHA256 pins work with either ZIPs or directories; a ZIP is **not**
+an authenticated benchmark, and a hash copied from the same untrusted ZIP
+does not independently establish provenance.
+
 This read-only command recomputes baseline, GodPrompt and per-category counts/rates from `scores.csv`, checks that `summary.json` agrees, and checks recorded sample/infrastructure totals against `manifest.json`. Its JSON output includes explicit denominators, run/commit provenance, coverage completeness and cautions for non-full, mocked, incomplete or dirty-source evidence. Multiple distinct recorded actual model IDs trigger `mixed_actual_models`: without per-sample model attribution, condition parity cannot be established. Such runs remain reviewable, but cross-run aligned deltas are suppressed even if both runs list the same models. `within_run_condition_pairs` also counts same-task/epoch baseline-versus-GodPrompt outcomes (both passed, both failed, or only one passed), overall and by category. Only pairs with both model-evaluable conditions and matching categories are counted; `unpaired_task_epochs` records missing, infrastructure-failed or mismatched pairs without exposing task IDs. A zero paired denominator is insufficient evidence, not evidence of parity. Missing, inconsistent or malformed public artifacts fail closed. It does not read trajectories, write results, start Docker or make provider/model calls. A consistent local export **does not** independently authenticate the model run, prove provenance, validate the benchmark methodology or authorize a performance or commercial claim.
 
 The reviewer also calculates `paired_pass_uncertainty`: the observed GodPrompt-minus-baseline pass-rate difference over matched task-epochs, plus an **exploratory** 95% task-cluster bootstrap percentile interval when the saved run has at least 10 distinct paired tasks, full coverage, no excluded pairs, one recorded actual model, clean/complete source metadata, and no mock or non-full cautions. It uses 2048 deterministic resamples, drawing entire tasks with all their repeated epochs together rather than falsely treating epochs as independent tasks. When evidence is insufficient, the interval is `null` and `limitations` explains why; the descriptive point difference retains its explicit denominator. The JSON and Markdown outputs never reveal task IDs or private trajectories. Scope-violating historical rows count as failures in both paired outcomes and aggregate rates. A narrow, zero-width or positive interval is **not** an authenticated model result, a causal confidence interval, a generalization guarantee or a performance claim: task dependence, selection, hidden fixture leakage and provider variance still require independent evaluation.
