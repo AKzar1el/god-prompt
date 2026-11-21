@@ -333,6 +333,8 @@ python -m godprompt_bench.run --profile smoke --dry-run
 
 `--dry-run` does not require a model; its JSON `model` field is `null` until you optionally supply `--model` to preview a particular selection. It prints planned sample counts, categories, per-sample limits, requested controls and the selected fixture-bundle fingerprint. It makes **no model calls**, starts no Docker sandbox and creates no result directory. It does not prove provider credentials, Docker readiness or model compatibility, and deliberately gives no dollar-cost estimate: actual token usage and provider pricing are not known from the profile limits alone. A live evaluation still requires an explicit `--model` and may incur provider charges.
 
+The CLI rejects blank `--model` values and non-finite `--temperature` values before preview hashing or a potentially billable run. A non-blank model name is not proof that the provider supports it.
+
 For a copyable, human-readable preflight plan, run `python -m godprompt_bench.run --profile smoke --dry-run --format markdown`. This shows the validated profile, sample/limit budget, categories, optional model and controls, and fixture fingerprint without saving files. `--format markdown` also renders `--list-profiles` and `--list-tasks` as copyable offline tables with fixture fingerprints; JSON remains the default for scripts. Markdown is only available for these offline actions, not live evaluations, and neither validates Docker/provider readiness nor estimates spend or proves performance.
 
 For an **opt-in reviewed-plan check** before a potentially billable two-condition run,

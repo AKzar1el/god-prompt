@@ -860,6 +860,10 @@ def main() -> None:
     offline_actions.add_argument("--list-profiles", action="store_true", help="Compare validated bundled profile sizes offline without model calls")
     offline_actions.add_argument("--list-tasks", action="store_true", help="List task IDs, categories and runtimes for a selected profile offline")
     args = parser.parse_args()
+    if args.model is not None and not args.model.strip():
+        parser.error("--model must be non-blank")
+    if args.temperature is not None and not isfinite(args.temperature):
+        parser.error("temperature must be finite")
     if args.experimental_mcp_contract and not args.dry_run:
         parser.error("--experimental-mcp-contract currently requires --dry-run; live MCP evaluation is not enabled")
     if args.require_plan_sha256 is not None:

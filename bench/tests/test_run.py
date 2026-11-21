@@ -146,6 +146,27 @@ def test_cli_required_plan_fingerprint_rejects_malformed_input_without_model(
     assert '64 lowercase hexadecimal characters' in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(('flags', 'message'), (
+    (['--dry-run', '--temperature', 'nan'], 'temperature must be finite'),
+    (['--dry-run', '--temperature=-inf'], 'temperature must be finite'),
+    (['--model', 'mockllm/test', '--temperature', 'inf'], 'temperature must be finite'),
+    (['--model', '   '], '--model must be non-blank'),
+    (['--dry-run', '--model', '  '], '--model must be non-blank'),
+))
+def test_cli_invalid_controls_fail_before_plan_or_model(monkeypatch, capsys, flags, message):
+    import godprompt_bench.run as run_module
+
+    monkeypatch.setattr(sys, 'argv', ['godprompt_bench.run', '--profile', 'smoke', *flags])
+    monkeypatch.setattr(run_module, 'preview_benchmark',
+                        lambda *args, **kwargs: pytest.fail('invalid controls reached plan hashing'))
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('invalid controls reached provider boundary'))
+    with pytest.raises(SystemExit) as exc:
+        run_module.main()
+    assert exc.value.code == 2
+    assert message in capsys.readouterr().err
+
+
 def test_cli_required_matching_plan_fingerprint_allows_existing_run(monkeypatch, capsys):
     import godprompt_bench.run as run_module
 
