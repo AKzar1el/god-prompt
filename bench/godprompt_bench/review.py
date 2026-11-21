@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 from html import escape
 import json
 from dataclasses import fields
@@ -24,6 +25,11 @@ from .models import SampleRecord
 
 _JSON_MAX_BYTES = 2_000_000
 _CSV_MAX_BYTES = 20_000_000
+_PUBLIC_ARTIFACTS = (
+    ("manifest.json", _JSON_MAX_BYTES),
+    ("summary.json", _JSON_MAX_BYTES),
+    ("scores.csv", _CSV_MAX_BYTES),
+)
 _REPORT_CONTROLS = re.compile(r"[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]")
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 _INT = re.compile(r"(?:0|[1-9][0-9]*)\Z")
@@ -81,6 +87,16 @@ def _check_file(path: Path, maximum: int) -> None:
         raise ValueError(f"missing or linked artifact: {path.name}")
     if path.stat().st_size > maximum:
         raise ValueError(f"artifact too large: {path.name}")
+
+
+def _public_artifact_sha256(folder: Path) -> dict[str, str]:
+    """Fingerprint the bounded public files, never private trajectories."""
+    hashes = {}
+    for name, maximum in _PUBLIC_ARTIFACTS:
+        path = folder / name
+        _check_file(path, maximum)
+        hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashes
 
 
 def _parse_integer(value: str, name: str, optional: bool = False) -> int | None:
@@ -395,6 +411,7 @@ def review_result(
     folder: Path, *, required_plan_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Validate a saved export and return a compact, non-promotional review."""
+    initial_artifact_sha256 = _public_artifact_sha256(folder)
     manifest = _read_json(folder, "manifest.json")
     if required_plan_sha256 is not None:
         if re.fullmatch(r"[0-9a-f]{64}", required_plan_sha256) is None:
@@ -452,9 +469,14 @@ def review_result(
     if manifest.get("working_tree_dirty") is not False:
         cautions.append("unverified_clean_source")
 
+    artifact_sha256 = _public_artifact_sha256(folder)
+    if artifact_sha256 != initial_artifact_sha256:
+        raise ValueError("public benchmark artifacts changed during offline review")
+
     return {
         "review_only": True,
         "artifact_consistency": "verified",
+        "public_artifact_sha256": artifact_sha256,
         "performance_claim_verified": False,
         **({"reviewed_plan": {
             "plan_sha256": required_plan_sha256,
@@ -640,6 +662,23 @@ def _markdown_cautions(label: str, cautions: list[str]) -> list[str]:
     )]
 
 
+def _markdown_artifact_hashes(first: dict[str, Any], second: dict[str, Any] | None = None) -> list[str]:
+    """Copyable local export digests; not an execution or identity attestation."""
+    lines = [
+        "**Public file SHA256 (local bytes only; not proof of model execution):**",
+        "",
+        "| File | " + ("Earlier SHA256 | Later SHA256 |" if second else "SHA256 |"),
+        "| --- | " + ("--- | --- |" if second else "--- |"),
+    ]
+    for name, _ in _PUBLIC_ARTIFACTS:
+        digest = first["public_artifact_sha256"][name]
+        if second:
+            lines.append(f"| {name} | `{digest}` | `{second['public_artifact_sha256'][name]}` |")
+        else:
+            lines.append(f"| {name} | `{digest}` |")
+    return lines
+
+
 def render_markdown(report: dict[str, Any]) -> str:
     """Create an offline, copyable evidence summary without a performance claim."""
     lines = [
@@ -667,7 +706,7 @@ def render_markdown(report: dict[str, Any]) -> str:
             *_markdown_cautions("Comparison cautions", report["comparison_cautions"]),
             *_markdown_cautions("Earlier run cautions", before["cautions"]),
             *_markdown_cautions("Later run cautions", after["cautions"]),
-            "",
+            "", *_markdown_artifact_hashes(before, after), "",
         ]
         if report["metadata_aligned"]:
             lines += [
@@ -791,6 +830,7 @@ def render_markdown(report: dict[str, Any]) -> str:
             f"{report['coverage']['model_samples']} model-evaluable, "
             f"{report['coverage']['infrastructure_failures']} infrastructure failures.",
             *_markdown_cautions("Cautions", report["cautions"]),
+            "", *_markdown_artifact_hashes(report),
             "", "| Condition | Passed / model samples | Pass rate |",
             "| --- | ---: | ---: |",
         ]
