@@ -7,6 +7,7 @@ import hashlib
 import json
 
 import pytest
+from inspect_ai.tool import ToolCall
 
 from godprompt_bench.mcp_contract_adapter import (
     ContractHold,
@@ -186,6 +187,23 @@ def test_context_reset_does_not_restore_unattributed_tool_receipts():
     assert "MISSING_VERIFICATION" in [issue["code"] for issue in result["issues"]]
 
 
+def test_evidence_session_snapshots_nested_contract_fields():
+    """Later edits to a caller's contract cannot redirect receipt matching."""
+    mcp = FakeMCP()
+    contract = prepare_contract(mcp, task=TASK, **INPUT)
+    adapter = EvidenceSession(mcp, contract)
+    contract["verification_commands"][0]["command"] = "echo unrelated"
+    contract["allowed_paths"][0] = "../private.txt"
+
+    assert adapter.contract["verification_commands"][0]["command"] == INPUT["verification_commands"][0]
+    assert adapter.contract["allowed_paths"] == INPUT["allowed_paths"]
+    adapter.observe_check("VC-01", receipt())
+    assert adapter.review(
+        changed_files=["src/parser.py"], operations_performed=[],
+        acceptance=[{"id": "AC-01", "status": "met", "evidence_refs": ["VC-01"]}],
+    )["status"] == "REPORTED_READY_FOR_INDEPENDENT_REVIEW"
+
+
 def test_mcp_cannot_upgrade_report_to_independent_verification():
     adapter, _ = session(FakeMCP(self_verified=True))
     adapter.observe_check("VC-01", receipt())
@@ -307,3 +325,81 @@ def test_inspect_exec_replay_and_context_reset_fail_closed():
     assert recovered.review(changed_files=[], operations_performed=[], acceptance=[])["status"] == "HOLD"
     with pytest.raises(ContractHold):
         EvidenceSession(mcp, adapter.contract, execution_scope=InspectExecutionScope("", "attempt-001"))
+
+
+def test_native_inspect_tool_call_correlates_to_completed_result():
+    adapter, scope, mcp = _inspect_session()
+    call = ToolCall(
+        id="inspect-tool-001", function="bash",
+        arguments={"command": INPUT["verification_commands"][0]},
+    )
+    adapter.observe_native_inspect_exec(
+        "VC-01", scope=scope, tool_call=call,
+        completed_call_id=call.id, exec_result=_inspect_result(),
+        event_complete=True,
+    )
+    assert adapter.review(
+        changed_files=["src/parser.py"], operations_performed=[],
+        acceptance=[{"id": "AC-01", "status": "met", "evidence_refs": ["VC-01"]}],
+    )["status"] == "REPORTED_READY_FOR_INDEPENDENT_REVIEW"
+    sent = mcp.calls[-1][1]["checks"][0]["evidence_excerpt"]
+    assert "inspect-tool-001" not in sent
+    assert "tool_id_sha256:" in sent
+
+
+@pytest.mark.parametrize("call_id", ["tool.call:42/attempt-1", "inspect-tool-\u03bb-001"])
+def test_native_tool_call_ids_are_opaque_and_not_exposed_to_mcp(call_id):
+    """Inspect identities are equality tokens, not ASCII path-like names."""
+    adapter, scope, mcp = _inspect_session()
+    call = ToolCall(
+        id=call_id, function="bash",
+        arguments={"command": INPUT["verification_commands"][0]},
+    )
+    adapter.observe_native_inspect_exec(
+        "VC-01", scope=scope, tool_call=call,
+        completed_call_id=call_id, exec_result=_inspect_result(),
+        event_complete=True,
+    )
+    excerpt = adapter.review(
+        changed_files=["src/parser.py"], operations_performed=[],
+        acceptance=[{"id": "AC-01", "status": "met", "evidence_refs": ["VC-01"]}],
+    )
+    assert excerpt["status"] == "REPORTED_READY_FOR_INDEPENDENT_REVIEW"
+    serialized = json.dumps(mcp.calls[-1][1], ensure_ascii=False)
+    assert call_id not in serialized
+    assert "tool_id_sha256:" in serialized
+
+
+@pytest.mark.parametrize("call_id", ["", "a" * 1025])
+def test_native_opaque_tool_call_ids_still_have_size_bounds(call_id):
+    adapter, scope, _ = _inspect_session()
+    call = ToolCall(
+        id=call_id, function="bash",
+        arguments={"command": INPUT["verification_commands"][0]},
+    )
+    with pytest.raises(ContractHold):
+        adapter.observe_native_inspect_exec(
+            "VC-01", scope=scope, tool_call=call,
+            completed_call_id=call_id, exec_result=_inspect_result(),
+            event_complete=True,
+        )
+
+
+@pytest.mark.parametrize("call,completed_id", [
+    (ToolCall(id="inspect-tool-001", function="bash", arguments={"command": INPUT["verification_commands"][0]}), "other-event-001"),
+    (ToolCall(id="inspect-tool-001", function="text_editor", arguments={"command": INPUT["verification_commands"][0]}), "inspect-tool-001"),
+    (ToolCall(id="inspect-tool-001", function="bash", arguments={"command": "echo forged"}), "inspect-tool-001"),
+    (ToolCall(id="inspect-tool-001", function="bash", arguments={"command": INPUT["verification_commands"][0], "extra": True}), "inspect-tool-001"),
+    (ToolCall(id="inspect-tool-001", function="bash", arguments={"command": INPUT["verification_commands"][0]}, parse_error="bad args"), "inspect-tool-001"),
+    ("model-written event", "inspect-tool-001"),
+])
+def test_native_inspect_tool_call_rejects_unbound_or_malformed_events(call, completed_id):
+    adapter, scope, mcp = _inspect_session()
+    with pytest.raises(ContractHold):
+        adapter.observe_native_inspect_exec(
+            "VC-01", scope=scope, tool_call=call,
+            completed_call_id=completed_id, exec_result=_inspect_result(),
+            event_complete=True,
+        )
+    assert adapter.review(changed_files=[], operations_performed=[], acceptance=[])["status"] == "HOLD"
+    assert not mcp.calls[-1][1]["checks"]
