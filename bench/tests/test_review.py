@@ -6,6 +6,9 @@ import json
 import sys
 from dataclasses import replace
 from pathlib import Path
+from stat import S_IFLNK
+from tempfile import TemporaryDirectory
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 import pytest
 
@@ -1658,3 +1661,96 @@ def test_comparison_cli_rejects_incomplete_or_ambiguous_public_sha256_pins(
         review.main()
     assert exc.value.code == 2
     assert "public-artifact-sha256" in capsys.readouterr().err
+
+
+def _public_zip(source: Path, target: Path) -> Path:
+    with ZipFile(target, "w", compression=ZIP_DEFLATED) as archive:
+        for name in ("manifest.json", "summary.json", "scores.csv"):
+            archive.write(source / name, arcname=name)
+    return target
+
+
+@pytest.mark.parametrize("output_format", ("json", "markdown"))
+def test_review_cli_reads_portable_public_zip_without_rewriting_it(
+    exported: Path, tmp_path: Path, monkeypatch, capsys, output_format,
+):
+    from godprompt_bench import review
+
+    archive = _public_zip(exported, tmp_path / "public-evidence.zip")
+    original = archive.read_bytes()
+    monkeypatch.setattr(review, "TemporaryDirectory",
+                        lambda **kwargs: TemporaryDirectory(dir=tmp_path, **kwargs))
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(archive), "--format", output_format,
+    ])
+
+    review.main()
+    rendered = capsys.readouterr().out
+    if output_format == "json":
+        assert json.loads(rendered)["run_id"] == "sample-run"
+    else:
+        assert "sample-run" in rendered and "not independently verified" in rendered
+    assert archive.read_bytes() == original
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["public-evidence.zip", "sample-run"]
+
+
+def test_comparison_cli_accepts_two_public_zips_with_pin_verification(
+    comparable_exports: tuple[Path, Path], tmp_path: Path, monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    before, after = comparable_exports
+    earlier = _public_zip(before, tmp_path / "earlier.zip")
+    later = _public_zip(after, tmp_path / "later.zip")
+    argv = ["godprompt_bench.review", str(earlier), "--compare", str(later)]
+    for side, folder in (("before", before), ("after", after)):
+        for name in ("manifest.json", "summary.json", "scores.csv"):
+            argv += ["--require-public-artifact-sha256",
+                     f"{side}:{name}={hashlib.sha256((folder / name).read_bytes()).hexdigest()}"]
+    monkeypatch.setattr(sys, "argv", argv)
+
+    review.main()
+    assert json.loads(capsys.readouterr().out)["metadata_aligned"] is True
+
+
+@pytest.mark.parametrize("invalid", ("extra", "traversal", "duplicate", "missing", "symlink", "oversize", "corrupt"))
+def test_review_cli_rejects_unsafe_or_incomplete_public_zips(
+    exported: Path, tmp_path: Path, monkeypatch, capsys, invalid,
+):
+    from godprompt_bench import review
+
+    archive = tmp_path / f"{invalid}.zip"
+    monkeypatch.setattr(review, "TemporaryDirectory",
+                        lambda **kwargs: TemporaryDirectory(dir=tmp_path, **kwargs))
+    if invalid == "corrupt":
+        archive.write_bytes(b"not a ZIP")
+    elif invalid in ("missing", "symlink", "oversize"):
+        with ZipFile(archive, "w", compression=ZIP_DEFLATED) as output:
+            for name in ("manifest.json", "summary.json", "scores.csv"):
+                if invalid == "missing" and name == "scores.csv":
+                    continue
+                if invalid == "symlink" and name == "summary.json":
+                    entry = ZipInfo(name)
+                    entry.create_system = 3
+                    entry.external_attr = (S_IFLNK | 0o777) << 16
+                    output.writestr(entry, "elsewhere")
+                elif invalid == "oversize" and name == "summary.json":
+                    output.writestr(name, b"x" * 2_000_001)
+                else:
+                    output.write(exported / name, arcname=name)
+    else:
+        _public_zip(exported, archive)
+        with ZipFile(archive, "a", compression=ZIP_DEFLATED) as output:
+            if invalid == "extra":
+                output.writestr("trajectory.jsonl", "private")
+            elif invalid == "traversal":
+                output.writestr("../outside", "private")
+            elif invalid == "duplicate":
+                with pytest.warns(UserWarning, match="Duplicate name"):
+                    output.writestr("manifest.json", "{}")
+    monkeypatch.setattr(sys, "argv", ["godprompt_bench.review", str(archive)])
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "zip" in capsys.readouterr().err.lower()
+    assert not list(tmp_path.glob("godprompt_public_review_*"))
