@@ -76,6 +76,14 @@ an unapproved execution shortcut. No default agent invokes this factory:
 it is an offline-tested building block, **not** an enabled live third arm,
 an independent approval, or an outcome/uplift result.
 
+For a future trusted Inspect event hook, `EvidenceSession.observe_native_inspect_exec`
+accepts a real Inspect `ToolCall`, the host-observed completed call ID, and the
+sandbox `ExecResult`. It fails closed on different event IDs, tool names,
+malformed arguments, parse errors, or commands outside the contract before
+capturing evidence. Supplying these objects does not independently prove their
+origin: the host must attest the correlation, and the current surrogate-ID
+`receipt_bash_tool` is **not** wired to this native event path.
+
 An opt-in `godprompt_bench.agent.experimental_contract_coding_agent` now
 assembles that receipt-producing `bash` tool alongside the stock `text_editor`
 inside a **single** GodPrompt ReAct agent with the same named
@@ -115,9 +123,23 @@ agent. Call it separately for each sample/epoch. This is deterministic
 agent, execute sandbox commands, invoke a model, authenticate the MCP origin,
 or establish native Inspect ToolCall-ID provenance.
 
+For a host preparing several samples, the opt-in
+`prepare_experimental_contract_sample_batch` helper accepts a list of
+`{"state": TaskState, "success_criteria": [...], "forbidden_actions": [...]}`
+items. It validates **every** host-provided sample and public requirement
+before contacting the injected MCP client, rejects duplicate sample/epoch
+pairs, and returns a separate `(agent, session, contract)` for each
+`(sample_id, epoch)` key. Different epochs of the same task retain separate
+in-memory evidence sessions; hidden task metadata is never forwarded as
+contract input. A later MCP failure can still interrupt preparation after
+earlier MCP calls, so callers must discard an incomplete batch. This is
+preparation only, not model execution, native tool-call attestation, or
+permission to run the experimental third arm.
+
 The remaining work under
 [Bench 2.0 issue #348](https://github.com/AKzar1el/god-prompt/issues/348)
-includes a native Inspect ToolCall-ID correlation and evidence-review bridge,
+is to wire the new tool into an isolated per-sample, approval-controlled
+Inspect execution context (including exact tool-call provenance),
 freeze a separate held-out corpus and three-arm run manifest, retain
 identical sandboxes/controls, and validate paired uncertainty and raw
 anonymized trajectories. Live providers remain separately spend-gated.
@@ -149,6 +171,85 @@ Version 1 contains exactly 40 small deterministic tasks:
 | Tool discipline | 6 |
 
 Python and JavaScript fixtures use standard-library/runtime features only. Each task stores its model-visible files separately from its hidden deterministic verifier. The verifier is materialized only after the agent finishes.
+
+### Held-out failure corpus preflight (Bench 2.0, opt-in)
+
+Keep the reference 40-task `tasks/manifest.json` unchanged. Author a **separate**
+private task manifest using the same TaskSpec fields as the reference corpus,
+and a failure-mode sidecar that contains only case IDs and public labels:
+
+```json
+{
+  "schema": "godprompt.heldout_modes.v1",
+  "cases": [
+    {"id": "heldout-example-001", "failure_mode": "false_completion"}
+  ]
+}
+```
+
+Run the read-only metadata preflight from `bench/`:
+
+```sh
+python -m godprompt_bench.heldout --heldout ../private-heldout/tasks.json --modes ../private-heldout/modes.json
+```
+
+It rejects duplicate/overlapping reference task IDs and fixture directories,
+invalid paths, incomplete case mappings, duplicate JSON keys and unknown
+failure modes. Its JSON report includes task/mode counts, missing failure-mode
+coverage and SHA-256 fingerprints, **not** prompts, private fixture contents
+or verifier code. Supported modes cover false completion, scope creep, missing
+verification, multi-session handoff, misleading receipts, negative instructions,
+hidden dependency changes and stale context. Partial pilots report missing
+categories instead of pretending to provide full coverage.
+
+For a corpus intended to cover **every** supported failure mode, opt into a
+fail-closed coverage gate using `--min-cases-per-mode 1` (or a higher positive
+minimum up to 10000). The command exits nonzero and names only deficient mode
+labels/counts if the manifest is incomplete. Leave the flag off for exploratory
+partial pilots. Passing this metadata gate does not establish sufficient
+statistical power, fixture integrity, novelty, or measured model improvement.
+
+To freeze the **actual fixture-bundle bytes**, not just manifest metadata,
+opt into a read-only check of a private fixture directory:
+
+```sh
+python -m godprompt_bench.heldout --heldout ../private-heldout/tasks.json --modes ../private-heldout/modes.json --fixture-root ../private-heldout
+```
+
+Each task's `fixture_dir/fixture.json` must exist under this root and pass
+the existing bundle schema. The report adds a deterministic aggregate SHA-256
+for the fixture bytes (including hidden verifier source), but no private
+contents, case paths or per-case hashes. Missing, linked, malformed or oversized
+bundles fail closed. Re-run this preflight before both arms of a comparison and
+keep identical fingerprints; changing fixture bytes invalidates a frozen run
+even when task/mode manifests have not changed. The opt-in check is capped at
+1 MiB per bundle and 64 MiB total and never executes the verifier.
+
+For an automated **freeze check**, save the first complete preflight JSON report
+outside the public repository, review and retain it under owner control, then
+pass its path on every subsequent preflight:
+
+```sh
+python -m godprompt_bench.heldout --heldout ../private-heldout/tasks.json --modes ../private-heldout/modes.json --fixture-root ../private-heldout > ../private-heldout/frozen-preflight.json
+python -m godprompt_bench.heldout --heldout ../private-heldout/tasks.json --modes ../private-heldout/modes.json --fixture-root ../private-heldout --expected-report ../private-heldout/frozen-preflight.json
+```
+
+The second command exits nonzero when the reference manifest, private task
+manifest, mode sidecar, or fixture bytes differ, even if the private verifier
+alone changed. It requires a valid saved full report with all four SHA-256
+fingerprints and an unchanged fixture count; the result includes
+`input_fingerprints_match: true` only when those checks pass. Error messages
+identify the changed field but never print private fixture content or hashes.
+The saved report is **not signed**: this detects drift relative to the supplied
+owner-controlled report, not tampering with that report or corpus novelty.
+
+Without `--fixture-root`, the preflight remains metadata-only and does **not**
+read private fixture bundles. Neither mode proves that tasks are truly held out
+from training, installs the third arm, runs agents, validates verifier
+correctness, or calls a model/provider. Keep private corpus files outside the
+public repository and independently audit novelty and verifier isolation
+before any controlled paired evaluation. Existing two-arm Bench behavior and
+publication/export requirements remain unchanged.
 
 ## Metrics
 
@@ -234,16 +335,76 @@ Before spending provider tokens, preview the selected profile and verify its fix
 ```bash
 python -m godprompt_bench.run --list-profiles
 python -m godprompt_bench.run --profile smoke --list-tasks
+python -m godprompt_bench.run --list-profiles --format markdown
+python -m godprompt_bench.run --profile smoke --list-tasks --format markdown
 python -m godprompt_bench.run --profile smoke --dry-run
 ```
 
-`--list-profiles` compares the bundled smoke, half and full profiles in one validated JSON report: task counts, epochs, total planned samples, category coverage and a fixture fingerprint for each. It does not require a model, start Docker, call a provider or write result files. Use it to choose a profile before running the more detailed `--dry-run` preview.
+`--list-profiles` compares the bundled smoke, half and full profiles in one validated JSON report: task counts, epochs, total planned samples, per-sample time limits, the **cumulative sample-time ceiling** (the sum of those limits across both conditions and all epochs), category coverage and a fixture fingerprint for each. Markdown formats the ceilings as durations: 36 min for smoke, 10 h for half and 20 h for full. These are **not** predicted elapsed wall-clock durations or model costs; samples may run concurrently and startup, infrastructure and provider overhead vary. The command does not require a model, start Docker, call a provider or write result files. Use it to choose a profile before running the more detailed `--dry-run` preview.
 
-`--list-tasks` shows the selected profile's task IDs, categories and runtimes in their configured order, plus its validated fixture fingerprint. It helps you inspect the task mix before choosing a potentially paid evaluation. Only public task metadata is shown, never fixture contents or hidden verifiers; like the other preview commands, it makes no model or Docker calls and writes no results. Choose another set with `--profile half` or `--profile full`.
+`--list-tasks` shows the selected profile's task IDs, categories and runtimes in their configured order, plus its validated fixture fingerprint. JSON and Markdown also summarize category and runtime counts (distinct tasks per condition, not multiplied by epochs or evaluation conditions), so you can compare workload coverage before choosing a potentially paid evaluation. Only public task metadata is shown, never fixture contents or hidden verifiers; like the other preview commands, it makes no model or Docker calls and writes no results. Choose another set with `--profile half` or `--profile full`.
 
 `--dry-run` does not require a model; its JSON `model` field is `null` until you optionally supply `--model` to preview a particular selection. It prints planned sample counts, categories, per-sample limits, requested controls and the selected fixture-bundle fingerprint. It makes **no model calls**, starts no Docker sandbox and creates no result directory. It does not prove provider credentials, Docker readiness or model compatibility, and deliberately gives no dollar-cost estimate: actual token usage and provider pricing are not known from the profile limits alone. A live evaluation still requires an explicit `--model` and may incur provider charges.
 
-For a copyable, human-readable preflight plan, run `python -m godprompt_bench.run --profile smoke --dry-run --format markdown`. This shows the validated profile, sample/limit budget, categories, optional model and controls, and fixture fingerprint without saving files. JSON remains the default for scripts. The Markdown option is deliberately restricted to `--dry-run`; it neither validates Docker/provider readiness nor estimates spend or proves performance.
+When a model is supplied, the JSON preview also returns `reviewed_live_argv`: an
+argument **array**, not a shell command, containing the same profile, model and
+generation controls plus `--require-plan-sha256` set to the reviewed digest.
+Pass these elements as separate arguments to the benchmark module only after
+separate approval for potentially billable execution; never concatenate them
+into a shell string. Custom profile paths must still resolve to the same file.
+An explicitly selected `--output` directory is included in the argument array;
+without one, the live runner retains its default `bench/results` destination.
+The output directory is not bound by the plan digest and can be changed without
+invalidating it, so review the destination separately before a live run. The array is
+omitted when no model is selected or the experimental MCP arm is previewed
+(that arm remains disabled for live evaluation).
+
+The CLI rejects blank `--model` values and non-finite `--temperature` values before preview hashing or a potentially billable run. A non-blank model name is not proof that the provider supports it.
+
+For a copyable, human-readable preflight plan, run `python -m godprompt_bench.run --profile smoke --dry-run --format markdown`. This shows the validated profile, sample/limit budget, categories, optional model and controls, and fixture fingerprint without saving files. With a model selected, it also includes the exact reviewed live-run arguments as a JSON array, not an executable shell command; pass elements separately only after authorizing a potentially billable run. Without a model (or for the disabled experimental arm), no live-run argument array is offered. `--format markdown` also renders `--list-profiles` and `--list-tasks` as copyable offline tables with fixture fingerprints; JSON remains the default for scripts. Markdown is only available for these offline actions, not live evaluations, and neither validates Docker/provider readiness nor estimates spend or proves performance.
+
+For an **opt-in reviewed-plan check** before a potentially billable two-condition run,
+preview with the *same* model, profile, seed and generation controls you intend to
+use live:
+
+```sh
+python -m godprompt_bench.run --profile smoke --model openai/gpt-5.6-sol --seed 7 --dry-run
+```
+
+Review the sample counts and limits, then copy the returned `plan_sha256` into
+the corresponding live command as `--require-plan-sha256` (64 lowercase hex
+characters). The runner recomputes that digest **before** starting Inspect or
+calling a provider, and refuses a mismatch. The digest binds the selected task
+IDs and fixture bytes, task manifest, GodPrompt prompt, sandbox files, benchmark
+Python sources and dependency declaration, profile limits, model and generation controls.
+It does not depend on the output directory or estimated prices. A changed input
+requires a new reviewed preview; omitting the flag preserves existing live-run
+behavior. This is a local drift check, **not** a signature, authorization to
+spend, a guarantee about external provider or Docker state, or verification of Docker/model
+readiness. The experimental third MCP arm remains offline-only even when a plan
+fingerprint is provided.
+
+For completed two-condition evaluations, the public run manifest also records
+`plan_sha256` and `plan_sha256_schema`. Compare the digest to the reviewed
+offline preview to audit which local inputs and controls were selected. The
+runner captures the digest before evaluation and refuses public export if those
+plan inputs change by the end; this does **not** attest remote provider behavior,
+prove actual charges, or authorize a model run.
+
+An offline reviewer can now enforce the same previously approved 64-character
+digest against a **completed** public run, without launching a model:
+
+```sh
+python -m godprompt_bench.review results/<run-id> --require-plan-sha256 <reviewed-64-hex-sha256>
+```
+
+This opt-in gate verifies the saved `manifest.json` plan schema and digest,
+alongside the reviewer's existing public-score consistency checks, and fails
+closed on an absent, unsupported or different plan digest. JSON and Markdown
+reviews display the matched hash. It is for a single result directory, not
+`--compare`; older exports without a plan digest remain reviewable without
+this option. Matching a local manifest to a reviewed preview does **not**
+independently authenticate the run or provider, attest spend, or prove results.
 
 To evaluate a smaller, explicitly selected subset of the bundled corpus, copy a JSON file from `configs/smoke.json`, give it a distinct lowercase `name` (for example `my-check`), and edit `task_ids` and the resource limits. Preview it before any potentially paid run:
 
@@ -318,7 +479,36 @@ To inspect an **existing** public result directory without re-running a potentia
 python -m godprompt_bench.review results/<run-id>
 ```
 
+For a portable buyer/reviewer handoff, the input may instead be one
+public-only `.zip` containing **exactly** `manifest.json`, `summary.json`
+and `scores.csv` at the ZIP root (no nested folders, private trajectories or
+other entries):
+
+```bash
+python -m godprompt_bench.pack results/<run-id> public-evidence.zip
+python -m godprompt_bench.review public-evidence.zip --format markdown
+python -m godprompt_bench.review earlier-public.zip --compare later-public.zip
+```
+
+The separate `pack` command validates the saved public results first, then
+creates a deterministic, new ZIP with only those three public files (never
+`trajectories.jsonl`), without running a model or contacting a provider.
+It refuses to overwrite an existing ZIP. Its JSON receipt contains a copyable
+ZIP SHA256 and the three individual artifact hashes. Share expected hashes
+through a separately trusted channel if the recipient needs tamper detection;
+hashes generated alongside an untrusted ZIP do not authenticate its origin.
+
+The reviewer refuses duplicate, linked, encrypted, oversized and unexpected
+archive entries; only the three size-bounded public files are unpacked into
+short-lived local temporary storage, removed after inspection. It does not
+modify the archive, run Docker or call a model. Existing optional externally
+supplied SHA256 pins work with either ZIPs or directories; a ZIP is **not**
+an authenticated benchmark, and a hash copied from the same untrusted ZIP
+does not independently establish provenance.
+
 This read-only command recomputes baseline, GodPrompt and per-category counts/rates from `scores.csv`, checks that `summary.json` agrees, and checks recorded sample/infrastructure totals against `manifest.json`. Its JSON output includes explicit denominators, run/commit provenance, coverage completeness and cautions for non-full, mocked, incomplete or dirty-source evidence. Multiple distinct recorded actual model IDs trigger `mixed_actual_models`: without per-sample model attribution, condition parity cannot be established. Such runs remain reviewable, but cross-run aligned deltas are suppressed even if both runs list the same models. `within_run_condition_pairs` also counts same-task/epoch baseline-versus-GodPrompt outcomes (both passed, both failed, or only one passed), overall and by category. Only pairs with both model-evaluable conditions and matching categories are counted; `unpaired_task_epochs` records missing, infrastructure-failed or mismatched pairs without exposing task IDs. A zero paired denominator is insufficient evidence, not evidence of parity. Missing, inconsistent or malformed public artifacts fail closed. It does not read trajectories, write results, start Docker or make provider/model calls. A consistent local export **does not** independently authenticate the model run, prove provenance, validate the benchmark methodology or authorize a performance or commercial claim.
+
+The reviewer also calculates `paired_pass_uncertainty`: the observed GodPrompt-minus-baseline pass-rate difference over matched task-epochs, plus an **exploratory** 95% task-cluster bootstrap percentile interval when the saved run has at least 10 distinct paired tasks, full coverage, no excluded pairs, one recorded actual model, clean/complete source metadata, and no mock or non-full cautions. It uses 2048 deterministic resamples, drawing entire tasks with all their repeated epochs together rather than falsely treating epochs as independent tasks. When evidence is insufficient, the interval is `null` and `limitations` explains why; the descriptive point difference retains its explicit denominator. The JSON and Markdown outputs never reveal task IDs or private trajectories. Scope-violating historical rows count as failures in both paired outcomes and aggregate rates. A narrow, zero-width or positive interval is **not** an authenticated model result, a causal confidence interval, a generalization guarantee or a performance claim: task dependence, selection, hidden fixture leakage and provider variance still require independent evaluation.
 
 For a concise, copyable Markdown evidence summary, add `--format markdown` to the same offline review command. The default remains machine-readable JSON. The Markdown view displays run, coverage, per-condition and per-category rates, matched within-run outcome counts, visible cautions and an explicit warning that a locally consistent export is not independently verified performance evidence. These descriptive outcomes do not establish causality or justify selective performance claims. It never submits or publishes the report.
 
@@ -327,6 +517,41 @@ For an automated offline coverage check, add `--require-evaluable` to review one
 For a conservative, opt-in **within-run CI signal** use `python -m godprompt_bench.review results/<run-id> --require-nondegrading-pairs`. This prints the normal diagnostics and exits 1 if requested samples are missing, an infrastructure error occurred, a task/epoch lacks a matched baseline/GodPrompt pair, no pairs are evaluable, multiple distinct actual models were reported, or baseline-only passes outnumber GodPrompt-only passes. An equal number of one-sided wins passes; both-pass/both-fail pairs are neutral. This flag is for **one** saved run, not `--compare`. It is an observed paired-outcome check, not a statistical significance test, an authenticated run, a causal improvement claim or permission to publish benchmarks; mock/non-full runs retain their explicit cautions. No provider calls or result writes occur.
 
 Credential-like fields are recursively redacted from public JSON/JSONL exports.
+
+The offline reviewer includes `public_artifact_sha256` for the local
+`manifest.json`, `summary.json` and `scores.csv` bytes. Markdown review and
+comparison show the same SHA256 values in copyable tables. Record them when
+handing off review evidence so a recipient can detect modified public files;
+the reviewer checks that the files stay unchanged during its validation.
+These are **unsigned local fingerprints**, not proof of model execution,
+independent provenance or performance. Private trajectories are never included.
+
+For an offline recipient who already has **independently supplied** expected
+fingerprints, the single-run reviewer can enforce all three at once:
+
+```text
+python -m godprompt_bench.review results/<run-id> --require-public-artifact-sha256 manifest.json=<manifest-sha256> --require-public-artifact-sha256 summary.json=<summary-sha256> --require-public-artifact-sha256 scores.csv=<scores-sha256>
+```
+
+Replace each placeholder with its 64-character lowercase SHA256. The command
+rejects partial, duplicate and malformed pins; mismatched file bytes produce
+exit code 1 after the normal JSON or Markdown diagnostic report. This reads only
+public local artifacts, never calls a model or rewrites a result. A fingerprint
+copied from the **same untrusted export** cannot authenticate that export; obtain
+pins through a separately trusted channel and verify that channel's provenance.
+
+For a comparison review, use the same repeatable flag with **six** independent
+pins: prefix each public filename with `before:` or `after:` (three per run).
+For example, after obtaining expected hashes separately from both export owners:
+
+```text
+python -m godprompt_bench.review results/<earlier-run-id> --compare results/<later-run-id> --require-public-artifact-sha256 before:manifest.json=<earlier-manifest-sha256> --require-public-artifact-sha256 before:summary.json=<earlier-summary-sha256> --require-public-artifact-sha256 before:scores.csv=<earlier-scores-sha256> --require-public-artifact-sha256 after:manifest.json=<later-manifest-sha256> --require-public-artifact-sha256 after:summary.json=<later-summary-sha256> --require-public-artifact-sha256 after:scores.csv=<later-scores-sha256>
+```
+
+All six pins must be present and well-formed, with no duplicates or unqualified
+names. On a mismatch, the reviewer prints its normal comparison diagnostics
+before returning exit code 1 and naming the affected side and file. The check
+does not alter either export or authenticate model execution.
 
 ## CI
 
@@ -368,9 +593,21 @@ GodPrompt pass changes across matched tasks, not category-by-category guarantees
 or causality. A passing mocked, non-full or locally generated comparison is not
 independent performance verification or permission to publish a claim.
 
+For a stricter offline CI review, use
+`--require-no-godprompt-category-regression` with `--compare`. This returns
+status 1 if **any** represented task category has more GodPrompt pass-to-fail
+than fail-to-pass transitions, even when gains in other categories make the
+overall pass count improve. It also fails closed on unaligned exports, missing
+or infrastructure-failed samples, or excluded task-epoch pairs; each category
+must have at least one matched model-evaluable sample. Like the existing net
+gate, it prints diagnostics before exiting, never calls providers or modifies
+artifacts, and does not establish causality or independently verified uplift.
+
 Both exports are checked independently. A mismatch in selected fixtures, model, evaluation controls, sandbox, baseline prompt, scored task/condition/epoch/category identities, model-evaluable sample coverage or required metadata suppresses comparison deltas and appears in `comparison_cautions`. Matching manifest fingerprints alone do not establish that the same samples were scored. With aligned metadata and samples, JSON includes condition-level and per-category pass-rate differences, aggregated per-condition paired outcome transitions (`condition_pass_transitions`) and a per-category/condition transition breakdown (`category_pass_transitions`). Each transition counts `fail_to_pass`, `pass_to_fail`, `pass_to_pass`, `fail_to_fail` and `paired_samples`; no task IDs or sample contents are exposed in the transition totals. The `cross_run_condition_pair_transitions` matrix additionally shows whether the *joint* baseline/GodPrompt outcome for each matching task-epoch stayed the same or moved between both-pass, both-fail and the two single-condition-pass states. Its separate matched/excluded task-epoch counts omit missing, infrastructure-failed and category-mismatched condition pairs; it never reveals task IDs. Infrastructure-failed samples are excluded from paired outcomes. A category/condition with zero model-evaluable paired samples has zero transition counts and a `null` rate difference, not evidence of no change. All differences are descriptive only, not proof of a causal improvement; mocked and non-full runs retain their cautions. The comparison does not modify artifacts, start Docker or call providers.
 
-Add `--format markdown` to render a human-readable comparison with condition/category percentage-point changes, aggregate and per-category paired pass/fail transitions, a joint condition-pair transition matrix, observed per-condition input/output token, failed-tool-call and retry count changes, and caution labels. Missing provider token usage remains `n/a`, not zero; no provider price or efficiency benefit is estimated. If local metadata or scored samples are not comparable, the Markdown report suppresses all change tables rather than presenting misleading deltas. The default JSON comparison includes nullable `condition_resource_delta`, `condition_pass_transitions`, `category_pass_transitions` and `cross_run_condition_pair_transitions` data. This is for inspection and review drafts, not an independently validated performance claim.
+Aligned comparisons also include `cross_run_paired_uncertainty`: the observed change in each matched task-epoch's GodPrompt-minus-baseline pass difference from earlier to later, plus an exploratory fixed-seed 95% task-cluster bootstrap interval. All epochs belonging to one task are resampled together, not treated as independent tasks. The interval is `null` for fewer than ten distinct tasks, excluded/unpaired/infrastructure-failed samples, mock or non-full runs, or missing provenance/model/coverage evidence; a descriptive point change may still be visible with explicit limitations. Unaligned comparisons suppress this entire field. This interval cannot authenticate model execution, establish causality, justify selective claims, or measure generalization beyond the observed task set.
+
+Add `--format markdown` to render a human-readable comparison with condition/category percentage-point changes, aggregate and per-category paired pass/fail transitions, a joint condition-pair transition matrix, cross-run paired-contrast uncertainty and its limitations, observed per-condition input/output token, failed-tool-call and retry count changes, and caution labels. Missing provider token usage remains `n/a`, not zero; no provider price or efficiency benefit is estimated. If local metadata or scored samples are not comparable, the Markdown report suppresses all change tables rather than presenting misleading deltas. The default JSON comparison includes nullable `condition_resource_delta`, `condition_pass_transitions`, `category_pass_transitions`, `cross_run_condition_pair_transitions`, and `cross_run_paired_uncertainty` data. This is for inspection and review drafts, not an independently validated performance claim.
 
 ## Publishing results
 

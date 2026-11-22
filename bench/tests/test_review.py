@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import sys
 from dataclasses import replace
 from pathlib import Path
+from stat import S_IFLNK
+from tempfile import TemporaryDirectory
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 import pytest
 
@@ -48,6 +52,10 @@ def test_review_verifies_exported_scores_and_preserves_denominators(exported: Pa
     report = review_result(exported)
     assert report["review_only"] is True
     assert report["artifact_consistency"] == "verified"
+    assert report["public_artifact_sha256"] == {
+        name: hashlib.sha256((exported / name).read_bytes()).hexdigest()
+        for name in ("manifest.json", "summary.json", "scores.csv")
+    }
     assert report["run_id"] == "sample-run"
     assert report["actual_models"] == ["mockllm/test"]
     assert report["coverage"] == {
@@ -139,6 +147,150 @@ def test_review_pairs_conditions_without_leaking_task_ids_or_counting_infra(
     assert "1 | 1 | 1 | 1 | 4 | 3" in markdown
     assert "private-" not in markdown
     assert "not a performance claim" in markdown.lower()
+
+
+def test_paired_cluster_bootstrap_is_deterministic_and_keeps_epochs_together():
+    from godprompt_bench.review import _paired_cluster_uncertainty
+
+    rows = []
+    for task in range(12):
+        for epoch in (1, 2, 3):
+            rows.extend([
+                replace(record("baseline", passed=task >= 8),
+                        task_id=f"private-task-{task}", epoch=epoch),
+                replace(record("godprompt", passed=task < 8),
+                        task_id=f"private-task-{task}", epoch=epoch),
+            ])
+    report = _paired_cluster_uncertainty(rows, [])
+    single_epoch = [row for row in rows if row.epoch == 1]
+    once = _paired_cluster_uncertainty(single_epoch, [])
+    assert report["method"] == "paired_task_cluster_bootstrap_percentile"
+    assert report["confidence_level"] == 0.95
+    assert report["resamples"] == 2048
+    assert report["matched_task_epochs"] == 36
+    assert report["distinct_tasks"] == 12
+    assert report["observed_pass_rate_delta"] == pytest.approx(1 / 3)
+    assert report["interval_95"] == once["interval_95"]
+    assert report["interval_95"] == _paired_cluster_uncertainty(list(reversed(rows)), [])["interval_95"]
+    assert report["interval_95"][0] <= 1 / 3 <= report["interval_95"][1]
+    assert "private-task" not in json.dumps(report)
+
+
+def test_paired_cluster_uncertainty_fails_closed_for_small_mock_or_missing_pairs():
+    from godprompt_bench.review import _paired_cluster_uncertainty
+
+    rows = [replace(record(condition), task_id=f"private-{i}")
+            for i in range(12) for condition in ("baseline", "godprompt")]
+    small = _paired_cluster_uncertainty(rows[:12], [])
+    assert small["interval_95"] is None
+    assert "fewer_than_10_distinct_tasks" in small["limitations"]
+    mock = _paired_cluster_uncertainty(rows, ["mock_model"])
+    assert mock["interval_95"] is None
+    assert "mock_model" in mock["limitations"]
+    missing = _paired_cluster_uncertainty(rows[:-1], [])
+    assert missing["matched_task_epochs"] == 11
+    assert missing["excluded_task_epochs"] == 1
+    assert missing["interval_95"] is None
+    assert "unpaired_or_infrastructure_failed" in missing["limitations"]
+
+
+def test_cross_run_paired_contrast_uncertainty_keeps_task_epochs_together():
+    from godprompt_bench.review import _cross_run_paired_cluster_uncertainty
+
+    before, after = {}, {}
+    for task in range(12):
+        for epoch in (1, 2, 3):
+            for condition in ("baseline", "godprompt"):
+                key = (f"private-task-{task}", condition, epoch)
+                before[key] = ("implementation", True, False)
+                after[key] = ("implementation", True,
+                              task < 8 if condition == "godprompt" else task >= 8)
+    report = _cross_run_paired_cluster_uncertainty(before, after, [], [])
+    once = _cross_run_paired_cluster_uncertainty(
+        {key: value for key, value in before.items() if key[2] == 1},
+        {key: value for key, value in after.items() if key[2] == 1}, [], [],
+    )
+    assert report["method"] == "cross_run_paired_task_cluster_bootstrap_percentile"
+    assert report["resamples"] == 2048
+    assert report["matched_task_epochs"] == 36
+    assert report["distinct_tasks"] == 12
+    assert report["observed_contrast_change"] == pytest.approx(1 / 3)
+    assert report["interval_95"] == once["interval_95"]
+    assert report["interval_95"][0] <= 1 / 3 <= report["interval_95"][1]
+    assert "private-task" not in json.dumps(report)
+
+
+def test_cross_run_paired_contrast_interval_suppresses_unqualified_evidence():
+    from godprompt_bench.review import _cross_run_paired_cluster_uncertainty
+
+    before = {(f"private-{task}", condition, 1): ("implementation", True, True)
+              for task in range(12) for condition in ("baseline", "godprompt")}
+    after = dict(before)
+    mock = _cross_run_paired_cluster_uncertainty(before, after, ["mock_model"], [])
+    assert mock["interval_95"] is None
+    assert "before:mock_model" in mock["limitations"]
+    after.pop(("private-11", "godprompt", 1))
+    missing = _cross_run_paired_cluster_uncertainty(before, after, [], [])
+    assert missing["excluded_task_epochs"] == 1
+    assert missing["interval_95"] is None
+    assert "unpaired_or_infrastructure_failed" in missing["limitations"]
+    small_tasks = {f"private-{task}" for task in range(8)}
+    small = _cross_run_paired_cluster_uncertainty(
+        {key: value for key, value in before.items() if key[0] in small_tasks},
+        {key: value for key, value in before.items() if key[0] in small_tasks}, [], [],
+    )
+    assert small["interval_95"] is None
+    assert "fewer_than_10_distinct_tasks" in small["limitations"]
+
+
+def test_paired_outcomes_use_scope_aware_passes_for_historical_exports(tmp_path: Path):
+    from godprompt_bench.review import review_result
+
+    rows = [
+        replace(record("baseline"), scope_violation=True),
+        replace(record("godprompt"), scope_violation=False),
+    ]
+    folder = tmp_path / "scope-aware-pairs"
+    manifest = {
+        "run_id": "scope-aware-pairs", "profile": "smoke",
+        "requested_model": "mockllm/test", "actual_models": ["mockllm/test"],
+        "requested_samples": 2, "completed_samples": 2, "infrastructure_failures": 0,
+        "benchmark_commit_sha": "a" * 40, "godprompt_commit_sha": "b" * 40,
+        "working_tree_dirty": False,
+    }
+    export_run(folder, manifest, rows, [])
+    report = review_result(folder)
+    assert report["conditions"]["baseline"]["passed"] == 0
+    assert report["conditions"]["godprompt"]["passed"] == 1
+    assert report["within_run_condition_pairs"]["baseline_fail_godprompt_pass"] == 1
+    assert report["paired_pass_uncertainty"]["observed_pass_rate_delta"] == 1.0
+
+
+def test_review_renders_conservative_uncertainty_not_a_performance_claim(exported: Path):
+    from godprompt_bench.review import review_result, render_markdown
+
+    report = review_result(exported)
+    uncertainty = report["paired_pass_uncertainty"]
+    assert uncertainty["observed_pass_rate_delta"] == -1.0
+    assert uncertainty["matched_task_epochs"] == 1
+    assert uncertainty["interval_95"] is None
+    markdown = render_markdown(report)
+    assert "Task-cluster uncertainty" in markdown
+    assert "not a performance claim" in markdown.lower()
+    assert "Public file SHA256" in markdown
+    assert report["public_artifact_sha256"]["scores.csv"] in markdown
+
+
+def test_review_file_digests_change_for_valid_whitespace_only_edit(exported: Path):
+    from godprompt_bench.review import review_result
+
+    first = review_result(exported)["public_artifact_sha256"]
+    path = exported / "manifest.json"
+    path.write_bytes(path.read_bytes() + b"\n")
+    second = review_result(exported)["public_artifact_sha256"]
+    assert second["manifest.json"] != first["manifest.json"]
+    assert second["summary.json"] == first["summary.json"]
+    assert second["scores.csv"] == first["scores.csv"]
 
 
 def test_review_refuses_changed_summary(exported: Path):
@@ -469,9 +621,62 @@ def test_offline_comparison_reports_condition_deltas_and_no_performance_claim(
     }
     assert report["before"]["run_id"] == "sample-run"
     assert report["after"]["run_id"] == "later-run"
+    from godprompt_bench.review import render_markdown
+    markdown = render_markdown(report)
+    for name in ("manifest.json", "summary.json", "scores.csv"):
+        assert report["before"]["public_artifact_sha256"][name] in markdown
+        assert report["after"]["public_artifact_sha256"][name] in markdown
     assert "mock_model" in report["before"]["cautions"]
+    assert report["cross_run_paired_uncertainty"]["interval_95"] is None
+    assert "before:mock_model" in report["cross_run_paired_uncertainty"]["limitations"]
     assert {p.name: p.read_bytes() for p in before.iterdir()} == before_files
     assert {p.name: p.read_bytes() for p in after.iterdir()} == after_files
+
+
+def test_cross_run_paired_contrast_renders_only_local_descriptive_uncertainty(
+    comparable_exports: tuple[Path, Path], tmp_path: Path,
+):
+    from godprompt_bench.review import compare_results, render_markdown
+
+    template = json.loads(
+        (comparable_exports[0] / "manifest.json").read_text(encoding="utf-8")
+    )
+    template.update(
+        requested_model="provider/test-model", actual_models=["provider/test-model"],
+        requested_samples=72, completed_samples=72, infrastructure_failures=0,
+        epochs=3,
+    )
+    before_rows, after_rows = [], []
+    for task in range(12):
+        for epoch in (1, 2, 3):
+            for condition in ("baseline", "godprompt"):
+                before_rows.append(replace(
+                    record(condition, passed=False),
+                    task_id=f"private-{task}", epoch=epoch,
+                ))
+                after_rows.append(replace(
+                    record(condition, passed=(
+                        task < 8 if condition == "godprompt" else task >= 8
+                    )),
+                    task_id=f"private-{task}", epoch=epoch,
+                ))
+    before, after = tmp_path / "cross-run-before", tmp_path / "cross-run-after"
+    export_run(before, {**template, "run_id": "cross-run-before"}, before_rows, [])
+    export_run(after, {**template, "run_id": "cross-run-after"}, after_rows, [])
+
+    report = compare_results(before, after)
+    assert report["metadata_aligned"] is True
+    contrast = report["cross_run_paired_uncertainty"]
+    assert contrast["observed_contrast_change"] == pytest.approx(1 / 3)
+    assert contrast["interval_95"] is not None
+    assert contrast["limitations"] == []
+    rendered = render_markdown(report)
+    assert "Cross-run paired contrast change" in rendered
+    assert "+33.3 pp" in rendered
+    assert "not a causal confidence interval" in rendered
+    assert "private-" not in rendered
+    assert "private-" not in json.dumps(report)
+    assert report["performance_claim_verified"] is False
 
 
 def test_comparison_suppresses_deltas_when_both_runs_route_multiple_models(
@@ -566,7 +771,9 @@ def test_comparison_suppresses_joint_pair_transitions_if_metadata_is_unaligned(
     report = compare_results(before, after)
     assert report["metadata_aligned"] is False
     assert report["cross_run_condition_pair_transitions"] is None
+    assert report["cross_run_paired_uncertainty"] is None
     assert "Joint baseline/GodPrompt pair transitions" not in render_markdown(report)
+    assert "Cross-run paired contrast change" not in render_markdown(report)
 
 
 def test_offline_comparison_resource_deltas_keep_unknown_tokens_unknown(
@@ -1094,3 +1301,541 @@ def test_offline_comparison_no_regression_flag_requires_compare(
         review.main()
     assert exc.value.code == 2
     assert "--compare" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("output_format", ["json", "markdown"])
+@pytest.mark.parametrize(
+    ("outcomes", "missing", "infra", "misaligned", "expected_exit"),
+    [
+        # Two verification recoveries must not mask one implementation regression.
+        ([("implementation", True, False),
+          ("verification", False, True),
+          ("verification", False, True)], False, False, False, 1),
+        ([("implementation", False, True),
+          ("verification", True, True)], False, False, False, 0),
+        ([("implementation", True, False),
+          ("implementation", False, True),
+          ("verification", False, False)], False, False, False, 0),
+        ([("implementation", True, False),
+          ("verification", False, False)], False, False, False, 1),
+        ([("implementation", True, True)], True, False, False, 1),
+        ([("implementation", True, True)], False, True, False, 1),
+        ([("implementation", True, True)], False, False, True, 1),
+    ],
+)
+def test_offline_comparison_cli_requires_no_godprompt_category_regression(
+    comparable_exports: tuple[Path, Path], tmp_path: Path, monkeypatch, capsys,
+    outcomes: list[tuple[str, bool, bool]], missing: bool, infra: bool,
+    misaligned: bool, expected_exit: int, output_format: str,
+):
+    from godprompt_bench import review
+
+    template = json.loads(
+        (comparable_exports[0] / "manifest.json").read_text(encoding="utf-8")
+    )
+    runs = []
+    for label, index in (("earlier", 1), ("later", 2)):
+        rows = []
+        for sample_index, (category, before_passed, after_passed) in enumerate(outcomes):
+            task_id = f"private-task-{sample_index}"
+            rows.append(replace(record("baseline"), task_id=task_id, category=category))
+            rows.append(replace(
+                record(
+                    "godprompt", passed=before_passed if index == 1 else after_passed,
+                    infra="offline failure" if infra and index == 2 else None,
+                ),
+                task_id=task_id, category=category,
+            ))
+        failures = sum(row.infrastructure_error is not None for row in rows)
+        manifest = {
+            **template, "run_id": label,
+            "requested_samples": len(rows) + (int(missing) if index == 2 else 0),
+            "completed_samples": len(rows) - failures,
+            "infrastructure_failures": failures,
+            "godprompt_commit_sha": ("b" if index == 1 else "3") * 40,
+        }
+        if misaligned and index == 2:
+            manifest["seed"] = 999
+        folder = tmp_path / label
+        export_run(folder, manifest, rows, [])
+        runs.append(folder)
+
+    snapshots = {
+        folder: {path.name: path.read_bytes() for path in folder.iterdir()}
+        for folder in runs
+    }
+    report = review.compare_results(*runs)
+    if len(outcomes) == 3 and outcomes[0] == ("implementation", True, False):
+        # The existing net gate allows this total improvement, proving that
+        # category-level gating adds protection rather than renaming the net gate.
+        assert review._no_net_godprompt_regression_between_runs(report)
+
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(runs[0]), "--compare", str(runs[1]),
+        "--require-no-godprompt-category-regression", "--format", output_format,
+    ])
+    if expected_exit:
+        with pytest.raises(SystemExit) as exc:
+            review.main()
+        assert exc.value.code == expected_exit
+    else:
+        review.main()
+    output = capsys.readouterr().out
+    if output_format == "json":
+        parsed = json.loads(output)
+        assert parsed["performance_claim_verified"] is False
+        assert "category_pass_transitions" in parsed
+    else:
+        assert "not a performance claim" in output.lower()
+    assert "private-task-" not in output
+    assert all(
+        {path.name: path.read_bytes() for path in folder.iterdir()} == original
+        for folder, original in snapshots.items()
+    )
+
+
+def test_offline_comparison_category_regression_flag_requires_compare(
+    exported: Path, monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(exported),
+        "--require-no-godprompt-category-regression",
+    ])
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "--compare" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("output_format", ("json", "markdown"))
+def test_review_cli_requires_matching_saved_plan_fingerprint(
+    exported: Path, monkeypatch, capsys, output_format,
+):
+    from godprompt_bench import review
+
+    digest = "a" * 64
+    path = exported / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest.update(plan_sha256_schema="godprompt.bench.plan.v1", plan_sha256=digest)
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    original = {entry.name: entry.read_bytes() for entry in exported.iterdir()}
+
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(exported),
+        "--require-plan-sha256", digest, "--format", output_format,
+    ])
+    review.main()
+    output = capsys.readouterr().out
+    assert digest in output
+    if output_format == "json":
+        assert json.loads(output)["reviewed_plan"]["matched_saved_manifest"] is True
+    else:
+        assert "reviewed plan" in output.lower()
+    assert {entry.name: entry.read_bytes() for entry in exported.iterdir()} == original
+
+
+@pytest.mark.parametrize("manifest_case", ("missing", "wrong_schema", "mismatch"))
+def test_review_rejects_unreviewed_or_mismatched_saved_plan(exported: Path, manifest_case):
+    from godprompt_bench.review import review_result
+
+    path = exported / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    if manifest_case != "missing":
+        manifest["plan_sha256_schema"] = (
+            "unsupported" if manifest_case == "wrong_schema" else "godprompt.bench.plan.v1"
+        )
+        manifest["plan_sha256"] = "b" * 64
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="plan"):
+        review_result(exported, required_plan_sha256="a" * 64)
+
+
+@pytest.mark.parametrize("extra", (
+    ["--compare", "second-run"], ["--require-plan-sha256", "NOT-A-SHA"],
+))
+def test_review_cli_rejects_ambiguous_or_malformed_plan_guard(
+    exported: Path, monkeypatch, capsys, extra,
+):
+    from godprompt_bench import review
+
+    args = ["godprompt_bench.review", str(exported), "--require-plan-sha256", "a" * 64]
+    if extra[0] == "--require-plan-sha256":
+        args[-1] = extra[1]
+    else:
+        args.extend(extra)
+    monkeypatch.setattr(sys, "argv", args)
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "plan" in capsys.readouterr().err.lower()
+
+
+@pytest.mark.parametrize("output_format", ("json", "markdown"))
+def test_review_cli_accepts_all_external_public_artifact_sha256_pins(
+    exported: Path, monkeypatch, capsys, output_format,
+):
+    from godprompt_bench import review
+
+    original = {
+        name: (exported / name).read_bytes()
+        for name in ("manifest.json", "summary.json", "scores.csv")
+    }
+    pins = [
+        f"{name}={hashlib.sha256(data).hexdigest()}"
+        for name, data in original.items()
+    ]
+    argv = ["godprompt_bench.review", str(exported), "--format", output_format]
+    for pin in reversed(pins):
+        argv.extend(["--require-public-artifact-sha256", pin])
+    monkeypatch.setattr(sys, "argv", argv)
+
+    review.main()
+    rendered = capsys.readouterr().out
+    for pin in pins:
+        assert pin.split("=", 1)[1] in rendered
+    assert {
+        name: (exported / name).read_bytes() for name in original
+    } == original
+
+
+@pytest.mark.parametrize("output_format", ("json", "markdown"))
+def test_review_cli_fails_on_external_sha256_pin_mismatch_after_valid_file_change(
+    exported: Path, monkeypatch, capsys, output_format,
+):
+    from godprompt_bench import review
+
+    names = ("manifest.json", "summary.json", "scores.csv")
+    expected = {
+        name: hashlib.sha256((exported / name).read_bytes()).hexdigest()
+        for name in names
+    }
+    manifest = exported / "manifest.json"
+    manifest.write_bytes(manifest.read_bytes() + b" ")
+    snapshot = {name: (exported / name).read_bytes() for name in names}
+    argv = ["godprompt_bench.review", str(exported), "--format", output_format]
+    for name in names:
+        argv.extend(["--require-public-artifact-sha256", f"{name}={expected[name]}"])
+    monkeypatch.setattr(sys, "argv", argv)
+
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 1
+    output = capsys.readouterr()
+    assert "manifest.json" in output.err and "SHA256" in output.err
+    assert hashlib.sha256(snapshot["manifest.json"]).hexdigest() in output.out
+    assert {name: (exported / name).read_bytes() for name in names} == snapshot
+
+
+@pytest.mark.parametrize("pins", [
+    ["manifest.json=" + "a" * 64],
+    ["manifest.json=" + "a" * 64, "summary.json=" + "b" * 64,
+     "manifest.json=" + "a" * 64, "scores.csv=" + "c" * 64],
+    ["manifest.json=" + "a" * 64, "summary.json=" + "b" * 64,
+     "private.json=" + "c" * 64],
+    ["manifest.json=" + "A" * 64, "summary.json=" + "b" * 64,
+     "scores.csv=" + "c" * 64],
+    ["manifest.json=bad", "summary.json=" + "b" * 64,
+     "scores.csv=" + "c" * 64],
+])
+def test_review_cli_refuses_partial_duplicate_unknown_or_invalid_pins(
+    exported: Path, monkeypatch, capsys, pins,
+):
+    from godprompt_bench import review
+
+    argv = ["godprompt_bench.review", str(exported)]
+    for pin in pins:
+        argv.extend(["--require-public-artifact-sha256", pin])
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "public-artifact-sha256" in capsys.readouterr().err
+
+
+def test_review_cli_public_hash_pins_are_single_run_only(
+    exported: Path, monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(exported), "--compare", str(exported),
+        "--require-public-artifact-sha256", "manifest.json=" + "a" * 64,
+    ])
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "--compare" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("output_format", ("json", "markdown"))
+def test_comparison_cli_accepts_independent_external_public_sha256_pins(
+    comparable_exports: tuple[Path, Path], monkeypatch, capsys, output_format,
+):
+    from godprompt_bench import review
+
+    before, after = comparable_exports
+    originals = {
+        side: {name: (folder / name).read_bytes()
+               for name in ("manifest.json", "summary.json", "scores.csv")}
+        for side, folder in (("before", before), ("after", after))
+    }
+    argv = ["godprompt_bench.review", str(before), "--compare", str(after),
+            "--format", output_format]
+    for side, files in originals.items():
+        for name, data in files.items():
+            argv.extend(["--require-public-artifact-sha256",
+                         f"{side}:{name}={hashlib.sha256(data).hexdigest()}"])
+    monkeypatch.setattr(sys, "argv", argv)
+
+    review.main()
+    rendered = capsys.readouterr().out
+    for side, files in originals.items():
+        for name, data in files.items():
+            assert hashlib.sha256(data).hexdigest() in rendered
+        folder = before if side == "before" else after
+        assert {name: (folder / name).read_bytes() for name in files} == files
+
+
+@pytest.mark.parametrize("output_format", ("json", "markdown"))
+@pytest.mark.parametrize("modified_side", ("before", "after"))
+def test_comparison_cli_fails_after_reporting_changed_pinned_artifact(
+    comparable_exports: tuple[Path, Path], monkeypatch, capsys, output_format, modified_side,
+):
+    from godprompt_bench import review
+
+    before, after = comparable_exports
+    names = ("manifest.json", "summary.json", "scores.csv")
+    pins = {
+        side: {name: hashlib.sha256((folder / name).read_bytes()).hexdigest()
+               for name in names}
+        for side, folder in (("before", before), ("after", after))
+    }
+    modified_folder = before if modified_side == "before" else after
+    changed = modified_folder / "manifest.json"
+    changed.write_bytes(changed.read_bytes() + b" ")
+    argv = ["godprompt_bench.review", str(before), "--compare", str(after),
+            "--format", output_format]
+    for side, files in pins.items():
+        for name, digest in files.items():
+            argv.extend(["--require-public-artifact-sha256", f"{side}:{name}={digest}"])
+    monkeypatch.setattr(sys, "argv", argv)
+
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 1
+    output = capsys.readouterr()
+    assert f"{modified_side}:manifest.json" in output.err and "SHA256" in output.err
+    assert hashlib.sha256(changed.read_bytes()).hexdigest() in output.out
+
+
+@pytest.mark.parametrize("invalid", (
+    "partial", "duplicate", "unqualified", "invalid_side", "wrong_digest",
+))
+def test_comparison_cli_rejects_incomplete_or_ambiguous_public_sha256_pins(
+    comparable_exports: tuple[Path, Path], monkeypatch, capsys, invalid,
+):
+    from godprompt_bench import review
+
+    before, after = comparable_exports
+    names = ("manifest.json", "summary.json", "scores.csv")
+    pins = [f"{side}:{name}=" + "a" * 64
+            for side in ("before", "after") for name in names]
+    if invalid == "partial":
+        pins.pop()
+    elif invalid == "duplicate":
+        pins.append(pins[0])
+    elif invalid == "unqualified":
+        pins[0] = pins[0].replace("before:", "", 1)
+    elif invalid == "invalid_side":
+        pins[0] = pins[0].replace("before:", "other:", 1)
+    elif invalid == "wrong_digest":
+        pins[0] = pins[0].replace("a" * 64, "A" * 64)
+    argv = ["godprompt_bench.review", str(before), "--compare", str(after)]
+    for pin in pins:
+        argv.extend(["--require-public-artifact-sha256", pin])
+    monkeypatch.setattr(sys, "argv", argv)
+
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "public-artifact-sha256" in capsys.readouterr().err
+
+
+def _public_zip(source: Path, target: Path) -> Path:
+    with ZipFile(target, "w", compression=ZIP_DEFLATED) as archive:
+        for name in ("manifest.json", "summary.json", "scores.csv"):
+            archive.write(source / name, arcname=name)
+    return target
+
+
+@pytest.mark.parametrize("output_format", ("json", "markdown"))
+def test_review_cli_reads_portable_public_zip_without_rewriting_it(
+    exported: Path, tmp_path: Path, monkeypatch, capsys, output_format,
+):
+    from godprompt_bench import review
+
+    archive = _public_zip(exported, tmp_path / "public-evidence.zip")
+    original = archive.read_bytes()
+    monkeypatch.setattr(review, "TemporaryDirectory",
+                        lambda **kwargs: TemporaryDirectory(dir=tmp_path, **kwargs))
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(archive), "--format", output_format,
+    ])
+
+    review.main()
+    rendered = capsys.readouterr().out
+    if output_format == "json":
+        assert json.loads(rendered)["run_id"] == "sample-run"
+    else:
+        assert "sample-run" in rendered and "not independently verified" in rendered
+    assert archive.read_bytes() == original
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["public-evidence.zip", "sample-run"]
+
+
+def test_comparison_cli_accepts_two_public_zips_with_pin_verification(
+    comparable_exports: tuple[Path, Path], tmp_path: Path, monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    before, after = comparable_exports
+    earlier = _public_zip(before, tmp_path / "earlier.zip")
+    later = _public_zip(after, tmp_path / "later.zip")
+    argv = ["godprompt_bench.review", str(earlier), "--compare", str(later)]
+    for side, folder in (("before", before), ("after", after)):
+        for name in ("manifest.json", "summary.json", "scores.csv"):
+            argv += ["--require-public-artifact-sha256",
+                     f"{side}:{name}={hashlib.sha256((folder / name).read_bytes()).hexdigest()}"]
+    monkeypatch.setattr(sys, "argv", argv)
+
+    review.main()
+    assert json.loads(capsys.readouterr().out)["metadata_aligned"] is True
+
+
+@pytest.mark.parametrize("invalid", ("extra", "traversal", "duplicate", "missing", "symlink", "oversize", "corrupt"))
+def test_review_cli_rejects_unsafe_or_incomplete_public_zips(
+    exported: Path, tmp_path: Path, monkeypatch, capsys, invalid,
+):
+    from godprompt_bench import review
+
+    archive = tmp_path / f"{invalid}.zip"
+    monkeypatch.setattr(review, "TemporaryDirectory",
+                        lambda **kwargs: TemporaryDirectory(dir=tmp_path, **kwargs))
+    if invalid == "corrupt":
+        archive.write_bytes(b"not a ZIP")
+    elif invalid in ("missing", "symlink", "oversize"):
+        with ZipFile(archive, "w", compression=ZIP_DEFLATED) as output:
+            for name in ("manifest.json", "summary.json", "scores.csv"):
+                if invalid == "missing" and name == "scores.csv":
+                    continue
+                if invalid == "symlink" and name == "summary.json":
+                    entry = ZipInfo(name)
+                    entry.create_system = 3
+                    entry.external_attr = (S_IFLNK | 0o777) << 16
+                    output.writestr(entry, "elsewhere")
+                elif invalid == "oversize" and name == "summary.json":
+                    output.writestr(name, b"x" * 2_000_001)
+                else:
+                    output.write(exported / name, arcname=name)
+    else:
+        _public_zip(exported, archive)
+        with ZipFile(archive, "a", compression=ZIP_DEFLATED) as output:
+            if invalid == "extra":
+                output.writestr("trajectory.jsonl", "private")
+            elif invalid == "traversal":
+                output.writestr("../outside", "private")
+            elif invalid == "duplicate":
+                with pytest.warns(UserWarning, match="Duplicate name"):
+                    output.writestr("manifest.json", "{}")
+    monkeypatch.setattr(sys, "argv", ["godprompt_bench.review", str(archive)])
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "zip" in capsys.readouterr().err.lower()
+    assert not list(tmp_path.glob("godprompt_public_review_*"))
+
+
+def test_public_evidence_packer_roundtrips_with_offline_reviewer(exported: Path, tmp_path: Path):
+    from contextlib import ExitStack
+    from godprompt_bench.pack import pack_public_evidence
+    from godprompt_bench.review import _public_zip_directory, review_result
+
+    first = tmp_path / "first.zip"
+    second = tmp_path / "second.zip"
+    receipt = pack_public_evidence(exported, first)
+    pack_public_evidence(exported, second)
+    assert first.read_bytes() == second.read_bytes()
+    assert receipt["public_zip_sha256"] == hashlib.sha256(first.read_bytes()).hexdigest()
+    assert receipt["performance_claim_verified"] is False
+    with ZipFile(first) as archive:
+        assert archive.namelist() == ["manifest.json", "summary.json", "scores.csv"]
+        assert "trajectories.jsonl" not in archive.namelist()
+    with ExitStack() as stack:
+        report = review_result(_public_zip_directory(first, stack))
+    assert receipt["public_artifact_sha256"] == report["public_artifact_sha256"]
+
+
+def test_public_evidence_packer_cli_reports_hashes(exported: Path, tmp_path: Path, monkeypatch, capsys):
+    from godprompt_bench import pack
+
+    output = tmp_path / "share.zip"
+    monkeypatch.setattr(sys, "argv", ["godprompt_bench.pack", str(exported), str(output)])
+    pack.main()
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt["public_zip_sha256"] == hashlib.sha256(output.read_bytes()).hexdigest()
+    assert receipt["public_artifact_sha256"]["manifest.json"] == hashlib.sha256(
+        (exported / "manifest.json").read_bytes()
+    ).hexdigest()
+
+
+@pytest.mark.parametrize("invalid", (
+    "missing_source", "malformed_summary", "existing_target", "non_zip",
+    "missing_parent", "oversized_score", "changed_after_review",
+))
+def test_public_evidence_packer_fails_closed_without_writing_target(
+    exported: Path, tmp_path: Path, monkeypatch, invalid,
+):
+    from godprompt_bench import pack
+
+    source = exported
+    target = tmp_path / "receipt.zip"
+    if invalid == "missing_source":
+        source = tmp_path / "missing"
+    elif invalid == "malformed_summary":
+        (exported / "summary.json").write_text("{}", encoding="utf-8")
+    elif invalid == "existing_target":
+        target.write_bytes(b"existing owner data")
+    elif invalid == "non_zip":
+        target = tmp_path / "receipt.txt"
+    elif invalid == "missing_parent":
+        target = tmp_path / "not-created" / "receipt.zip"
+    elif invalid == "oversized_score":
+        (exported / "scores.csv").write_bytes(b"x" * 20_000_001)
+    elif invalid == "changed_after_review":
+        original = pack.review_result
+
+        def change_after_validation(folder):
+            report = original(folder)
+            (folder / "manifest.json").write_text(
+                (folder / "manifest.json").read_text(encoding="utf-8") + " ",
+                encoding="utf-8",
+            )
+            return report
+
+        monkeypatch.setattr(pack, "review_result", change_after_validation)
+    with pytest.raises((ValueError, OSError)):
+        pack.pack_public_evidence(source, target)
+    if invalid == "existing_target":
+        assert target.read_bytes() == b"existing owner data"
+    else:
+        assert not target.exists()
+
+
+def test_public_evidence_packer_keeps_private_trajectories_out(exported: Path, tmp_path: Path):
+    from godprompt_bench.pack import pack_public_evidence
+
+    (exported / "trajectories.jsonl").write_text("private sentinel not for buyers", encoding="utf-8")
+    output = tmp_path / "buyer.zip"
+    pack_public_evidence(exported, output)
+    assert b"private sentinel" not in output.read_bytes()

@@ -261,6 +261,67 @@ def test_experimental_sample_preparation_holds_ambiguous_mcp_without_agent():
     assert [name for name, _ in calls] == ['classify_task']
 
 
+def test_experimental_contract_batch_preflights_every_sample_before_mcp():
+    from godprompt_bench.agent import prepare_experimental_contract_sample_batch
+
+    first, _ = _sample_and_contract(sample_id='fixture-001')
+    duplicate, _ = _sample_and_contract(sample_id='fixture-001')
+    calls = []
+    samples = [
+        {'state': first, 'success_criteria': ['Works'], 'forbidden_actions': ['network']},
+        {'state': duplicate, 'success_criteria': ['Works'], 'forbidden_actions': ['network']},
+    ]
+    with pytest.raises(ContractHold, match='duplicate'):
+        prepare_experimental_contract_sample_batch(
+            REPO_ROOT, samples=samples, client=_contract_planning_client(calls),
+        )
+    assert calls == []
+
+    valid_second, _ = _sample_and_contract(sample_id='fixture-002')
+    samples[1]['state'] = valid_second
+    samples[1]['success_criteria'] = []
+    with pytest.raises(ContractHold, match='success criteria'):
+        prepare_experimental_contract_sample_batch(
+            REPO_ROOT, samples=samples, client=_contract_planning_client(calls),
+        )
+    assert calls == []
+
+
+def test_experimental_contract_batch_isolates_per_epoch_evidence_sessions(monkeypatch):
+    import godprompt_bench.agent as agent
+
+    monkeypatch.setattr(
+        agent, 'experimental_contract_coding_agent',
+        lambda root, *, session, scope: ('agent', scope),
+    )
+    first, _ = _sample_and_contract(epoch=1)
+    second, _ = _sample_and_contract(epoch=2)
+    calls = []
+    results = agent.prepare_experimental_contract_sample_batch(
+        REPO_ROOT,
+        samples=[
+            {'state': first, 'success_criteria': ['First success'], 'forbidden_actions': ['network']},
+            {'state': second, 'success_criteria': ['Second success'], 'forbidden_actions': ['network']},
+        ],
+        client=_contract_planning_client(calls),
+    )
+    assert set(results) == {('impl-py-slugify', 1), ('impl-py-slugify', 2)}
+    _, first_session, first_contract = results[('impl-py-slugify', 1)]
+    _, second_session, second_contract = results[('impl-py-slugify', 2)]
+    assert first_session is not second_session
+    assert first_session.execution_scope == InspectExecutionScope(
+        'impl-py-slugify', 'epoch-1-attempt-1',
+    )
+    assert second_session.execution_scope == InspectExecutionScope(
+        'impl-py-slugify', 'epoch-2-attempt-1',
+    )
+    assert first_contract['success_criteria'][0]['text'] == 'First success'
+    assert second_contract['success_criteria'][0]['text'] == 'Second success'
+    assert [name for name, _ in calls] == [
+        'classify_task', 'create_work_contract', 'classify_task', 'create_work_contract',
+    ]
+
+
 def test_opt_in_sample_solver_is_lazy_and_registered_without_provider_calls():
     from inspect_ai._util.registry import registry_info
     from godprompt_bench.agent import experimental_contract_sample_solver

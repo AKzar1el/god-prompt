@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 
@@ -163,7 +164,9 @@ class EvidenceSession:
         ):
             raise ContractHold("invalid Inspect execution scope")
         self.client = client
-        self.contract = dict(contract)
+        # Capture the accepted requirements before a caller can mutate nested
+        # lists or objects and redirect subsequent tool-result matching.
+        self.contract = deepcopy(dict(contract))
         self.execution_scope = execution_scope
         self._checks: dict[str, dict[str, Any]] = {}
         self._tool_call_ids: set[str] = set()
@@ -213,6 +216,47 @@ class EvidenceSession:
             ObservedToolResult(tool_call_id, command, exec_result.returncode, output),
         )
 
+    def observe_native_inspect_exec(
+        self,
+        check_id: str,
+        *,
+        scope: InspectExecutionScope,
+        tool_call: Any,
+        completed_call_id: str,
+        exec_result: Any,
+        event_complete: bool,
+    ) -> None:
+        """Bind an observed sandbox result to a native Inspect bash ToolCall.
+
+        Call only from host-controlled instrumentation that observed both the
+        model ToolCall and its completed result. This method validates their
+        correspondence; it cannot itself attest the caller's trustworthiness.
+        """
+        try:
+            from inspect_ai.tool import ToolCall
+        except ImportError as exc:
+            raise ContractHold("pinned Inspect runtime is unavailable") from exc
+        if (
+            not isinstance(tool_call, ToolCall)
+            or tool_call.type != "function"
+            or tool_call.function != "bash"
+            or tool_call.parse_error is not None
+            or not isinstance(tool_call.arguments, dict)
+            or set(tool_call.arguments) != {"command"}
+            or type(tool_call.arguments["command"]) is not str
+            or not isinstance(completed_call_id, str)
+            or completed_call_id != tool_call.id
+        ):
+            raise ContractHold("Inspect ToolCall and completed result do not correspond")
+        self.observe_inspect_exec(
+            check_id,
+            scope=scope,
+            tool_call_id=tool_call.id,
+            command=tool_call.arguments["command"],
+            exec_result=exec_result,
+            event_complete=event_complete,
+        )
+
     def observe_check(self, check_id: str, result: ObservedToolResult) -> None:
         """Ingest one event only at the trusted Inspect tool-result boundary.
 
@@ -236,18 +280,27 @@ class EvidenceSession:
             raise ContractHold("observed tool output must be text")
         if (
             not isinstance(result.tool_call_id, str)
-            or not re.fullmatch(r"[A-Za-z0-9_-]{3,80}", result.tool_call_id)
+            or not result.tool_call_id
             or result.tool_call_id in self._tool_call_ids
         ):
             raise ContractHold("missing, malformed or replayed tool invocation ID")
+        try:
+            tool_id_bytes = result.tool_call_id.encode("utf-8")
+        except UnicodeError as exc:
+            raise ContractHold("tool invocation ID is not valid UTF-8") from exc
+        if len(tool_id_bytes) > 1024:
+            raise ContractHold("tool invocation ID exceeds capture limit")
 
         # Never send raw stdout/stderr (which may contain secrets) to an MCP.
+        # Native Inspect IDs are opaque and might contain arbitrary characters;
+        # hash them rather than requiring an ASCII shape or exporting them.
         # Empty output remains empty evidence so the MCP review must HOLD.
         excerpt = ""
         if result.output.strip():
             encoded = result.output.encode("utf-8")
             excerpt = (
-                f"captured tool result {result.tool_call_id}; bytes={len(encoded)}; "
+                f"captured tool result tool_id_sha256:{hashlib.sha256(tool_id_bytes).hexdigest()}; "
+                f"bytes={len(encoded)}; "
                 f"sha256:{hashlib.sha256(encoded).hexdigest()}"
             )
         self._checks[check_id] = {
