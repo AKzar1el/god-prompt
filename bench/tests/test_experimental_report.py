@@ -449,6 +449,95 @@ def test_offline_triplet_cli_expected_coverage_rejects_exclusions_and_bad_bounds
         assert not rejected.stdout
 
 
+def test_offline_triplet_manifest_rejects_same_count_identity_substitution(tmp_path):
+    _write_offline_scores(tmp_path, [
+        row(condition, task="private-substituted")
+        for condition in ("baseline", "godprompt", THIRD)
+    ])
+    manifest = tmp_path / "expected.json"
+    manifest.write_text(json.dumps({
+        "schema_version": 1,
+        "task_epochs": [{"task_id": "private-planned", "epoch": 1}],
+    }), encoding="utf-8")
+    count_only = _run_offline_report(tmp_path, "--expected-task-epochs", "1")
+    assert count_only.returncode == 0, count_only.stderr
+    gated = _run_offline_report(tmp_path, "--expected-identities", str(manifest))
+    assert gated.returncode == 2
+    assert not gated.stdout
+    assert "identity" in gated.stderr.lower() or "coverage" in gated.stderr.lower()
+    assert "private-" not in gated.stderr
+
+
+def test_offline_triplet_manifest_accepts_exact_epochs_and_conflicting_count_fails(tmp_path):
+    rows = [
+        row(condition, task=task, epoch=epoch)
+        for task, epoch in (("private-a", 2), ("private-b", 1))
+        for condition in ("baseline", "godprompt", THIRD)
+    ]
+    _write_offline_scores(tmp_path, rows)
+    manifest = tmp_path / "expected.json"
+    manifest.write_text(json.dumps({
+        "schema_version": 1,
+        "task_epochs": [
+            {"task_id": "private-b", "epoch": 1},
+            {"task_id": "private-a", "epoch": 2},
+        ],
+    }), encoding="utf-8")
+    passed = _run_offline_report(
+        tmp_path, "--expected-identities", str(manifest),
+        "--expected-task-epochs", "2", "--format", "markdown",
+    )
+    assert passed.returncode == 0, passed.stderr
+    assert "**Matched task-epochs:** 2" in passed.stdout
+    assert "private-" not in passed.stdout
+    refused = _run_offline_report(
+        tmp_path, "--expected-identities", str(manifest),
+        "--expected-task-epochs", "3",
+    )
+    assert refused.returncode == 2
+    assert not refused.stdout
+
+
+@pytest.mark.parametrize("manifest_data", (
+    {"schema_version": 1, "task_epochs": []},
+    {"schema_version": True, "task_epochs": [{"task_id": "x", "epoch": 1}]},
+    {"schema_version": 1, "task_epochs": [{"task_id": "x", "epoch": True}]},
+    {"schema_version": 1, "task_epochs": [{"task_id": "x", "epoch": 1}] * 2},
+    {"schema_version": 1, "task_epochs": [{"task_id": "x", "epoch": 1, "extra": "x"}]},
+))
+def test_offline_triplet_manifest_rejects_invalid_schema_without_leak(tmp_path, manifest_data):
+    _write_offline_scores(tmp_path, [
+        row(condition) for condition in ("baseline", "godprompt", THIRD)
+    ])
+    manifest = tmp_path / "private-expected.json"
+    manifest.write_text(json.dumps(manifest_data), encoding="utf-8")
+    result = _run_offline_report(tmp_path, "--expected-identities", str(manifest))
+    assert result.returncode == 2
+    assert not result.stdout
+    assert "private-" not in result.stderr
+
+
+def test_offline_triplet_manifest_rejects_missing_and_duplicate_json_keys(tmp_path):
+    _write_offline_scores(tmp_path, [
+        row(condition) for condition in ("baseline", "godprompt", THIRD)
+    ])
+    missing = _run_offline_report(
+        tmp_path, "--expected-identities", str(tmp_path / "secret-missing.json"),
+    )
+    assert missing.returncode == 2
+    assert not missing.stdout
+    assert "secret-" not in missing.stderr
+    manifest = tmp_path / "private.json"
+    manifest.write_text(
+        '{"schema_version":1,"task_epochs":[{"task_id":"x","epoch":1,"epoch":2}]}',
+        encoding="utf-8",
+    )
+    duplicate = _run_offline_report(tmp_path, "--expected-identities", str(manifest))
+    assert duplicate.returncode == 2
+    assert not duplicate.stdout
+    assert "private" not in duplicate.stderr
+
+
 def test_offline_triplet_cli_rejects_missing_input_without_writes(tmp_path):
     result = _run_offline_report(tmp_path)
     assert result.returncode == 2

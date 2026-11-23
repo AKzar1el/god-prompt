@@ -183,6 +183,7 @@ directory (the exact public `SampleRecord` column order is required):
 python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets
 python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets --format markdown
 python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets --expected-task-epochs 12
+python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets --expected-identities path/to/expected-task-epochs.json
 ```
 
 The read-only command rejects malformed or duplicate rows, excludes incomplete
@@ -199,6 +200,17 @@ returns 2 unless exactly N identities appear and every one has all three
 non-infrastructure-failed rows. N must be positive. This checks only the
 caller-supplied count against observed CSV rows; it cannot prove an omitted
 task was planned, authenticate the source, or replace a trusted run manifest.
+For a caller who has a separate expected task/epoch plan, add
+`--expected-identities path/to/expected-task-epochs.json`. Supply a UTF-8
+JSON object such as
+`{"schema_version":1,"task_epochs":[{"task_id":"task-a","epoch":1}]}`.
+The file must contain 1-10,000 unique positive-epoch identities (max 2 MB).
+The CLI rejects missing, duplicate, unexpected or incomplete task/epoch triples,
+even when an omitted task was replaced by another and the total count is
+unchanged. Errors and aggregate output do not reveal the expected task IDs.
+This caller-provided file is **not a signed or host-attested manifest**;
+it does not establish sample authenticity or provenance. Both optional gates
+may be combined, and the default descriptive output remains unchanged.
 It provides **no** model/host provenance, verified performance claim, enabled
 third-arm evaluation or permission to run a provider. Its optional descriptive
 bootstrap interval does not establish independently verified model uplift.
