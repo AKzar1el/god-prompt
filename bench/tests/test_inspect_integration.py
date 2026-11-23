@@ -101,6 +101,24 @@ def test_experimental_sample_agent_builds_with_installed_inspect():
     assert session.execution_scope == InspectExecutionScope('impl-py-slugify', 'epoch-1-attempt-1')
 
 
+@pytest.mark.parametrize('sample_id', [0, 12, 2**63 - 1])
+def test_experimental_sample_agent_preserves_native_integer_sample_identity(sample_id, monkeypatch):
+    import godprompt_bench.agent as agent
+
+    monkeypatch.setattr(
+        agent, 'experimental_contract_coding_agent',
+        lambda root, *, session, scope: ('agent', scope),
+    )
+    state, contract = _sample_and_contract(sample_id=sample_id)
+    built, session = agent.experimental_contract_sample_agent(
+        REPO_ROOT, state=state, client=lambda *_: {}, contract=contract,
+    )
+    expected = InspectExecutionScope(sample_id, 'epoch-1-attempt-1')
+    assert built == ('agent', expected)
+    assert session.execution_scope == expected
+    assert session.execution_scope != InspectExecutionScope(str(sample_id), 'epoch-1-attempt-1')
+
+
 @pytest.mark.parametrize('invalid', [
     'wrong_task', 'wrong_paths', 'wrong_checks', 'wrong_digest', 'missing_metadata',
 ])
@@ -129,7 +147,9 @@ def test_experimental_sample_agent_rejects_unbound_contracts(invalid):
         )
 
 
-@pytest.mark.parametrize('sample_id,epoch', [(12, 1), ('impl-py-slugify', 0), ('a/b', 1)])
+@pytest.mark.parametrize('sample_id,epoch', [
+    (-1, 1), (2**63, 1), (True, 1), ('impl-py-slugify', 0), ('a/b', 1),
+])
 def test_experimental_sample_agent_rejects_unusable_inspect_scope(sample_id, epoch):
     from godprompt_bench.agent import experimental_contract_sample_agent
 

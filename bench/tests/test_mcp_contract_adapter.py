@@ -365,6 +365,26 @@ def test_inspect_exec_replay_and_context_reset_fail_closed():
         EvidenceSession(mcp, adapter.contract, execution_scope=InspectExecutionScope("", "attempt-001"))
 
 
+@pytest.mark.parametrize('sample_id', [0, 12, 2**63 - 1])
+def test_inspect_evidence_session_accepts_numeric_sample_ids_without_coercion(sample_id):
+    adapter, _, mcp = _inspect_session()
+    scope = InspectExecutionScope(sample_id, 'attempt-001')
+    accepted = EvidenceSession(mcp, adapter.contract, execution_scope=scope)
+    _observe_inspect(accepted, scope, _inspect_result())
+    assert accepted.execution_scope == scope
+    assert scope != InspectExecutionScope(str(sample_id), 'attempt-001')
+
+
+@pytest.mark.parametrize('sample_id', [True, False, -1, 2**63])
+def test_inspect_evidence_session_rejects_invalid_integer_sample_ids(sample_id):
+    adapter, _, mcp = _inspect_session()
+    with pytest.raises(ContractHold, match='scope'):
+        EvidenceSession(
+            mcp, adapter.contract,
+            execution_scope=InspectExecutionScope(sample_id, 'attempt-001'),
+        )
+
+
 def test_native_inspect_tool_call_correlates_to_completed_result():
     adapter, scope, mcp = _inspect_session()
     call = ToolCall(

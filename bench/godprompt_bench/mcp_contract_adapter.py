@@ -44,8 +44,18 @@ class ObservedToolResult:
 class InspectExecutionScope:
     """Host-assigned sample and attempt identity for an Inspect sandbox result."""
 
-    sample_id: str
+    sample_id: int | str
     attempt_id: str
+
+
+def _valid_inspect_sample_id(sample_id: Any) -> bool:
+    # Inspect TaskState accepts integer and string sample IDs. Preserve their
+    # types so, for example, integer 123 cannot alias string "123".
+    if type(sample_id) is int:
+        return 0 <= sample_id <= 2**63 - 1
+    return isinstance(sample_id, str) and re.fullmatch(
+        r"[A-Za-z0-9_-]{3,80}", sample_id,
+    ) is not None
 
 
 def _mcp_json(result: Mapping[str, Any]) -> dict[str, Any]:
@@ -157,10 +167,11 @@ class EvidenceSession:
             raise ContractHold("invalid work contract")
         if execution_scope is not None and (
             not isinstance(execution_scope, InspectExecutionScope)
-            or not all(
-                isinstance(part, str) and re.fullmatch(r"[A-Za-z0-9_-]{3,80}", part)
-                for part in (execution_scope.sample_id, execution_scope.attempt_id)
-            )
+            or not _valid_inspect_sample_id(execution_scope.sample_id)
+            or not isinstance(execution_scope.attempt_id, str)
+            or re.fullmatch(
+                r"[A-Za-z0-9_-]{3,80}", execution_scope.attempt_id,
+            ) is None
         ):
             raise ContractHold("invalid Inspect execution scope")
         self.client = client
