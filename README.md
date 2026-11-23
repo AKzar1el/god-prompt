@@ -29,6 +29,22 @@ A single portable Agent Skill and system-prompt workflow that replaces 30+ indiv
 
 ## Quick Start
 
+**Choose your host** before following the setup steps. These routes install or
+reference the same free GodPrompt workflow; an MCP app is an optional, separate
+tool connection, not a requirement for using the skill.
+
+| Your environment | Start here |
+| --- | --- |
+| Just want to paste instructions | [Quick paste](#install-paste) |
+| Claude Code | [Claude Code](#install-claude-code) |
+| Claude.ai Project | [Claude.ai Projects](#install-claude-project) |
+| ChatGPT plugin, Project or MCP app | [ChatGPT](#install-chatgpt) |
+| Gemini Gem | [Gemini](#install-gemini) |
+| OpenAI Codex | [OpenAI Codex](#install-codex) |
+| GitHub Copilot CLI | [GitHub Copilot](#install-copilot) |
+| Another skill-capable agent | [Other hosts](#install-other) |
+
+<a id="install-paste"></a>
 **Option A — One-shot paste (fastest)**
 ```
 Copy the contents of GodPrompt.md into:
@@ -36,17 +52,20 @@ Copy the contents of GodPrompt.md into:
 → Claude Project Instructions on claude.ai
 ```
 
+<a id="install-claude-code"></a>
 **Option B — Folder install (recommended for Claude Code)**
 ```bash
 # Clone into your project's skill directory
 git clone https://github.com/AKzar1el/god-prompt.git .claude/skills/god-prompt
 ```
 
+<a id="install-claude-project"></a>
 **Option C — Claude.ai Projects**
 1. Create a new Claude Project.
 2. Add `SKILL.md` as Project Instructions.
 3. Upload the three reference files (`references/01-PROTOCOLS.md`, `references/02-GATES.md`, `references/03-ANTI-PATTERNS.md`) as Project Knowledge.
 
+<a id="install-chatgpt"></a>
 **Option D — ChatGPT Plugin, Projects & MCP app**
 * **From the Plugin Directory (fastest skill-only path)**:
   1. Open [GodPrompt in ChatGPT's Plugin Directory](https://chatgpt.com/plugins/plugins_6ab2f1cc5d0081919d729fd1c2884f86).
@@ -66,12 +85,14 @@ git clone https://github.com/AKzar1el/god-prompt.git .claude/skills/god-prompt
 
   ChatGPT connects to remote MCP servers rather than local stdio servers. See OpenAI's [Developer mode and MCP apps in ChatGPT](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt) documentation for current availability and workspace controls.
 
+<a id="install-gemini"></a>
 **Option E — Gemini Gems & System Instructions**
 * **As a Custom Gem**:
   1. Go to gemini.google.com and click **Gems** (or "Gem manager") > **New Gem**.
   2. Name it "GodPrompt" and paste the contents of `SKILL.md` into the Gem instructions.
   3. Upload the reference files in the `references/` folder to the Gem's Knowledge files.
 
+<a id="install-codex"></a>
 **Option F — OpenAI Codex Agent Skill**
 ```text
 $skill-installer install https://github.com/AKzar1el/god-prompt-mcp/tree/main/skills/god-prompt
@@ -79,6 +100,7 @@ $skill-installer install https://github.com/AKzar1el/god-prompt-mcp/tree/main/sk
 
 Codex installs the standards-compatible `god-prompt` Agent Skill from the companion repository and can load it from its normal skill discovery path. Keep repository-specific conventions and commands in your repository's `AGENTS.md`; use the skill for the reusable engineering workflow.
 
+<a id="install-copilot"></a>
 **Option G — GitHub Copilot Plugin**
 ```bash
 copilot plugin marketplace add AKzar1el/god-prompt-mcp
@@ -87,6 +109,7 @@ copilot plugin install god-prompt-mcp@god-prompt
 
 GitHub Copilot CLI installs the companion repository through its versioned plugin marketplace. The plugin includes the same standards-compatible `god-prompt` skill plus the GodPrompt MCP server, so Copilot can load the workflow skill and keep progressive-disclosure MCP tools available from one install. Direct repository installs still work in current Copilot CLI releases, but the CLI marks them deprecated in favor of `plugin@marketplace` installs.
 
+<a id="install-other"></a>
 **Option H — Cross-agent Agent Skill installers**
 
 GitHub CLI 2.100+ can install the portable skill directly into a supported coding agent:
