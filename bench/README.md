@@ -166,6 +166,19 @@ pairs for each arm comparison.
 All four buckets sum to `matched_task_epochs`; a scoped violation is not a
 pass. These descriptive matched counts do not establish causal uplift or
 independence across repeated epochs.
+For a bounded, offline CSV-to-JSON view without writing an output file, run
+the following from `bench/` with a host-supplied `scores.csv` in the given
+directory (the exact public `SampleRecord` column order is required):
+
+```bash
+python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets
+```
+
+The read-only command rejects malformed or duplicate rows, excludes incomplete
+triples, and writes only aggregate JSON to stdout. It does not inspect a
+manifest, authenticate the input, run agents/providers, or export task IDs,
+private incident text or trajectories. Do not pass its output off as a
+verified experiment merely because the input CSV was parsed successfully.
 It provides **no** model/host provenance,
 uncertainty interval, performance claim, enabled third-arm evaluation or
 permission to run a provider. An eventual real comparison still requires the

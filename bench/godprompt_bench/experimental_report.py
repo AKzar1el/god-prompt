@@ -5,10 +5,15 @@ model identity, or change the canonical two-condition benchmark/export.
 """
 from __future__ import annotations
 
+import argparse
+import json
+from pathlib import Path
+import sys
 from typing import Iterable
 
 from .aggregate import _historical_flag, _summarize
 from .models import SampleRecord
+from .review import _read_scores
 
 
 EXPERIMENTAL_CONDITION = "experimental_mcp_contract"
@@ -121,3 +126,31 @@ def summarize_experimental_triplets(records: Iterable[SampleRecord]) -> dict:
         "paired_outcomes": paired_outcomes,
         "cautions": cautions,
     }
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Read a bounded offline scores.csv and emit aggregate-only JSON."""
+    parser = argparse.ArgumentParser(
+        description="Summarize supplied experimental triplets offline; no model calls."
+    )
+    parser.add_argument(
+        "--scores-dir", type=Path, required=True,
+        help="Directory containing an offline scores.csv with the SampleRecord schema",
+    )
+    args = parser.parse_args(argv)
+    try:
+        # Reuse the public reviewer's bounded, strict CSV parser only. This does
+        # not authenticate rows or invoke the canonical two-arm review workflow.
+        report = summarize_experimental_triplets(_read_scores(args.scores_dir))
+    except ValueError as exc:
+        print(f"Offline scores rejected: {exc}", file=sys.stderr)
+        return 2
+    except OSError:
+        print("Offline scores unavailable or unreadable", file=sys.stderr)
+        return 2
+    print(json.dumps(report, sort_keys=True, indent=2, allow_nan=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
