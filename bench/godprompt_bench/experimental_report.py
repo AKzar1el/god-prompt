@@ -314,7 +314,9 @@ def main(argv: list[str] | None = None) -> int:
         if observed != args.expected_task_epochs or report["excluded_task_epochs"]:
             print(
                 "Offline triplet coverage failed: expected task-epochs must match "
-                "observed identities, with no incomplete or failed triples",
+                "observed identities, with no incomplete or failed triples "
+                f"(expected={args.expected_task_epochs}, observed={observed}, "
+                f"excluded={report['excluded_task_epochs']})",
                 file=sys.stderr,
             )
             return 2
@@ -328,7 +330,11 @@ def main(argv: list[str] | None = None) -> int:
         if expected != observed or report["excluded_task_epochs"]:
             print(
                 "Offline triplet identity coverage failed: expected and observed "
-                "task-epochs must match with complete, nonfailed triples",
+                "task-epochs must match with complete, nonfailed triples "
+                f"(expected={len(expected)}, observed={len(observed)}, "
+                f"missing={len(expected - observed)}, "
+                f"unexpected={len(observed - expected)}, "
+                f"excluded={report['excluded_task_epochs']})",
                 file=sys.stderr,
             )
             return 2

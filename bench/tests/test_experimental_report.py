@@ -468,6 +468,70 @@ def test_offline_triplet_manifest_rejects_same_count_identity_substitution(tmp_p
     assert "private-" not in gated.stderr
 
 
+def test_offline_triplet_manifest_mismatch_reports_only_aggregate_coverage(tmp_path):
+    _write_offline_scores(tmp_path, [
+        row(condition, task=task)
+        for task in ("private-present", "private-unexpected")
+        for condition in ("baseline", "godprompt", THIRD)
+    ])
+    manifest = tmp_path / "private-plan.json"
+    manifest.write_text(json.dumps({
+        "schema_version": 1,
+        "task_epochs": [
+            {"task_id": "private-present", "epoch": 1},
+            {"task_id": "private-missing", "epoch": 1},
+        ],
+    }), encoding="utf-8")
+    result = _run_offline_report(tmp_path, "--expected-identities", str(manifest))
+    assert result.returncode == 2
+    assert not result.stdout
+    assert "expected=2" in result.stderr
+    assert "observed=2" in result.stderr
+    assert "missing=1" in result.stderr
+    assert "unexpected=1" in result.stderr
+    assert "excluded=0" in result.stderr
+    assert "private-" not in result.stderr
+
+
+def test_offline_triplet_manifest_incomplete_reports_exclusion_count(tmp_path):
+    _write_offline_scores(tmp_path, [
+        row(condition, task="private-complete")
+        for condition in ("baseline", "godprompt", THIRD)
+    ] + [
+        row("baseline", task="private-incomplete"),
+        row("godprompt", task="private-incomplete"),
+    ])
+    manifest = tmp_path / "private-plan.json"
+    manifest.write_text(json.dumps({
+        "schema_version": 1,
+        "task_epochs": [
+            {"task_id": "private-complete", "epoch": 1},
+            {"task_id": "private-incomplete", "epoch": 1},
+        ],
+    }), encoding="utf-8")
+    result = _run_offline_report(tmp_path, "--expected-identities", str(manifest))
+    assert result.returncode == 2
+    assert not result.stdout
+    assert "missing=0" in result.stderr
+    assert "unexpected=0" in result.stderr
+    assert "excluded=1" in result.stderr
+    assert "private-" not in result.stderr
+
+
+def test_offline_triplet_count_gate_reports_safe_counts(tmp_path):
+    _write_offline_scores(tmp_path, [
+        row(condition, task="private-a")
+        for condition in ("baseline", "godprompt", THIRD)
+    ])
+    result = _run_offline_report(tmp_path, "--expected-task-epochs", "2")
+    assert result.returncode == 2
+    assert not result.stdout
+    assert "expected=2" in result.stderr
+    assert "observed=1" in result.stderr
+    assert "excluded=0" in result.stderr
+    assert "private-" not in result.stderr
+
+
 def test_offline_triplet_manifest_accepts_exact_epochs_and_conflicting_count_fails(tmp_path):
     rows = [
         row(condition, task=task, epoch=epoch)

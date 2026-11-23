@@ -225,6 +225,9 @@ The file must contain 1-10,000 unique positive-epoch identities (max 2 MB).
 The CLI rejects missing, duplicate, unexpected or incomplete task/epoch triples,
 even when an omitted task was replaced by another and the total count is
 unchanged. Errors and aggregate output do not reveal the expected task IDs.
+When an optional coverage gate fails, stderr reports only aggregate counts:
+`expected`, `observed`, and `excluded`; the identity-plan gate also reports
+`missing` and `unexpected`. No task IDs, row contents or manifest paths are printed.
 This caller-provided file is **not a signed or host-attested manifest**;
 it does not establish sample authenticity or provenance. Both optional gates
 may be combined, and the default descriptive output remains unchanged.
