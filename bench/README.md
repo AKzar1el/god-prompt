@@ -166,6 +166,14 @@ pairs for each arm comparison.
 All four buckets sum to `matched_task_epochs`; a scoped violation is not a
 pass. These descriptive matched counts do not establish causal uplift or
 independence across repeated epochs.
+The separate `paired_pass_uncertainty` field adds an exploratory 95% percentile
+bootstrap interval for the scope-safe pass-rate difference in each comparison.
+It resamples entire task clusters, keeping repeated epochs together, with a
+fixed seed and 2048 resamples. Intervals are withheld for fewer than 10 or
+more than 500 distinct matched tasks, or any excluded/infrastructure-failed
+triples; `limitations` and a `null` interval make those cases explicit. Input
+rows remain unauthenticated: even a non-null interval does not verify actual
+model execution, causal uplift or generalization beyond the supplied tasks.
 For a bounded, offline CSV-to-JSON view without writing an output file, run
 the following from `bench/` with a host-supplied `scores.csv` in the given
 directory (the exact public `SampleRecord` column order is required):
@@ -179,9 +187,10 @@ triples, and writes only aggregate JSON to stdout. It does not inspect a
 manifest, authenticate the input, run agents/providers, or export task IDs,
 private incident text or trajectories. Do not pass its output off as a
 verified experiment merely because the input CSV was parsed successfully.
-It provides **no** model/host provenance,
-uncertainty interval, performance claim, enabled third-arm evaluation or
-permission to run a provider. An eventual real comparison still requires the
+It provides **no** model/host provenance, verified performance claim, enabled
+third-arm evaluation or permission to run a provider. Its optional descriptive
+bootstrap interval does not establish independently verified model uplift.
+An eventual real comparison still requires the
 held-out corpus, common controls, authentic event correlation and independent
 review described above.
 

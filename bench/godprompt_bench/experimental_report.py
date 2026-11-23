@@ -13,12 +13,16 @@ from typing import Iterable
 
 from .aggregate import _historical_flag, _summarize
 from .models import SampleRecord
-from .review import _read_scores
+from .review import (
+    _read_scores, _task_cluster_interval,
+    _UNCERTAINTY_MIN_TASKS, _UNCERTAINTY_RESAMPLES,
+)
 
 
 EXPERIMENTAL_CONDITION = "experimental_mcp_contract"
 _CONDITIONS = ("baseline", "godprompt", EXPERIMENTAL_CONDITION)
 _COMPLETION_STATUSES = {"complete", "blocked", "error", "timeout", "protocol-invalid"}
+_UNCERTAINTY_MAX_TASKS = 500
 
 
 def summarize_experimental_triplets(records: Iterable[SampleRecord]) -> dict:
@@ -52,6 +56,7 @@ def summarize_experimental_triplets(records: Iterable[SampleRecord]) -> dict:
     aligned = {condition: [] for condition in _CONDITIONS}
     excluded = 0
     distinct_tasks: set[str] = set()
+    included_task_ids: list[str] = []
     for (task_id, _epoch), group in groups.items():
         if len({record.category for record in group.values()}) != 1:
             raise ValueError("inconsistent experimental task category")
@@ -63,6 +68,7 @@ def summarize_experimental_triplets(records: Iterable[SampleRecord]) -> dict:
         for condition in _CONDITIONS:
             aligned[condition].append(group[condition])
         distinct_tasks.add(task_id)
+        included_task_ids.append(task_id)
 
     summaries = {condition: _summarize(aligned[condition]) for condition in _CONDITIONS}
     baseline_rate = summaries["baseline"]["pass_rate"]
@@ -82,6 +88,7 @@ def summarize_experimental_triplets(records: Iterable[SampleRecord]) -> dict:
         for condition in _CONDITIONS
     }
     paired_outcomes = {}
+    paired_pass_uncertainty = {}
     for candidate, reference in (
         ("godprompt", "baseline"),
         (EXPERIMENTAL_CONDITION, "baseline"),
@@ -107,10 +114,37 @@ def summarize_experimental_triplets(records: Iterable[SampleRecord]) -> dict:
                 for candidate_pass, reference_pass in pairs
             ),
         }
+        clusters: dict[str, list[int]] = {}
+        for task_id, (candidate_pass, reference_pass) in zip(included_task_ids, pairs):
+            clusters.setdefault(task_id, []).append(int(candidate_pass) - int(reference_pass))
+        limitations = []
+        if excluded:
+            limitations.append("incomplete_or_infrastructure_failed")
+        if len(clusters) < _UNCERTAINTY_MIN_TASKS:
+            limitations.append("fewer_than_10_distinct_tasks")
+        if len(clusters) > _UNCERTAINTY_MAX_TASKS:
+            limitations.append("more_than_500_distinct_tasks")
+        matched = len(pairs)
+        paired_pass_uncertainty[f"{candidate}_vs_{reference}"] = {
+            "method": "paired_task_cluster_bootstrap_percentile",
+            "confidence_level": 0.95,
+            "resamples": 0 if limitations else _UNCERTAINTY_RESAMPLES,
+            "matched_task_epochs": matched,
+            "distinct_tasks": len(clusters),
+            "observed_pass_rate_delta": (
+                sum(sum(values) for values in clusters.values()) / matched
+                if matched else None
+            ),
+            "interval_95": (
+                None if limitations else _task_cluster_interval(clusters, seed=348)
+            ),
+            "limitations": limitations,
+        }
     cautions = [
-        "not_causal", "no_verified_provenance", "no_uncertainty_interval",
-        "live_third_arm_not_enabled",
+        "not_causal", "no_verified_provenance", "live_third_arm_not_enabled",
     ]
+    if any(value["interval_95"] is None for value in paired_pass_uncertainty.values()):
+        cautions.append("no_uncertainty_interval")
     if excluded:
         cautions.append("incomplete_or_infrastructure_failed")
 
@@ -124,6 +158,7 @@ def summarize_experimental_triplets(records: Iterable[SampleRecord]) -> dict:
         "conditions": summaries,
         "pass_rate_delta_vs_baseline": deltas,
         "paired_outcomes": paired_outcomes,
+        "paired_pass_uncertainty": paired_pass_uncertainty,
         "cautions": cautions,
     }
 
