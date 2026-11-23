@@ -13,6 +13,7 @@ from .models import SampleRecord
 
 EXPERIMENTAL_CONDITION = "experimental_mcp_contract"
 _CONDITIONS = ("baseline", "godprompt", EXPERIMENTAL_CONDITION)
+_COMPLETION_STATUSES = {"complete", "blocked", "error", "timeout", "protocol-invalid"}
 
 
 def summarize_experimental_triplets(records: Iterable[SampleRecord]) -> dict:
@@ -30,6 +31,8 @@ def summarize_experimental_triplets(records: Iterable[SampleRecord]) -> dict:
             raise ValueError("invalid experimental task identity")
         if type(record.category) is not str or not record.category:
             raise ValueError("invalid experimental task category")
+        if type(record.completion_status) is not str or record.completion_status not in _COMPLETION_STATUSES:
+            raise ValueError("invalid experimental completion status")
         if type(record.epoch) is not int or record.epoch < 1:
             raise ValueError("invalid experimental task epoch")
         if record.infrastructure_error is None:
