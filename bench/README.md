@@ -160,7 +160,13 @@ It reports scope-aware outcomes only for complete same-task/epoch triples,
 excludes missing or infrastructure-failed triples, and rejects duplicate or
 inconsistent sample identities. It emits aggregate counts without task IDs,
 keeps unavailable token usage unknown, and never alters canonical two-arm
-`aggregate`/`export_run` outputs. It provides **no** model/host provenance,
+`aggregate`/`export_run` outputs. Its additive `paired_outcomes` field
+counts both-pass, candidate-only, reference-only and neither-pass task/epoch
+pairs for each arm comparison.
+All four buckets sum to `matched_task_epochs`; a scoped violation is not a
+pass. These descriptive matched counts do not establish causal uplift or
+independence across repeated epochs.
+It provides **no** model/host provenance,
 uncertainty interval, performance claim, enabled third-arm evaluation or
 permission to run a provider. An eventual real comparison still requires the
 held-out corpus, common controls, authentic event correlation and independent

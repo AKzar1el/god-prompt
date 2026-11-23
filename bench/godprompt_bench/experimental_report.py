@@ -68,6 +68,40 @@ def summarize_experimental_triplets(records: Iterable[SampleRecord]) -> dict:
         )
         for condition in _CONDITIONS[1:]
     }
+    scope_safe_passes = {
+        condition: [
+            _historical_flag(record.passed, "passed")
+            and not _historical_flag(record.scope_violation, "scope_violation")
+            for record in aligned[condition]
+        ]
+        for condition in _CONDITIONS
+    }
+    paired_outcomes = {}
+    for candidate, reference in (
+        ("godprompt", "baseline"),
+        (EXPERIMENTAL_CONDITION, "baseline"),
+        (EXPERIMENTAL_CONDITION, "godprompt"),
+    ):
+        pairs = list(zip(scope_safe_passes[candidate], scope_safe_passes[reference]))
+        paired_outcomes[f"{candidate}_vs_{reference}"] = {
+            "matched_task_epochs": len(pairs),
+            "both_pass": sum(
+                candidate_pass and reference_pass
+                for candidate_pass, reference_pass in pairs
+            ),
+            "candidate_only_pass": sum(
+                candidate_pass and not reference_pass
+                for candidate_pass, reference_pass in pairs
+            ),
+            "reference_only_pass": sum(
+                not candidate_pass and reference_pass
+                for candidate_pass, reference_pass in pairs
+            ),
+            "neither_pass": sum(
+                not candidate_pass and not reference_pass
+                for candidate_pass, reference_pass in pairs
+            ),
+        }
     cautions = [
         "not_causal", "no_verified_provenance", "no_uncertainty_interval",
         "live_third_arm_not_enabled",
@@ -84,5 +118,6 @@ def summarize_experimental_triplets(records: Iterable[SampleRecord]) -> dict:
         "distinct_tasks": len(distinct_tasks),
         "conditions": summaries,
         "pass_rate_delta_vs_baseline": deltas,
+        "paired_outcomes": paired_outcomes,
         "cautions": cautions,
     }
