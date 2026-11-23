@@ -187,6 +187,73 @@ def test_paired_outcomes_are_empty_when_no_complete_triplets_exist():
     assert len(result["paired_outcomes"]) == 3
 
 
+def test_paired_uncertainty_is_deterministic_and_clusters_repeated_task_epochs():
+    rows = []
+    for task in range(10):
+        for epoch in (1, 2):
+            rows.extend([
+                row("baseline", task=f"private-{task}", epoch=epoch,
+                    passed=task % 3 == 0),
+                row("godprompt", task=f"private-{task}", epoch=epoch,
+                    passed=task % 2 == 0),
+                row(THIRD, task=f"private-{task}", epoch=epoch,
+                    passed=task % 4 != 0),
+            ])
+    report = summarize_experimental_triplets(rows)
+    assert report["matched_task_epochs"] == 20
+    assert report["distinct_tasks"] == 10
+    assert "no_uncertainty_interval" not in report["cautions"]
+    assert report["paired_pass_uncertainty"] == (
+        summarize_experimental_triplets(reversed(rows))["paired_pass_uncertainty"]
+    )
+    for name, result in report["paired_pass_uncertainty"].items():
+        assert result["method"] == "paired_task_cluster_bootstrap_percentile"
+        assert result["resamples"] == 2048
+        assert result["matched_task_epochs"] == 20
+        assert result["distinct_tasks"] == 10
+        assert result["limitations"] == []
+        observed = (
+            report["paired_outcomes"][name]["candidate_only_pass"]
+            - report["paired_outcomes"][name]["reference_only_pass"]
+        ) / 20
+        assert result["observed_pass_rate_delta"] == pytest.approx(observed)
+        low, high = result["interval_95"]
+        assert -1 <= low <= observed <= high <= 1
+    assert "private-" not in json.dumps(report, allow_nan=False)
+
+
+def test_paired_uncertainty_requires_ten_complete_distinct_tasks():
+    rows = [
+        row(condition, task=f"private-{task}", epoch=epoch)
+        for task in range(9)
+        for epoch in (1, 2)
+        for condition in ("baseline", "godprompt", THIRD)
+    ]
+    result = summarize_experimental_triplets(rows)
+    assert "no_uncertainty_interval" in result["cautions"]
+    assert all(
+        uncertainty["interval_95"] is None
+        and uncertainty["resamples"] == 0
+        and uncertainty["distinct_tasks"] == 9
+        and "fewer_than_10_distinct_tasks" in uncertainty["limitations"]
+        for uncertainty in result["paired_pass_uncertainty"].values()
+    )
+    rows.extend([
+        row("baseline", task="private-10"),
+        row("godprompt", task="private-10"),
+        row(THIRD, task="private-10"),
+        row("baseline", task="private-excluded"),
+    ])
+    excluded = summarize_experimental_triplets(rows)
+    assert excluded["distinct_tasks"] == 10
+    assert excluded["excluded_task_epochs"] == 1
+    assert all(
+        uncertainty["interval_95"] is None
+        and "incomplete_or_infrastructure_failed" in uncertainty["limitations"]
+        for uncertainty in excluded["paired_pass_uncertainty"].values()
+    )
+
+
 @pytest.mark.parametrize("condition", ("unexpected", "Baseline", "", None))
 def test_unknown_or_malformed_condition_fails_closed(condition):
     with pytest.raises(ValueError, match="condition"):
