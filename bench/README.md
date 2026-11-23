@@ -44,6 +44,14 @@ The adapter independently rejects a purported MCP ready response when its own
 required verification receipts are missing, nonzero or outputless; MCP review
 cannot override those local observations.
 
+For a host with independently captured pre-agent and post-agent sandbox file
+hashes, `EvidenceSession.review_observed_snapshots` derives the exact changed
+paths rather than accepting an agent-written file list. It rejects malformed
+snapshots and out-of-scope changes before calling MCP review; it performs no
+filesystem or provider calls. The host must still attest snapshot provenance,
+tool-call correlation and completeness. A reported-ready result is not an
+independent verification or a live third-arm evaluation.
+
 For host-side Inspect integration, `EvidenceSession` now has an opt-in
 `observe_inspect_exec` method. A trusted caller must bind a
 `InspectExecutionScope(sample_id, attempt_id)` when it creates the session,
