@@ -107,7 +107,80 @@ def test_epochs_are_matched_separately_but_not_treated_as_independent_tasks():
     report = summarize_experimental_triplets(rows)
     assert report["matched_task_epochs"] == 2
     assert report["distinct_tasks"] == 1
+    assert report["paired_outcomes"]["godprompt_vs_baseline"] == {
+        "matched_task_epochs": 2, "both_pass": 2,
+        "candidate_only_pass": 0, "reference_only_pass": 0,
+        "neither_pass": 0,
+    }
     assert "no_uncertainty_interval" in report["cautions"]
+
+
+def test_paired_outcomes_expose_scope_aware_discordant_counts():
+    rows = [
+        row("baseline", task="private-a", passed=False),
+        row("godprompt", task="private-a"),
+        row(THIRD, task="private-a"),
+        row("baseline", task="private-b"),
+        row("godprompt", task="private-b", passed=False),
+        row(THIRD, task="private-b"),
+        row("baseline", task="private-c", passed=False),
+        row("godprompt", task="private-c", passed=False),
+        row(THIRD, task="private-c", passed=False),
+        row("baseline", task="private-d"),
+        row("godprompt", task="private-d"),
+        row(THIRD, task="private-d", scope_violation=True),
+        row("baseline", task="private-e"),
+        row("godprompt", task="private-e", passed=False),
+        row(THIRD, task="private-e", passed=False),
+        row("baseline", task="private-excluded"),
+        row("godprompt", task="private-excluded"),
+    ]
+    result = summarize_experimental_triplets(rows)
+    assert result["matched_task_epochs"] == 5
+    assert result["excluded_task_epochs"] == 1
+    assert result["paired_outcomes"] == {
+        "godprompt_vs_baseline": {
+            "matched_task_epochs": 5, "both_pass": 1,
+            "candidate_only_pass": 1, "reference_only_pass": 2,
+            "neither_pass": 1,
+        },
+        "experimental_mcp_contract_vs_baseline": {
+            "matched_task_epochs": 5, "both_pass": 1,
+            "candidate_only_pass": 1, "reference_only_pass": 2,
+            "neither_pass": 1,
+        },
+        "experimental_mcp_contract_vs_godprompt": {
+            "matched_task_epochs": 5, "both_pass": 1,
+            "candidate_only_pass": 1, "reference_only_pass": 1,
+            "neither_pass": 2,
+        },
+    }
+    for comparison, counts in result["paired_outcomes"].items():
+        assert sum(
+            value for key, value in counts.items()
+            if key != "matched_task_epochs"
+        ) == 5
+        candidate, reference = comparison.split("_vs_")
+        assert (
+            counts["candidate_only_pass"] - counts["reference_only_pass"]
+        ) / 5 == pytest.approx(
+            result["conditions"][candidate]["pass_rate"]
+            - result["conditions"][reference]["pass_rate"]
+        )
+    assert "private-" not in json.dumps(result, allow_nan=False)
+
+
+def test_paired_outcomes_are_empty_when_no_complete_triplets_exist():
+    result = summarize_experimental_triplets([row("baseline"), row("godprompt")])
+    assert all(
+        counts == {
+            "matched_task_epochs": 0, "both_pass": 0,
+            "candidate_only_pass": 0, "reference_only_pass": 0,
+            "neither_pass": 0,
+        }
+        for counts in result["paired_outcomes"].values()
+    )
+    assert len(result["paired_outcomes"]) == 3
 
 
 @pytest.mark.parametrize("condition", ("unexpected", "Baseline", "", None))
