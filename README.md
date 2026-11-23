@@ -48,7 +48,7 @@ git clone https://github.com/AKzar1el/god-prompt.git .claude/skills/god-prompt
 **Option D — ChatGPT Plugin, Projects & MCP app**
 * **From the Plugin Directory (fastest skill-only path)**:
   1. Open [GodPrompt in ChatGPT's Plugin Directory](https://chatgpt.com/plugins/plugins_6ab2f1cc5d0081919d729fd1c2884f86).
-  2. Select **Install plugin**. This installs the scoped `god-prompt` Agent Skill; use the remote MCP app path below when you specifically want GodPrompt's seven callable tools.
+  2. Select **Install plugin**. This installs the scoped `god-prompt` Agent Skill; use the remote MCP app path below when you specifically want GodPrompt's callable MCP tools.
 * **In a Project (file-backed reference, not an installed skill)**:
   1. Create a new Project on chatgpt.com.
   2. Add `SKILL.md` and the three files in `references/` as Project files.
@@ -58,7 +58,9 @@ git clone https://github.com/AKzar1el/god-prompt.git .claude/skills/god-prompt
 * **As a remote MCP app (ChatGPT web, supported Business/Enterprise/Edu workspaces)**:
   1. Enable ChatGPT Developer Mode, then open **Settings > Apps > Create** (workspace controls may require an admin or authorized developer).
   2. Use `https://god-prompt-mcp.tomi-seregi99.workers.dev/mcp` as the MCP endpoint and select no authentication.
-  3. Scan the tools, confirm the seven read-only GodPrompt tools, then create/enable the app for the intended workspace users.
+  3. Scan the MCP server's tool names and descriptions in ChatGPT, then create/enable the app for the intended workspace users.
+
+  The hosted Worker's tool inventory can differ from a version-pinned local MCP package. Do not rely on a fixed tool count: verify the actual tool scan for the endpoint you are connecting.
 
   ChatGPT connects to remote MCP servers rather than local stdio servers. See OpenAI's [Developer mode and MCP apps in ChatGPT](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt) documentation for current availability and workspace controls.
 

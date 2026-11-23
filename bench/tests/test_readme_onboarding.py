@@ -68,6 +68,16 @@ def test_chatgpt_onboarding_does_not_require_oversized_custom_instructions():
     assert "Custom Instructions" in section
 
 
+def test_chatgpt_remote_mcp_setup_uses_discovered_tools_not_stale_fixed_count():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    section = readme.split("**Option D", 1)[1].split("**Option E", 1)[0]
+
+    # The hosted Worker and version-pinned local MCP packages can differ.
+    assert not re.search(r"\b(?:seven|nine|\d+)\s+(?:[\w-]+\s+){0,3}tools\b", section, re.I)
+    assert "tool names and descriptions" in section
+    assert "version-pinned local MCP package" in section
+
+
 @pytest.mark.parametrize("profile", ("smoke", "full"))
 def test_benchmark_readme_powershell_run_examples_are_copyable_without_executing_models(profile):
     readme = (ROOT / "bench" / "README.md").read_text(encoding="utf-8")
