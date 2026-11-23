@@ -152,6 +152,20 @@ freeze a separate held-out corpus and three-arm run manifest, retain
 identical sandboxes/controls, and validate paired uncertainty and raw
 anonymized trajectories. Live providers remain separately spend-gated.
 
+For **offline descriptive analysis only**, a host can supply in-memory
+`SampleRecord` rows for `baseline`, `godprompt` and
+`experimental_mcp_contract` to the separate
+`godprompt_bench.experimental_report.summarize_experimental_triplets` helper.
+It reports scope-aware outcomes only for complete same-task/epoch triples,
+excludes missing or infrastructure-failed triples, and rejects duplicate or
+inconsistent sample identities. It emits aggregate counts without task IDs,
+keeps unavailable token usage unknown, and never alters canonical two-arm
+`aggregate`/`export_run` outputs. It provides **no** model/host provenance,
+uncertainty interval, performance claim, enabled third-arm evaluation or
+permission to run a provider. An eventual real comparison still requires the
+held-out corpus, common controls, authentic event correlation and independent
+review described above.
+
 ## Corpus
 
 Version 1 contains exactly 40 small deterministic tasks:
