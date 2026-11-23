@@ -11,6 +11,25 @@ from godprompt_bench import run as benchmark_runner
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_quick_start_routes_each_supported_host_to_a_stable_install_anchor():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    quick_start = readme.split("## Quick Start", 1)[1].split("## How It Works", 1)[0]
+    routes = {
+        "Quick paste": ("install-paste", "A"),
+        "Claude Code": ("install-claude-code", "B"),
+        "Claude.ai Projects": ("install-claude-project", "C"),
+        "ChatGPT": ("install-chatgpt", "D"),
+        "Gemini": ("install-gemini", "E"),
+        "OpenAI Codex": ("install-codex", "F"),
+        "GitHub Copilot": ("install-copilot", "G"),
+        "Other hosts": ("install-other", "H"),
+    }
+    assert "Choose your host" in quick_start
+    for label, (anchor, option) in routes.items():
+        assert f"[{label}](#{anchor})" in quick_start
+        assert re.search(rf'(?m)^<a id="{anchor}"></a>\n\*\*Option {option}\b', quick_start)
+
+
 def test_benchmark_readme_model_example_is_not_misrepresented_as_current_flagship():
     readme = (ROOT / "bench" / "README.md").read_text(encoding="utf-8")
     run_section = readme.split("## Run", 1)[1].split("## Output", 1)[0]
