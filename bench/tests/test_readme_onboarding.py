@@ -78,6 +78,16 @@ def test_chatgpt_remote_mcp_setup_uses_discovered_tools_not_stale_fixed_count():
     assert "version-pinned local MCP package" in section
 
 
+def test_paid_review_intake_warns_buyers_to_sanitize_artifacts_before_emailing():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    offer = readme.split("## Agent Harness Review", 1)[1].split("## What Is This?", 1)[0]
+
+    assert "[GP-RS1]" in offer
+    normalized = offer.lower()
+    for phrase in ("redact", "API keys", "personal data", "private repository content"):
+        assert phrase.lower() in normalized
+
+
 @pytest.mark.parametrize("profile", ("smoke", "full"))
 def test_benchmark_readme_powershell_run_examples_are_copyable_without_executing_models(profile):
     readme = (ROOT / "bench" / "README.md").read_text(encoding="utf-8")
