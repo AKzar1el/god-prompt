@@ -182,6 +182,7 @@ directory (the exact public `SampleRecord` column order is required):
 ```bash
 python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets
 python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets --format markdown
+python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets --expected-task-epochs 12
 ```
 
 The read-only command rejects malformed or duplicate rows, excludes incomplete
@@ -192,6 +193,12 @@ their explicit withholding reasons, with no private task identifiers. It does
 not inspect a manifest, authenticate the input, run agents/providers, or export task IDs,
 private incident text or trajectories. Do not pass its output off as a
 verified experiment merely because the input CSV was parsed successfully.
+For a caller who already knows the planned number of task/epoch identities,
+`--expected-task-epochs N` is an opt-in exit-code gate: it emits no summary and
+returns 2 unless exactly N identities appear and every one has all three
+non-infrastructure-failed rows. N must be positive. This checks only the
+caller-supplied count against observed CSV rows; it cannot prove an omitted
+task was planned, authenticate the source, or replace a trusted run manifest.
 It provides **no** model/host provenance, verified performance claim, enabled
 third-arm evaluation or permission to run a provider. Its optional descriptive
 bootstrap interval does not establish independently verified model uplift.

@@ -411,6 +411,44 @@ def test_offline_triplet_cli_rejects_duplicate_rows_without_echoing_them(tmp_pat
     assert "private-credential-task" not in result.stderr
 
 
+def test_offline_triplet_cli_expected_coverage_accepts_only_exact_complete_triples(tmp_path):
+    rows = [
+        row(condition, task=task)
+        for task in ("private-one", "private-two")
+        for condition in ("baseline", "godprompt", THIRD)
+    ]
+    _write_offline_scores(tmp_path, rows)
+    good = _run_offline_report(tmp_path, "--expected-task-epochs", "2")
+    assert good.returncode == 0, good.stderr
+    assert json.loads(good.stdout)["matched_task_epochs"] == 2
+
+    missing = _run_offline_report(tmp_path, "--expected-task-epochs", "3")
+    assert missing.returncode == 2
+    assert not missing.stdout
+    assert "coverage" in missing.stderr.lower()
+    assert "private-" not in missing.stderr
+
+
+def test_offline_triplet_cli_expected_coverage_rejects_exclusions_and_bad_bounds(tmp_path):
+    rows = [
+        row(condition, task="private-complete")
+        for condition in ("baseline", "godprompt", THIRD)
+    ] + [
+        row("baseline", task="private-incomplete"),
+        row("godprompt", task="private-incomplete"),
+    ]
+    _write_offline_scores(tmp_path, rows)
+    excluded = _run_offline_report(tmp_path, "--expected-task-epochs", "2", "--format", "markdown")
+    assert excluded.returncode == 2
+    assert not excluded.stdout
+    assert "coverage" in excluded.stderr.lower()
+    assert "private-" not in excluded.stderr
+    for invalid in ("0", "-1"):
+        rejected = _run_offline_report(tmp_path, "--expected-task-epochs", invalid)
+        assert rejected.returncode == 2
+        assert not rejected.stdout
+
+
 def test_offline_triplet_cli_rejects_missing_input_without_writes(tmp_path):
     result = _run_offline_report(tmp_path)
     assert result.returncode == 2
