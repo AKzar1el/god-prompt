@@ -14,7 +14,7 @@ from typing import Iterable
 from .aggregate import _historical_flag, _summarize
 from .models import SampleRecord
 from .review import (
-    _read_scores, _task_cluster_interval,
+    _percentage_points, _percent, _read_scores, _task_cluster_interval,
     _UNCERTAINTY_MIN_TASKS, _UNCERTAINTY_RESAMPLES,
 )
 
@@ -163,14 +163,87 @@ def summarize_experimental_triplets(records: Iterable[SampleRecord]) -> dict:
     }
 
 
+def render_markdown(report: dict) -> str:
+    """Format only aggregate, fixed-label offline statistics for human review."""
+    labels = {
+        "baseline": "baseline",
+        "godprompt": "godprompt",
+        EXPERIMENTAL_CONDITION: "experimental MCP contract",
+    }
+    lines = [
+        "# GodPrompt Bench - experimental offline triplets",
+        "",
+        "**Evidence status:** Caller-supplied scores are not independently verified; "
+        "this is not a causal result, model performance claim or enabled live third arm.",
+        "",
+        f"**Matched task-epochs:** {report['matched_task_epochs']}",
+        f"**Excluded task-epochs:** {report['excluded_task_epochs']}",
+        f"**Distinct tasks:** {report['distinct_tasks']}",
+        "",
+        "| Condition | Scope-safe pass rate | Matched samples | Scope violations | False completions |",
+        "| --- | ---: | ---: | ---: | ---: |",
+    ]
+    for condition in _CONDITIONS:
+        summary = report["conditions"][condition]
+        lines.append(
+            f"| {labels[condition]} | {_percent(summary['pass_rate'])} | "
+            f"{summary['samples']} | {summary['scope_violations']} | "
+            f"{summary['false_completions']} |"
+        )
+    lines += [
+        "",
+        "**Paired scope-safe outcomes and exploratory uncertainty:** "
+        "Differences are percentage points, not independent proof of improvement.",
+        "",
+        "| Comparison | Both pass | Candidate only | Reference only | Neither pass | "
+        "Observed delta | Exploratory 95% interval |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | --- |",
+    ]
+    for candidate, reference in (
+        ("godprompt", "baseline"),
+        (EXPERIMENTAL_CONDITION, "baseline"),
+        (EXPERIMENTAL_CONDITION, "godprompt"),
+    ):
+        name = f"{candidate}_vs_{reference}"
+        counts = report["paired_outcomes"][name]
+        uncertainty = report["paired_pass_uncertainty"][name]
+        interval = uncertainty["interval_95"]
+        interval_label = (
+            f"{_percentage_points(interval[0])} to {_percentage_points(interval[1])}"
+            if interval is not None
+            else "withheld (" + ", ".join(uncertainty["limitations"]) + ")"
+        )
+        lines.append(
+            f"| {labels[candidate]} vs {labels[reference]} | "
+            f"{counts['both_pass']} | {counts['candidate_only_pass']} | "
+            f"{counts['reference_only_pass']} | {counts['neither_pass']} | "
+            f"{_percentage_points(uncertainty['observed_pass_rate_delta'])} | "
+            f"{interval_label} |"
+        )
+    lines += [
+        "",
+        "Intervals, when present, use a deterministic 2048-resample paired "
+        "task-cluster bootstrap. Repeated epochs stay within each task; "
+        "excluded or incomplete triples suppress intervals.",
+        "",
+        "**Cautions:** " + ", ".join(report["cautions"]),
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Read a bounded offline scores.csv and emit aggregate-only JSON."""
+    """Read a bounded offline scores.csv and emit aggregate-only output."""
     parser = argparse.ArgumentParser(
         description="Summarize supplied experimental triplets offline; no model calls."
     )
     parser.add_argument(
         "--scores-dir", type=Path, required=True,
         help="Directory containing an offline scores.csv with the SampleRecord schema",
+    )
+    parser.add_argument(
+        "--format", choices=("json", "markdown"), default="json",
+        help="Output format; Markdown is a copyable, descriptive offline summary",
     )
     args = parser.parse_args(argv)
     try:
@@ -183,7 +256,10 @@ def main(argv: list[str] | None = None) -> int:
     except OSError:
         print("Offline scores unavailable or unreadable", file=sys.stderr)
         return 2
-    print(json.dumps(report, sort_keys=True, indent=2, allow_nan=False))
+    if args.format == "markdown":
+        print(render_markdown(report))
+    else:
+        print(json.dumps(report, sort_keys=True, indent=2, allow_nan=False))
     return 0
 
 

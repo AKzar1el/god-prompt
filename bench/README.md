@@ -174,17 +174,22 @@ more than 500 distinct matched tasks, or any excluded/infrastructure-failed
 triples; `limitations` and a `null` interval make those cases explicit. Input
 rows remain unauthenticated: even a non-null interval does not verify actual
 model execution, causal uplift or generalization beyond the supplied tasks.
-For a bounded, offline CSV-to-JSON view without writing an output file, run
+For a bounded, offline CSV-to-JSON or human-readable Markdown view without
+writing an output file, run
 the following from `bench/` with a host-supplied `scores.csv` in the given
 directory (the exact public `SampleRecord` column order is required):
 
 ```bash
 python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets
+python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets --format markdown
 ```
 
 The read-only command rejects malformed or duplicate rows, excludes incomplete
-triples, and writes only aggregate JSON to stdout. It does not inspect a
-manifest, authenticate the input, run agents/providers, or export task IDs,
+triples, and writes only aggregate JSON (the default) or copyable Markdown to
+stdout. The Markdown view shows per-arm scope-safe rates, matched outcome
+counts, observed paired differences and exploratory task-cluster intervals or
+their explicit withholding reasons, with no private task identifiers. It does
+not inspect a manifest, authenticate the input, run agents/providers, or export task IDs,
 private incident text or trajectories. Do not pass its output off as a
 verified experiment merely because the input CSV was parsed successfully.
 It provides **no** model/host provenance, verified performance claim, enabled
