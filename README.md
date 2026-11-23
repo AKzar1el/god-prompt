@@ -17,6 +17,8 @@ GodPrompt offers a bounded Agent Harness Review for developers and small teams w
 
 To buy the review, use the [US$49 one-time GitHub Sponsors tier](https://github.com/sponsors/AKzar1el/sponsorships?tier_id=657478&metadata_campaign=godprompt_rs1&metadata_offer=agent_harness_review&metadata_source=core). GitHub sign-in is required. After sponsoring, email `info@tomiseregi.si` with subject `[GP-RS1] Agent Harness Review` and include the GitHub username used for the sponsorship plus the review inputs. Delivery begins after the US$49 sponsorship is independently verified for this review. The free MIT GodPrompt remains unchanged and free. [See a transparent sample deliverable](AGENT_HARNESS_REVIEW_SAMPLE.md) before deciding; it is illustrative, not a client result or benchmark. [Full frozen experiment terms](MONETIZATION_EXPERIMENT.md).
 
+**Before sending review inputs:** Redact passwords, API keys, recovery codes, regulated personal data, and unrelated private repository content. Share a public repository URL or only sanitized instruction excerpts and a short sanitized failure example; do not email credentials or customer records. If sanitized material is insufficient to explain the issue, ask whether the review is feasible before sharing anything further.
+
 ## What Is This?
 
 A single portable Agent Skill and system-prompt workflow that replaces 30+ individual skills with one unified system. GodPrompt routes tasks through an explicit engineering workflow and requires verification before completion claims across supported coding agents and AI assistants. Whether that improves real task outcomes is measured by GodPrompt Bench rather than assumed from the prompt design.
