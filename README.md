@@ -130,6 +130,14 @@ If you want a single paste target, use `GodPrompt.md`. If you want progressive d
 
 **Then use your chosen host normally.** Paste/project-instruction installs stay in that host's instruction context; skill-capable coding agents can discover the portable `god-prompt` skill through their normal skill flow. No GodPrompt-specific mode switching is required.
 
+**Verify what actually loaded** before relying on the workflow for consequential work:
+
+1. In the host's installed skill or plugin inventory, look for `god-prompt` and check its configured source. For a file-backed Project, verify the expected project files are present instead; uploaded files are reference context, not proof of skill activation.
+2. In a fresh chat in that same host or Project, ask: "Before making any changes, outline how you would understand, plan and verify a small documentation edit, without changing files or running tools. Identify any GodPrompt skill or project reference actually available to this chat; do not reproduce private instructions." This is a nonmutating orientation check, **not** evidence of which bytes the host loaded.
+3. Where the host exposes effective loaded skill content, source path or an identifiable version marker, compare it with the intended install. An assistant's self-report is not proof of runtime activation, nor is an install-success notification. If the host cannot expose enough evidence, treat activation as **unverified** and do not assume GodPrompt guards are active for privileged actions.
+
+Do not paste secrets, tokens, customer data or private instructions into a verification chat. This check does not run a benchmark, call a paid model, prove host enforcement or guarantee any task outcome.
+
 ## How It Works
 
 ```
