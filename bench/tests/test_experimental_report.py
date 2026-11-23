@@ -1,5 +1,9 @@
-from dataclasses import replace
+import csv
+from dataclasses import asdict, replace
 import json
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -236,3 +240,66 @@ def test_valid_completion_statuses_preserve_false_completion_semantics(status):
 def test_invalid_epoch_cannot_create_ambiguous_matching_identity(bad):
     with pytest.raises(ValueError, match="epoch"):
         summarize_experimental_triplets([row("baseline", epoch=bad)])
+
+
+def _write_offline_scores(folder, rows):
+    path = folder / "scores.csv"
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(asdict(rows[0])))
+        writer.writeheader()
+        writer.writerows(asdict(record) for record in rows)
+
+
+def _run_offline_report(folder):
+    return subprocess.run(
+        [
+            sys.executable, "-B", "-m", "godprompt_bench.experimental_report",
+            "--scores-dir", str(folder),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True, text=True, check=False,
+    )
+
+
+def test_offline_triplet_cli_reports_pairs_without_private_source_rows(tmp_path):
+    rows = [
+        row("baseline", task="private-customer-task", passed=False),
+        row("godprompt", task="private-customer-task"),
+        row(THIRD, task="private-customer-task"),
+        row("baseline", task="private-incident-task"),
+        row("godprompt", task="private-incident-task"),
+        row(THIRD, task="private-incident-task", infra="secret credential in log"),
+    ]
+    _write_offline_scores(tmp_path, rows)
+    result = _run_offline_report(tmp_path)
+    assert result.returncode == 0, result.stderr
+    parsed = json.loads(result.stdout)
+    assert parsed["offline_review_only"] is True
+    assert parsed["performance_claim_verified"] is False
+    assert parsed["matched_task_epochs"] == 1
+    assert parsed["excluded_task_epochs"] == 1
+    assert parsed["paired_outcomes"]["godprompt_vs_baseline"]["candidate_only_pass"] == 1
+    assert "private-" not in result.stdout
+    assert "credential" not in result.stdout
+    assert list(tmp_path.iterdir()) == [tmp_path / "scores.csv"]
+
+
+def test_offline_triplet_cli_rejects_duplicate_rows_without_echoing_them(tmp_path):
+    _write_offline_scores(tmp_path, [
+        row("baseline", task="private-credential-task"),
+        row("baseline", task="private-credential-task"),
+        row("godprompt", task="private-credential-task"),
+        row(THIRD, task="private-credential-task"),
+    ])
+    result = _run_offline_report(tmp_path)
+    assert result.returncode == 2
+    assert not result.stdout
+    assert "duplicate" in result.stderr.lower()
+    assert "private-credential-task" not in result.stderr
+
+
+def test_offline_triplet_cli_rejects_missing_input_without_writes(tmp_path):
+    result = _run_offline_report(tmp_path)
+    assert result.returncode == 2
+    assert not result.stdout
+    assert not list(tmp_path.iterdir())
