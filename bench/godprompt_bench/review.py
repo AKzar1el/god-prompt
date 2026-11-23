@@ -21,6 +21,7 @@ from stat import S_IFMT, S_IFREG
 from tempfile import TemporaryDirectory
 from typing import Any
 from zipfile import BadZipFile, ZipFile
+import zlib
 
 from .aggregate import aggregate
 from .corpus import _reject_duplicate_json_keys
@@ -133,7 +134,7 @@ def _public_zip_directory(source: Path, stack: ExitStack) -> Path:
                     if len(data) > maximum or handle.read(1):
                         raise ValueError(f"public evidence ZIP entry too large: {item.filename}")
                 (output / item.filename).write_bytes(data)
-    except (BadZipFile, EOFError, RuntimeError, NotImplementedError) as exc:
+    except (BadZipFile, EOFError, RuntimeError, NotImplementedError, zlib.error) as exc:
         raise ValueError(f"invalid public evidence ZIP: {exc}") from exc
     final = source.stat()
     if (initial.st_size, initial.st_mtime_ns) != (final.st_size, final.st_mtime_ns):
