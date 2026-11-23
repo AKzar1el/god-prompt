@@ -30,6 +30,18 @@ def test_quick_start_routes_each_supported_host_to_a_stable_install_anchor():
         assert re.search(rf'(?m)^<a id="{anchor}"></a>\n\*\*Option {option}\b', quick_start)
 
 
+def test_quick_start_has_a_nonmutating_runtime_activation_check():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    quick_start = readme.split("## Quick Start", 1)[1].split("## How It Works", 1)[0]
+    assert "**Verify what actually loaded**" in quick_start
+    assert "without changing files or running tools" in quick_start
+    assert "installed skill or plugin" in quick_start
+    assert "file-backed Project" in quick_start
+    assert "assistant's self-report is not proof" in quick_start
+    assert "unverified" in quick_start
+    assert "Do not paste secrets" in quick_start
+
+
 def test_benchmark_readme_model_example_is_not_misrepresented_as_current_flagship():
     readme = (ROOT / "bench" / "README.md").read_text(encoding="utf-8")
     run_section = readme.split("## Run", 1)[1].split("## Output", 1)[0]
