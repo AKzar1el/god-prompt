@@ -186,6 +186,23 @@ python -m godprompt_bench.experimental_report --scores-dir path/to/offline-tripl
 python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets --expected-identities path/to/expected-task-epochs.json
 ```
 
+To avoid manually transcribing the task/epoch set from a bundled or bounded
+custom benchmark profile, generate a caller-side JSON plan offline from `bench/`:
+
+```sh
+python -m godprompt_bench.run --profile smoke --expected-identities-plan > expected-task-epochs.json
+python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets --expected-identities expected-task-epochs.json
+```
+
+`--expected-identities-plan` prints the exact schema-1 `task_epochs` list to
+stdout after validating the selected profile and fixtures. It does not write
+result files, run models or Docker, or claim that a third-arm sample occurred.
+The output is a **caller-generated expectation**, not a signed or host-attested
+execution manifest; only use it when that profile actually represents the
+independently planned comparison. `--profile-file` also works for a validated
+custom profile. The plan action produces JSON only and cannot be combined with
+other offline actions.
+
 The read-only command rejects malformed or duplicate rows, excludes incomplete
 triples, and writes only aggregate JSON (the default) or copyable Markdown to
 stdout. The Markdown view shows per-arm scope-safe rates, matched outcome
@@ -396,6 +413,7 @@ Before spending provider tokens, preview the selected profile and verify its fix
 ```bash
 python -m godprompt_bench.run --list-profiles
 python -m godprompt_bench.run --profile smoke --list-tasks
+python -m godprompt_bench.run --profile smoke --expected-identities-plan
 python -m godprompt_bench.run --list-profiles --format markdown
 python -m godprompt_bench.run --profile smoke --list-tasks --format markdown
 python -m godprompt_bench.run --profile smoke --dry-run
