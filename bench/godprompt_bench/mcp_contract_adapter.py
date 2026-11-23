@@ -312,6 +312,57 @@ class EvidenceSession:
         }
         self._tool_call_ids.add(result.tool_call_id)
 
+    def review_observed_snapshots(
+        self,
+        *,
+        before: Mapping[str, str],
+        after: Mapping[str, str],
+        operations_performed: Sequence[str],
+        acceptance: Sequence[Mapping[str, Any]],
+        human_review_reported: bool = False,
+    ) -> dict[str, Any]:
+        """Derive changed paths from host-captured hashes, not an agent report.
+
+        The caller must capture both snapshots at the trusted sandbox boundary;
+        this method validates their shape, not their provenance. No filesystem,
+        sandbox, model or provider operation occurs here.
+        """
+        from .scorers import _ignored_scope_path, detect_scope_violation
+
+        for snapshot in (before, after):
+            if not isinstance(snapshot, Mapping):
+                raise ContractHold("invalid observed snapshot mapping")
+            for path, digest in snapshot.items():
+                if (
+                    not isinstance(path, str)
+                    or not path
+                    or path.startswith("/")
+                    or "\\" in path
+                    or any(part in ("", ".", "..") for part in path.split("/"))
+                    or not isinstance(digest, str)
+                    or re.fullmatch(r"[a-f0-9]{64}", digest) is None
+                ):
+                    raise ContractHold("invalid observed snapshot path or hash")
+        try:
+            allowed = tuple(self.contract["allowed_paths"])
+            if not allowed or any(not isinstance(p, str) for p in allowed):
+                raise ContractHold("invalid contract allowed paths")
+        except (KeyError, TypeError) as exc:
+            raise ContractHold("invalid contract allowed paths") from exc
+        initial, final = dict(before), dict(after)
+        if detect_scope_violation(initial, final, allowed):
+            raise ContractHold("observed snapshot contains out-of-scope changes")
+        changed = sorted(
+            path for path in set(initial) | set(final)
+            if initial.get(path) != final.get(path) and not _ignored_scope_path(path)
+        )
+        return self.review(
+            changed_files=changed,
+            operations_performed=operations_performed,
+            acceptance=acceptance,
+            human_review_reported=human_review_reported,
+        )
+
     def review(
         self,
         *,
