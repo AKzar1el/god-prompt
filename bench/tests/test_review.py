@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import os
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -1839,3 +1840,150 @@ def test_public_evidence_packer_keeps_private_trajectories_out(exported: Path, t
     output = tmp_path / "buyer.zip"
     pack_public_evidence(exported, output)
     assert b"private sentinel" not in output.read_bytes()
+
+
+@pytest.mark.parametrize("output_format", ("json", "markdown"))
+@pytest.mark.parametrize("digest_case", ("lower", "upper"))
+def test_review_cli_accepts_independent_whole_zip_sha256(
+    exported: Path, tmp_path: Path, monkeypatch, capsys, output_format, digest_case,
+):
+    from godprompt_bench import review
+    from godprompt_bench.pack import pack_public_evidence
+
+    archive = tmp_path / "buyer.zip"
+    receipt = pack_public_evidence(exported, archive)
+    original = archive.read_bytes()
+    pin = receipt["public_zip_sha256"]
+    if digest_case == "upper":
+        pin = pin.upper()
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(archive), "--format", output_format,
+        "--require-public-zip-sha256", pin,
+    ])
+    review.main()
+    assert capsys.readouterr().out
+    assert archive.read_bytes() == original
+
+
+def test_review_cli_whole_zip_mismatch_reports_review_first(
+    exported: Path, tmp_path: Path, monkeypatch, capsys,
+):
+    from godprompt_bench import review
+    from godprompt_bench.pack import pack_public_evidence
+
+    archive = tmp_path / "buyer.zip"
+    pack_public_evidence(exported, archive)
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(archive),
+        "--require-public-zip-sha256", "0" * 64,
+    ])
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 1
+    output = capsys.readouterr()
+    assert '"review_only": true' in output.out
+    assert "ZIP SHA256 mismatch" in output.err
+
+
+@pytest.mark.parametrize("pins", [
+    ["bad"], ["G" * 64], ["0" * 64, "0" * 64],
+    ["before:" + "0" * 64], ["after:" + "0" * 64],
+])
+def test_review_cli_rejects_invalid_or_ambiguous_single_zip_pin(
+    exported: Path, tmp_path: Path, monkeypatch, capsys, pins,
+):
+    from godprompt_bench import review
+    from godprompt_bench.pack import pack_public_evidence
+
+    archive = tmp_path / "buyer.zip"
+    pack_public_evidence(exported, archive)
+    argv = ["godprompt_bench.review", str(archive)]
+    for pin in pins:
+        argv.extend(["--require-public-zip-sha256", pin])
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "public-zip-sha256" in capsys.readouterr().err
+
+
+def test_review_cli_whole_zip_pin_requires_zip_not_directory(
+    exported: Path, monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(exported),
+        "--require-public-zip-sha256", "0" * 64,
+    ])
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "ZIP" in capsys.readouterr().err
+
+
+def test_review_cli_comparison_requires_two_independent_whole_zip_pins(
+    comparable_exports: tuple[Path, Path], tmp_path: Path, monkeypatch, capsys,
+):
+    from godprompt_bench import review
+    from godprompt_bench.pack import pack_public_evidence
+
+    first = tmp_path / "before.zip"
+    second = tmp_path / "after.zip"
+    before = pack_public_evidence(comparable_exports[0], first)["public_zip_sha256"]
+    after = pack_public_evidence(comparable_exports[1], second)["public_zip_sha256"]
+    argv = ["godprompt_bench.review", str(first), "--compare", str(second)]
+    monkeypatch.setattr(sys, "argv", argv + [
+        "--require-public-zip-sha256", "before:" + before,
+    ])
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    capsys.readouterr()
+    monkeypatch.setattr(sys, "argv", argv + [
+        "--require-public-zip-sha256", "before:" + before.upper(),
+        "--require-public-zip-sha256", "after:" + after.upper(),
+    ])
+    review.main()
+    assert '"before"' in capsys.readouterr().out
+    monkeypatch.setattr(sys, "argv", argv + [
+        "--require-public-zip-sha256", "before:" + before,
+        "--require-public-zip-sha256", "after:" + "0" * 64,
+    ])
+    with pytest.raises(SystemExit) as mismatch:
+        review.main()
+    assert mismatch.value.code == 1
+    output = capsys.readouterr()
+    assert '"after"' in output.out and "after" in output.err
+
+
+def test_review_cli_rejects_zip_changed_after_unpack_even_with_same_stat(
+    exported: Path, tmp_path: Path, monkeypatch, capsys,
+):
+    from godprompt_bench import review
+    from godprompt_bench.pack import pack_public_evidence
+
+    archive = tmp_path / "buyer.zip"
+    expected = pack_public_evidence(exported, archive)["public_zip_sha256"]
+    before = archive.stat()
+    original_unpack = review._public_zip_directory
+
+    def change_after_unpack(source, stack):
+        extracted = original_unpack(source, stack)
+        content = bytearray(source.read_bytes())
+        content[0] ^= 1
+        source.write_bytes(content)
+        os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+        assert source.stat().st_size == before.st_size
+        assert source.stat().st_mtime_ns == before.st_mtime_ns
+        return extracted
+
+    monkeypatch.setattr(review, "_public_zip_directory", change_after_unpack)
+    monkeypatch.setattr(sys, "argv", [
+        "godprompt_bench.review", str(archive),
+        "--require-public-zip-sha256", expected,
+    ])
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "changed during review" in capsys.readouterr().err

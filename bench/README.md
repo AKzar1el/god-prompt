@@ -485,6 +485,28 @@ ZIP SHA256 and the three individual artifact hashes. Share expected hashes
 through a separately trusted channel if the recipient needs tamper detection;
 hashes generated alongside an untrusted ZIP do not authenticate its origin.
 
+For a simpler whole-archive integrity check, a recipient who obtained the
+packer's ZIP SHA256 through a **separately trusted channel** can use:
+
+```bash
+python -m godprompt_bench.review public-evidence.zip --require-public-zip-sha256 YOUR_TRUSTED_ZIP_SHA256
+python -m godprompt_bench.review earlier-public.zip --compare later-public.zip --require-public-zip-sha256 before:YOUR_EARLIER_ZIP_SHA256 --require-public-zip-sha256 after:YOUR_LATER_ZIP_SHA256
+```
+
+Replace each uppercase placeholder with the corresponding 64-character SHA256
+digest obtained independently; the placeholders are not literal hash values.
+Avoid angle-bracket placeholders here because shells interpret `<` as redirection.
+
+The optional gate hashes the complete ZIP (including metadata) and prints
+ordinary offline review diagnostics before exiting 1 on a mismatch. It refuses
+directory inputs, malformed/duplicate/partial pins and changed ZIP bytes.
+ZIP pins accept either lowercase or uppercase hexadecimal (including the
+uppercase digest displayed by Windows PowerShell `Get-FileHash -Algorithm SHA256`);
+the expected hash must still come from a separately trusted channel.
+Individual public-file SHA256 pins remain available and can be combined with
+the ZIP pin. A digest copied from the same untrusted package is **not** a
+signature, model attestation or independent proof of performance.
+
 The reviewer refuses duplicate, linked, encrypted, oversized and unexpected
 archive entries; only the three size-bounded public files are unpacked into
 short-lived local temporary storage, removed after inspection. It does not
