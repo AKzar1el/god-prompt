@@ -140,6 +140,25 @@ def test_malformed_outcome_flag_is_rejected_instead_of_inflating_rates(bad):
         ])
 
 
+@pytest.mark.parametrize("bad", ("COMPLETE", " complete ", "success", "", None, 1))
+def test_invalid_completion_status_cannot_hide_false_completions(bad):
+    # A malformed completion status must not silently undercount false completions.
+    with pytest.raises(ValueError, match="completion status"):
+        summarize_experimental_triplets([
+            row("baseline", passed=False, completion_status=bad),
+            row("godprompt"), row(THIRD),
+        ])
+
+
+@pytest.mark.parametrize("status", ("complete", "blocked", "error", "timeout", "protocol-invalid"))
+def test_valid_completion_statuses_preserve_false_completion_semantics(status):
+    report = summarize_experimental_triplets([
+        row("baseline", passed=False, completion_status=status),
+        row("godprompt"), row(THIRD),
+    ])
+    assert report["conditions"]["baseline"]["false_completions"] == int(status == "complete")
+
+
 @pytest.mark.parametrize("bad", (True, 0, -1, "1"))
 def test_invalid_epoch_cannot_create_ambiguous_matching_identity(bad):
     with pytest.raises(ValueError, match="epoch"):
