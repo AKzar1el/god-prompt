@@ -1757,6 +1757,35 @@ def test_review_cli_rejects_unsafe_or_incomplete_public_zips(
     assert not list(tmp_path.glob("godprompt_public_review_*"))
 
 
+def test_review_cli_reports_invalid_deflate_stream_and_cleans_temp_files(
+    exported: Path, tmp_path: Path, monkeypatch, capsys,
+):
+    from godprompt_bench import review
+
+    archive = _public_zip(exported, tmp_path / "broken-deflate.zip")
+    with ZipFile(archive) as source:
+        entry = source.getinfo("manifest.json")
+        assert entry.compress_type == ZIP_DEFLATED
+        assert entry.compress_size > 0
+
+    content = bytearray(archive.read_bytes())
+    header = entry.header_offset
+    name_length = int.from_bytes(content[header + 26:header + 28], "little")
+    extra_length = int.from_bytes(content[header + 28:header + 30], "little")
+    payload_offset = header + 30 + name_length + extra_length
+    content[payload_offset] = 0x06  # Reserved DEFLATE block type, not valid input.
+    archive.write_bytes(content)
+
+    monkeypatch.setattr(review, "TemporaryDirectory",
+                        lambda **kwargs: TemporaryDirectory(dir=tmp_path, **kwargs))
+    monkeypatch.setattr(sys, "argv", ["godprompt_bench.review", str(archive)])
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    assert "invalid public evidence ZIP" in capsys.readouterr().err
+    assert not list(tmp_path.glob("godprompt_public_review_*"))
+
+
 def test_public_evidence_packer_roundtrips_with_offline_reviewer(exported: Path, tmp_path: Path):
     from contextlib import ExitStack
     from godprompt_bench.pack import pack_public_evidence
