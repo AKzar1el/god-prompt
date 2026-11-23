@@ -317,11 +317,12 @@ def _write_offline_scores(folder, rows):
         writer.writerows(asdict(record) for record in rows)
 
 
-def _run_offline_report(folder):
+def _run_offline_report(folder, *extra_args):
     return subprocess.run(
         [
             sys.executable, "-B", "-m", "godprompt_bench.experimental_report",
             "--scores-dir", str(folder),
+            *extra_args,
         ],
         cwd=Path(__file__).resolve().parents[1],
         capture_output=True, text=True, check=False,
@@ -349,6 +350,51 @@ def test_offline_triplet_cli_reports_pairs_without_private_source_rows(tmp_path)
     assert "private-" not in result.stdout
     assert "credential" not in result.stdout
     assert list(tmp_path.iterdir()) == [tmp_path / "scores.csv"]
+
+
+def test_offline_triplet_markdown_cli_is_copyable_and_redacted(tmp_path):
+    rows = [
+        row("baseline", task="private-customer-task", passed=False),
+        row("godprompt", task="private-customer-task"),
+        row(THIRD, task="private-customer-task"),
+        row("baseline", task="private-incident-task"),
+        row("godprompt", task="private-incident-task"),
+        row(THIRD, task="private-incident-task", infra="private credential leak"),
+    ]
+    _write_offline_scores(tmp_path, rows)
+    result = _run_offline_report(tmp_path, "--format", "markdown")
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+    assert "# GodPrompt Bench - experimental offline triplets" in result.stdout
+    assert "| baseline | 0.0% | 1 |" in result.stdout
+    assert "| godprompt | 100.0% | 1 |" in result.stdout
+    assert "| godprompt vs baseline |" in result.stdout
+    assert "**Matched task-epochs:** 1" in result.stdout
+    assert "**Excluded task-epochs:** 1" in result.stdout
+    assert "withheld" in result.stdout
+    assert "not independently verified" in result.stdout
+    assert "private-" not in result.stdout
+    assert "credential" not in result.stdout
+    assert list(tmp_path.iterdir()) == [tmp_path / "scores.csv"]
+
+
+def test_offline_triplet_markdown_cli_displays_exploratory_intervals(tmp_path):
+    rows = []
+    for task in range(10):
+        rows.extend([
+            row("baseline", task=f"private-{task}", passed=task % 3 == 0),
+            row("godprompt", task=f"private-{task}", passed=task % 2 == 0),
+            row(THIRD, task=f"private-{task}", passed=task % 4 != 0),
+        ])
+    _write_offline_scores(tmp_path, rows)
+    result = _run_offline_report(tmp_path, "--format", "markdown")
+    assert result.returncode == 0, result.stderr
+    assert "**Matched task-epochs:** 10" in result.stdout
+    assert "95% interval" in result.stdout
+    assert "paired task-cluster bootstrap" in result.stdout
+    assert "withheld" not in result.stdout
+    assert "private-" not in result.stdout
+    assert "not independently verified" in result.stdout
 
 
 def test_offline_triplet_cli_rejects_duplicate_rows_without_echoing_them(tmp_path):
