@@ -15,7 +15,8 @@ from .aggregate import _historical_flag, _summarize
 from .models import SampleRecord
 from .review import (
     _percentage_points, _percent, _read_scores, _task_cluster_interval,
-    _UNCERTAINTY_MIN_TASKS, _UNCERTAINTY_RESAMPLES,
+    _UNCERTAINTY_MIN_TASKS, _UNCERTAINTY_RESAMPLES, _check_file,
+    _no_nonfinite, _reject_duplicate_json_keys,
 )
 
 
@@ -23,6 +24,46 @@ EXPERIMENTAL_CONDITION = "experimental_mcp_contract"
 _CONDITIONS = ("baseline", "godprompt", EXPERIMENTAL_CONDITION)
 _COMPLETION_STATUSES = {"complete", "blocked", "error", "timeout", "protocol-invalid"}
 _UNCERTAINTY_MAX_TASKS = 500
+_EXPECTED_IDENTITIES_MAX_BYTES = 2_000_000
+_EXPECTED_IDENTITIES_MAX_ENTRIES = 10_000
+
+
+def _read_expected_identities(path: Path) -> set[tuple[str, int]]:
+    """Validate a bounded caller-provided plan, without authenticating it."""
+    try:
+        _check_file(path, _EXPECTED_IDENTITIES_MAX_BYTES)
+        data = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+            parse_constant=_no_nonfinite,
+        )
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ValueError("invalid or unreadable expected identity manifest") from exc
+    if (
+        type(data) is not dict
+        or set(data) != {"schema_version", "task_epochs"}
+        or type(data["schema_version"]) is not int
+        or data["schema_version"] != 1
+        or type(data["task_epochs"]) is not list
+        or not 1 <= len(data["task_epochs"]) <= _EXPECTED_IDENTITIES_MAX_ENTRIES
+    ):
+        raise ValueError("invalid expected identity manifest schema")
+    identities: set[tuple[str, int]] = set()
+    for entry in data["task_epochs"]:
+        if (
+            type(entry) is not dict
+            or set(entry) != {"task_id", "epoch"}
+            or type(entry["task_id"]) is not str
+            or not entry["task_id"]
+            or type(entry["epoch"]) is not int
+            or entry["epoch"] < 1
+        ):
+            raise ValueError("invalid expected identity manifest entry")
+        identity = (entry["task_id"], entry["epoch"])
+        if identity in identities:
+            raise ValueError("duplicate expected identity")
+        identities.add(identity)
+    return identities
 
 
 def summarize_experimental_triplets(records: Iterable[SampleRecord]) -> dict:
@@ -249,6 +290,10 @@ def main(argv: list[str] | None = None) -> int:
         "--expected-task-epochs", type=int,
         help="Require exactly this many observed task/epoch identities, all with complete triples",
     )
+    parser.add_argument(
+        "--expected-identities", type=Path,
+        help="Caller-provided JSON task/epoch identity plan; require an exact observed match",
+    )
     args = parser.parse_args(argv)
     if args.expected_task_epochs is not None and args.expected_task_epochs < 1:
         print("Expected task-epochs must be a positive integer", file=sys.stderr)
@@ -256,7 +301,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # Reuse the public reviewer's bounded, strict CSV parser only. This does
         # not authenticate rows or invoke the canonical two-arm review workflow.
-        report = summarize_experimental_triplets(_read_scores(args.scores_dir))
+        records = _read_scores(args.scores_dir)
+        report = summarize_experimental_triplets(records)
     except ValueError as exc:
         print(f"Offline scores rejected: {exc}", file=sys.stderr)
         return 2
@@ -269,6 +315,20 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 "Offline triplet coverage failed: expected task-epochs must match "
                 "observed identities, with no incomplete or failed triples",
+                file=sys.stderr,
+            )
+            return 2
+    if args.expected_identities is not None:
+        try:
+            expected = _read_expected_identities(args.expected_identities)
+        except ValueError:
+            print("Invalid or unreadable expected identity manifest", file=sys.stderr)
+            return 2
+        observed = {(record.task_id, record.epoch) for record in records}
+        if expected != observed or report["excluded_task_epochs"]:
+            print(
+                "Offline triplet identity coverage failed: expected and observed "
+                "task-epochs must match with complete, nonfailed triples",
                 file=sys.stderr,
             )
             return 2
