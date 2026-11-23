@@ -245,7 +245,14 @@ def main(argv: list[str] | None = None) -> int:
         "--format", choices=("json", "markdown"), default="json",
         help="Output format; Markdown is a copyable, descriptive offline summary",
     )
+    parser.add_argument(
+        "--expected-task-epochs", type=int,
+        help="Require exactly this many observed task/epoch identities, all with complete triples",
+    )
     args = parser.parse_args(argv)
+    if args.expected_task_epochs is not None and args.expected_task_epochs < 1:
+        print("Expected task-epochs must be a positive integer", file=sys.stderr)
+        return 2
     try:
         # Reuse the public reviewer's bounded, strict CSV parser only. This does
         # not authenticate rows or invoke the canonical two-arm review workflow.
@@ -256,6 +263,15 @@ def main(argv: list[str] | None = None) -> int:
     except OSError:
         print("Offline scores unavailable or unreadable", file=sys.stderr)
         return 2
+    if args.expected_task_epochs is not None:
+        observed = report["matched_task_epochs"] + report["excluded_task_epochs"]
+        if observed != args.expected_task_epochs or report["excluded_task_epochs"]:
+            print(
+                "Offline triplet coverage failed: expected task-epochs must match "
+                "observed identities, with no incomplete or failed triples",
+                file=sys.stderr,
+            )
+            return 2
     if args.format == "markdown":
         print(render_markdown(report))
     else:
