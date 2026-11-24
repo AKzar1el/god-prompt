@@ -465,6 +465,25 @@ def _cross_run_paired_cluster_uncertainty(
     return result
 
 
+def _summary_matches(saved: Any, expected: Any) -> bool:
+    """Compare JSON values without treating booleans as numeric metrics."""
+    if isinstance(expected, dict):
+        return (
+            isinstance(saved, dict)
+            and saved.keys() == expected.keys()
+            and all(_summary_matches(saved[key], value) for key, value in expected.items())
+        )
+    if isinstance(expected, list):
+        return (
+            isinstance(saved, list)
+            and len(saved) == len(expected)
+            and all(_summary_matches(a, b) for a, b in zip(saved, expected))
+        )
+    if type(expected) in (int, float):
+        return type(saved) in (int, float) and saved == expected
+    return type(saved) is type(expected) and saved == expected
+
+
 def review_result(
     folder: Path, *, required_plan_sha256: str | None = None,
 ) -> dict[str, Any]:
@@ -489,7 +508,7 @@ def _review_snapshot(
     saved_summary = _read_json(folder, "summary.json")
     records = _read_scores(folder)
     recomputed = aggregate(records)
-    if saved_summary != recomputed:
+    if not _summary_matches(saved_summary, recomputed):
         raise ValueError("summary does not match the exported scores.csv")
 
     requested = _manifest_count(manifest, "requested_samples")
