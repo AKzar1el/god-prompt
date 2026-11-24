@@ -54,11 +54,15 @@ def check_local_runtime() -> dict:
                 [docker_executable, "--version"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 check=False,
                 shell=False,
                 timeout=3,
             )
-            if process.returncode == 0:
+            # Malformed stdout cannot establish readiness. Decode stderr
+            # safely too, even though it is never parsed or displayed.
+            if process.returncode == 0 and "\ufffd" not in process.stdout:
                 match = _DOCKER_VERSION.search(process.stdout)
                 if match is not None:
                     docker_version = match.group(1)
