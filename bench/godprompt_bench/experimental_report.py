@@ -6,6 +6,7 @@ model identity, or change the canonical two-condition benchmark/export.
 from __future__ import annotations
 
 import argparse
+from dataclasses import fields
 import json
 from pathlib import Path
 import sys
@@ -278,13 +279,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Summarize supplied experimental triplets offline; no model calls."
     )
-    parser.add_argument(
-        "--scores-dir", type=Path, required=True,
+    action = parser.add_mutually_exclusive_group(required=True)
+    action.add_argument(
+        "--scores-dir", type=Path,
         help="Directory containing an offline scores.csv with the SampleRecord schema",
     )
+    action.add_argument(
+        "--print-scores-header", action="store_true",
+        help="Print the required CSV header only; no input files are read",
+    )
     parser.add_argument(
-        "--format", choices=("json", "markdown"), default="json",
-        help="Output format; Markdown is a copyable, descriptive offline summary",
+        "--format", choices=("json", "markdown"),
+        help="Report format (default: json); Markdown is a copyable, descriptive offline summary",
     )
     parser.add_argument(
         "--expected-task-epochs", type=int,
@@ -295,6 +301,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Caller-provided JSON task/epoch identity plan; require an exact observed match",
     )
     args = parser.parse_args(argv)
+    if args.print_scores_header:
+        if any(value is not None for value in (
+            args.format, args.expected_task_epochs, args.expected_identities,
+        )):
+            parser.error("--print-scores-header cannot be combined with report options")
+        print(",".join(field.name for field in fields(SampleRecord)))
+        return 0
     if args.expected_task_epochs is not None and args.expected_task_epochs < 1:
         print("Expected task-epochs must be a positive integer", file=sys.stderr)
         return 2

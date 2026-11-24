@@ -1,5 +1,5 @@
 import csv
-from dataclasses import asdict, replace
+from dataclasses import asdict, fields, replace
 import json
 from pathlib import Path
 import subprocess
@@ -8,7 +8,7 @@ import sys
 import pytest
 
 from godprompt_bench.aggregate import aggregate
-from godprompt_bench.experimental_report import summarize_experimental_triplets
+from godprompt_bench.experimental_report import main, summarize_experimental_triplets
 from godprompt_bench.models import SampleRecord
 
 
@@ -607,3 +607,32 @@ def test_offline_triplet_cli_rejects_missing_input_without_writes(tmp_path):
     assert result.returncode == 2
     assert not result.stdout
     assert not list(tmp_path.iterdir())
+
+
+def test_print_scores_header_without_input(monkeypatch, capsys):
+    def refuse_read(*args):
+        pytest.fail("Schema discovery must not read scores")
+
+    monkeypatch.setattr("godprompt_bench.experimental_report._read_scores", refuse_read)
+    assert main(["--print-scores-header"]) == 0
+    captured = capsys.readouterr()
+    assert list(csv.reader(captured.out.splitlines())) == [
+        [field.name for field in fields(SampleRecord)]
+    ]
+    assert not captured.err
+
+
+@pytest.mark.parametrize("extra_args", [
+    ["--scores-dir", "unused"],
+    ["--format", "markdown"],
+    ["--format", "json"],
+    ["--expected-task-epochs", "1"],
+    ["--expected-identities", "unused.json"],
+])
+def test_print_scores_header_rejects_report_options(extra_args, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["--print-scores-header", *extra_args])
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert "--print-scores-header" in captured.err
