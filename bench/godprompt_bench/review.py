@@ -469,6 +469,14 @@ def review_result(
     folder: Path, *, required_plan_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Validate a saved export and return a compact, non-promotional review."""
+    report, _, _ = _review_snapshot(folder, required_plan_sha256=required_plan_sha256)
+    return report
+
+
+def _review_snapshot(
+    folder: Path, *, required_plan_sha256: str | None = None,
+) -> tuple[dict[str, Any], dict[str, Any], list[SampleRecord]]:
+    """Retain the manifest and rows used to produce the validated report."""
     initial_artifact_sha256 = _public_artifact_sha256(folder)
     manifest = _read_json(folder, "manifest.json")
     if required_plan_sha256 is not None:
@@ -531,7 +539,7 @@ def review_result(
     if artifact_sha256 != initial_artifact_sha256:
         raise ValueError("public benchmark artifacts changed during offline review")
 
-    return {
+    report = {
         "review_only": True,
         "artifact_consistency": "verified",
         "public_artifact_sha256": artifact_sha256,
@@ -562,25 +570,24 @@ def review_result(
         "note": "Counts and summaries were checked against local export rows; "
                 "this does not independently verify model execution, provenance or a performance claim.",
     }
+    return report, manifest, records
 
 
 def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
     """Compare two independently validated exports, never asserting causal improvement."""
-    before = review_result(before_folder)
-    after = review_result(after_folder)
-    before_manifest = _read_json(before_folder, "manifest.json")
-    after_manifest = _read_json(after_folder, "manifest.json")
+    before, before_manifest, before_records = _review_snapshot(before_folder)
+    after, after_manifest, after_records = _review_snapshot(after_folder)
 
     # Matching manifest fingerprints alone cannot establish which rows were scored.
     before_samples = {
         (row.task_id, row.condition, row.epoch):
         (row.category, row.infrastructure_error is None, _effective_pass(row))
-        for row in _read_scores(before_folder)
+        for row in before_records
     }
     after_samples = {
         (row.task_id, row.condition, row.epoch):
         (row.category, row.infrastructure_error is None, _effective_pass(row))
-        for row in _read_scores(after_folder)
+        for row in after_records
     }
 
     cautions: list[str] = []
@@ -674,6 +681,9 @@ def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
         cross_run_paired_uncertainty = _cross_run_paired_cluster_uncertainty(
             before_samples, after_samples, before["cautions"], after["cautions"]
         )
+    for folder, report in ((before_folder, before), (after_folder, after)):
+        if _public_artifact_sha256(folder) != report["public_artifact_sha256"]:
+            raise ValueError("public benchmark artifacts changed during offline comparison")
     return {
         "comparison_only": True,
         "metadata_aligned": aligned,
