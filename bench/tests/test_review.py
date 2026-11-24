@@ -88,6 +88,45 @@ def test_review_verifies_exported_scores_and_preserves_denominators(exported: Pa
     }
 
 
+@pytest.mark.parametrize(("keys", "value"), [
+    (("baseline", "samples"), True),
+    (("godprompt", "passed"), False),
+    (("baseline", "pass_rate"), True),
+    (("by_category", "implementation", "baseline", "pass_rate"), True),
+    (("baseline", "tool_misuse_count"), False),
+])
+def test_review_rejects_boolean_summary_numbers(exported: Path, keys, value):
+    from godprompt_bench.review import review_result
+
+    path = exported / "summary.json"
+    summary = json.loads(path.read_text(encoding="utf-8"))
+    parent = summary
+    for key in keys[:-1]:
+        parent = parent[key]
+    assert type(parent[keys[-1]]) in (int, float)
+    assert parent[keys[-1]] == value
+    parent[keys[-1]] = value
+    path.write_text(json.dumps(summary), encoding="utf-8")
+    with pytest.raises(ValueError, match="summary does not match"):
+        review_result(exported)
+
+
+def test_review_accepts_equivalent_json_numeric_representations(exported: Path):
+    from godprompt_bench.review import review_result
+
+    original = review_result(exported)
+    path = exported / "summary.json"
+    summary = json.loads(path.read_text(encoding="utf-8"))
+    summary["baseline"]["samples"] = 1.0
+    summary["baseline"]["pass_rate"] = 1
+    path.write_text(json.dumps(summary), encoding="utf-8")
+    revised = review_result(exported)
+    assert revised["artifact_consistency"] == "verified"
+    assert revised["public_artifact_sha256"] != original["public_artifact_sha256"]
+    del revised["public_artifact_sha256"], original["public_artifact_sha256"]
+    assert revised == original
+
+
 def test_review_flags_mixed_actual_models_as_unverified_comparison(exported: Path):
     from godprompt_bench.review import review_result
 
