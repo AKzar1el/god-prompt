@@ -756,6 +756,76 @@ def test_cli_expected_identity_plan_supports_custom_profile_and_rejects_conflict
         assert not capsys.readouterr().out
 
 
+def test_cli_expected_identity_plan_writes_new_utf8_file_without_stdout(
+    monkeypatch, capsys, tmp_path,
+):
+    import godprompt_bench.run as run_module
+    from godprompt_bench.experimental_report import _read_expected_identities
+
+    output = tmp_path / 'expected-task-epochs.json'
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--profile', 'smoke', '--expected-identities-plan',
+        '--expected-identities-output', str(output),
+    ])
+    monkeypatch.setattr(run_module, 'execute_benchmark',
+                        lambda *args, **kwargs: pytest.fail('plan must not evaluate'))
+
+    run_module.main()
+
+    assert capsys.readouterr().out == ''
+    raw = output.read_bytes()
+    assert raw.startswith(b'{\n')
+    assert not raw.startswith(b'\xef\xbb\xbf')
+    assert raw.endswith(b'\n')
+    plan = json.loads(raw.decode('utf-8'))
+    assert plan['schema_version'] == 1
+    assert len(plan['task_epochs']) == 6
+    assert _read_expected_identities(output) == {
+        (item['task_id'], item['epoch']) for item in plan['task_epochs']
+    }
+
+
+@pytest.mark.parametrize('existing', (False, True))
+def test_cli_expected_identity_plan_output_fails_closed_without_clobbering(
+    monkeypatch, capsys, tmp_path, existing,
+):
+    import godprompt_bench.run as run_module
+
+    output = tmp_path / 'expected-task-epochs.json' if existing else tmp_path / 'absent' / 'plan.json'
+    if existing:
+        output.write_bytes(b'keep this original file')
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--expected-identities-plan',
+        '--expected-identities-output', str(output),
+    ])
+    with pytest.raises(SystemExit) as exc:
+        run_module.main()
+
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert captured.out == ''
+    assert str(tmp_path) not in captured.err
+    if existing:
+        assert output.read_bytes() == b'keep this original file'
+    else:
+        assert not output.parent.exists()
+
+
+def test_cli_expected_identity_output_requires_plan_action(monkeypatch, capsys, tmp_path):
+    import godprompt_bench.run as run_module
+
+    output = tmp_path / 'unexpected.json'
+    monkeypatch.setattr(sys, 'argv', [
+        'godprompt_bench.run', '--expected-identities-output', str(output),
+    ])
+    with pytest.raises(SystemExit) as exc:
+        run_module.main()
+
+    assert exc.value.code == 2
+    assert '--expected-identities-plan' in capsys.readouterr().err
+    assert not output.exists()
+
+
 def test_offline_preview_rejects_unknown_profile_task():
     from godprompt_bench.run import preview_benchmark
 
