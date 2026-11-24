@@ -349,6 +349,20 @@ public repository and independently audit novelty and verifier isolation
 before any controlled paired evaluation. Existing two-arm Bench behavior and
 publication/export requirements remain unchanged.
 
+### Three-arm paired plan preflight (Bench 2.0, opt-in)
+
+After validating a separate held-out corpus, use
+`python -m godprompt_bench.three_arm --plan ../private-heldout/plan.json --heldout ../private-heldout/tasks.json --modes ../private-heldout/modes.json`
+to verify a single shared model, budget and policy snapshot across the
+ordered baseline, GodPrompt and MCP-contract arms. The preflight rejects
+stale corpus hashes, unknown controls, malformed model settings and sample
+budgets above the frozen full-profile limits; it reports planned counts and
+input fingerprints without reading private fixtures or running agents.
+See [the three-arm plan schema](docs/THREE_ARM_PREFLIGHT.md) for exact fields.
+Recorded source/policy hashes are declarations, **not independently verified
+runtime provenance**. This is still only a no-cost metadata preview; no third
+condition, models, evaluations or uplift claims are enabled.
+
 ## Metrics
 
 **Primary metric:** hidden deterministic task pass rate.
