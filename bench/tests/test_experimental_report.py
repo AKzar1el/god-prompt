@@ -449,6 +449,53 @@ def test_offline_triplet_cli_expected_coverage_rejects_exclusions_and_bad_bounds
         assert not rejected.stdout
 
 
+@pytest.mark.parametrize("count_gate,identity_gate", ((True, False), (False, True), (True, True)))
+def test_offline_triplet_coverage_receipt(tmp_path, capsys, count_gate, identity_gate):
+    rows = [row(condition) for condition in ("baseline", "godprompt", THIRD)]
+    _write_offline_scores(tmp_path, rows)
+    manifest = tmp_path / "private-plan.json"
+    manifest.write_text(json.dumps({
+        "schema_version": 1,
+        "task_epochs": [{"task_id": rows[0].task_id, "epoch": 1}],
+    }), encoding="utf-8")
+    args = ["--scores-dir", str(tmp_path)]
+    flags = []
+    if count_gate:
+        flags += ["--expected-task-epochs", "1"]
+    if identity_gate:
+        flags += ["--expected-identities", str(manifest)]
+
+    assert main(args) == 0
+    ungated = json.loads(capsys.readouterr().out)
+    assert "caller_coverage_gate" not in ungated
+    assert main(args + flags) == 0
+    captured = capsys.readouterr()
+    report = json.loads(captured.out)
+    assert report.pop("caller_coverage_gate") == {
+        "count_matched": count_gate,
+        "exact_identities_matched": identity_gate,
+        "expected_task_epochs": 1,
+        "provenance_verified": False,
+    }
+    assert report == ungated
+    assert "private-" not in captured.out
+    assert not captured.err
+
+    assert main(args + ["--format", "markdown"]) == 0
+    ungated_markdown = capsys.readouterr().out
+    assert main(args + flags + ["--format", "markdown"]) == 0
+    captured = capsys.readouterr()
+    label = " and ".join(
+        name for enabled, name in ((count_gate, "count"), (identity_gate, "exact identities"))
+        if enabled
+    )
+    receipt = f"**Caller coverage gate:** {label} matched (1 task-epochs); provenance not verified.\n"
+    assert receipt in captured.out
+    assert captured.out.replace(receipt, "") == ungated_markdown
+    assert "private-" not in captured.out
+    assert not captured.err
+
+
 def test_offline_triplet_manifest_rejects_same_count_identity_substitution(tmp_path):
     _write_offline_scores(tmp_path, [
         row(condition, task="private-substituted")

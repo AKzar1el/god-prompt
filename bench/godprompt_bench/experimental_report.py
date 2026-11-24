@@ -221,6 +221,20 @@ def render_markdown(report: dict) -> str:
         f"**Matched task-epochs:** {report['matched_task_epochs']}",
         f"**Excluded task-epochs:** {report['excluded_task_epochs']}",
         f"**Distinct tasks:** {report['distinct_tasks']}",
+    ]
+    coverage = report.get("caller_coverage_gate")
+    if coverage is not None:
+        label = " and ".join(
+            name for enabled, name in (
+                (coverage["count_matched"], "count"),
+                (coverage["exact_identities_matched"], "exact identities"),
+            ) if enabled
+        )
+        lines.append(
+            f"**Caller coverage gate:** {label} matched "
+            f"({coverage['expected_task_epochs']} task-epochs); provenance not verified."
+        )
+    lines += [
         "",
         "| Condition | Scope-safe pass rate | Matched samples | Scope violations | False completions |",
         "| --- | ---: | ---: | ---: | ---: |",
@@ -351,6 +365,14 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
+    if args.expected_task_epochs is not None or args.expected_identities is not None:
+        # Only record successful caller-requested gates, not sample authenticity.
+        report["caller_coverage_gate"] = {
+            "count_matched": args.expected_task_epochs is not None,
+            "exact_identities_matched": args.expected_identities is not None,
+            "expected_task_epochs": report["matched_task_epochs"],
+            "provenance_verified": False,
+        }
     if args.format == "markdown":
         print(render_markdown(report))
     else:
