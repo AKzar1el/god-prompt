@@ -381,6 +381,44 @@ def test_public_exports_redact_numeric_credentials_in_json_encoded_diagnostics(t
     assert json.loads(json.loads(manifest['escaped'])) == expected
 
 
+@pytest.mark.parametrize('layers', (0, 1, 2, 3))
+@pytest.mark.parametrize('prefixed', (False, True))
+def test_public_export_redacts_composite_embedded_json_credentials(tmp_path: Path, layers, prefixed):
+    canary = 'SYNTHETIC_COMPOSITE_CANARY_8912'
+    diagnostic = json.dumps({'password': {'value': canary}, 'api_key': [canary], 'attempts': 3})
+    for _ in range(layers):
+        diagnostic = json.dumps(diagnostic)
+    prefix = 'provider response: ' if prefixed else ''
+    diagnostic = prefix + diagnostic
+    export_run(tmp_path, {'diagnostic': diagnostic},
+               [replace(record(), infrastructure_error=diagnostic)], [{'output': diagnostic}])
+    for name in ('manifest.json', 'scores.csv', 'trajectories.jsonl'):
+        assert canary not in (tmp_path / name).read_text(encoding='utf-8'), name
+    value = json.loads((tmp_path / 'manifest.json').read_text(encoding='utf-8'))['diagnostic']
+    assert value.startswith(prefix)
+    value = value[len(prefix):]
+    for _ in range(layers + 1):
+        value = json.loads(value)
+    assert value == {'password': '[REDACTED]', 'api_key': '[REDACTED]', 'attempts': 3}
+
+
+def test_embedded_json_redaction_preserves_benign_fragments_and_fails_closed_on_ambiguity():
+    benign = 'response: {"attempts": 3, "status": "ok"}'
+    assert redact_secrets(benign) == benign
+    ambiguous = '{"password":"SYNTHETIC_DUPLICATE_CANARY_123","password":"safe"}'
+    assert redact_secrets(ambiguous) == '[REDACTED]'
+    nested = json.dumps({'password': 'SYNTHETIC_DEEP_CANARY_123'})
+    for _ in range(14):
+        nested = json.dumps(nested)
+    assert 'SYNTHETIC_DEEP_CANARY_123' not in redact_secrets(nested)
+
+
+@pytest.mark.parametrize('label', ('password=', 'Authorization: ', 'api_key='))
+def test_embedded_json_does_not_lose_sensitive_assignment_context(label):
+    diagnostic = label + json.dumps({'value': 'SYNTHETIC_BOUNDARY_CANARY_123'})
+    assert redact_secrets(diagnostic) == label + '[REDACTED]'
+
+
 def test_public_exports_redact_unicode_escaped_structured_credential_keys(tmp_path: Path):
     # Structured telemetry can contain literal Unicode escapes in member names.
     api_key = r'api\u005fkey'
@@ -891,8 +929,10 @@ def test_export_stage_and_rollback_copies_are_redacted_before_promotion(
     output = tmp_path / 'public'
     previous_value = 'SYNTHETIC_PRIVATE_OLD_CANARY_639827'
     next_value = 'SYNTHETIC_PRIVATE_NEW_CANARY_528164'
-    previous_diag = json.dumps({'api_key': previous_value})
-    next_diag = json.dumps({'password': next_value})
+    previous_diag = json.dumps(json.dumps({'api_key': [previous_value]}))
+    next_diag = 'provider response: ' + json.dumps(
+        json.dumps(json.dumps({'password': {'value': next_value}}))
+    )
     export_run(
         output, {'diagnostic': previous_diag},
         [replace(record(), infrastructure_error=previous_diag)],
