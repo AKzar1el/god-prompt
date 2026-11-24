@@ -179,6 +179,18 @@ writing an output file, run
 the following from `bench/` with a host-supplied `scores.csv` in the given
 directory (the exact public `SampleRecord` column order is required):
 
+Discover the required CSV header without an input directory, provider calls,
+or file writes. Copy the single output line as the header of a UTF-8 CSV:
+
+```sh
+python -m godprompt_bench.experimental_report --print-scores-header
+```
+
+This prints only the current schema's column names, not example scores or
+evidence of a run. It cannot be combined with report options. On Windows
+PowerShell 5.1, use `| Set-Content -Encoding Ascii` if saving the ASCII-only
+header to a new file; the default `>` redirection writes UTF-16LE.
+
 ```bash
 python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets
 python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets --format markdown
