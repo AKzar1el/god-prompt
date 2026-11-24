@@ -144,6 +144,8 @@ def test_nonpositive_boolean_or_over_budget_limits_rejected(inputs, field, value
 
 @pytest.mark.parametrize("field,value", [
     ("temperature", float("nan")), ("temperature", "0"),
+    ("temperature", 10**400), ("temperature", -(10**400)),
+    ("temperature", float("inf")), ("temperature", True),
     ("seed", True), ("seed", -1), ("id", "model?api_key=secret"),
 ])
 def test_nonfinite_malformed_or_credential_like_model_settings_rejected(inputs, field, value):
@@ -152,6 +154,14 @@ def test_nonfinite_malformed_or_credential_like_model_settings_rejected(inputs, 
     path.write_text(json.dumps(plan), encoding="utf-8")
     with pytest.raises(ValueError, match="model|seed|temperature"):
         _preflight(inputs)
+
+
+@pytest.mark.parametrize("temperature", [0, 1.5, 2])
+def test_bounded_temperature_accepted(inputs, temperature):
+    path, *_, plan = inputs
+    plan["model"]["temperature"] = temperature
+    path.write_text(json.dumps(plan), encoding="utf-8")
+    assert _preflight(inputs)["preview_only"] is True
 
 
 def test_unreleased_mcp_sha_and_missing_control_rejected(inputs):
