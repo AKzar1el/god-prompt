@@ -98,6 +98,36 @@ def test_doctor_does_not_reveal_raw_docker_errors(monkeypatch, failure):
     assert "credential/path" not in output
 
 
+@pytest.mark.filterwarnings("error::pytest.PytestUnhandledThreadExceptionWarning")
+@pytest.mark.parametrize("stream,expected_status", [
+    ("stdout", "unverifiable"),
+    ("stderr", "ok"),
+])
+def test_doctor_handles_non_utf8_cli_output(monkeypatch, capsys, stream, expected_status):
+    from godprompt_bench import doctor
+
+    _mock_prerequisites(monkeypatch, doctor)
+    real_run = subprocess.run
+    # Exercise actual subprocess decoding without invoking Docker or a daemon.
+    script = (
+        "import sys; sys.stdout.buffer.write(b'Docker version 27.4.1, build abcdef\\n'); "
+        f"sys.{stream}.buffer.write(bytes([255]))"
+    )
+
+    def run(args, **kwargs):
+        assert args == ["docker", "--version"]
+        return real_run([sys.executable, "-c", script], **kwargs)
+
+    monkeypatch.setattr(doctor.subprocess, "run", run)
+    report = doctor.check_local_runtime()
+    assert report["checks"]["docker_cli"]["status"] == expected_status
+    assert report["local_prerequisites_present"] is (expected_status == "ok")
+    assert report["checks"]["docker_cli"]["version"] == (
+        "27.4.1" if expected_status == "ok" else None
+    )
+    assert capsys.readouterr().err == ""
+
+
 def test_doctor_cli_prints_json_and_nonzero_when_prerequisites_fail(monkeypatch, capsys):
     from godprompt_bench import doctor
 
