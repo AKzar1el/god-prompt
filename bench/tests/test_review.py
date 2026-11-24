@@ -1157,6 +1157,41 @@ def test_offline_comparison_shows_paired_pass_transitions_without_listing_tasks(
     assert "not a performance claim" in markdown.lower()
 
 
+@pytest.mark.parametrize("modified_side", ("before", "after"))
+def test_offline_comparison_rejects_artifact_change_after_individual_review(
+    comparable_exports: tuple[Path, Path], monkeypatch, modified_side,
+):
+    from godprompt_bench import review
+
+    before, after = comparable_exports
+    original_hashes = review._public_artifact_sha256
+    after_reads = 0
+
+    def change_after_validation(folder):
+        nonlocal after_reads
+        hashes = original_hashes(folder)
+        if folder == after:
+            after_reads += 1
+            if after_reads == 2:
+                path = (before if modified_side == "before" else after) / "scores.csv"
+                with path.open(encoding="utf-8", newline="") as handle:
+                    reader = csv.DictReader(handle)
+                    names = reader.fieldnames
+                    rows = list(reader)
+                for row in rows:
+                    if row["condition"] == "godprompt":
+                        row["passed"] = "False" if row["passed"] == "True" else "True"
+                with path.open("w", encoding="utf-8", newline="") as handle:
+                    writer = csv.DictWriter(handle, fieldnames=names)
+                    writer.writeheader()
+                    writer.writerows(rows)
+        return hashes
+
+    monkeypatch.setattr(review, "_public_artifact_sha256", change_after_validation)
+    with pytest.raises(ValueError, match="changed during offline comparison"):
+        review.compare_results(before, after)
+
+
 def test_offline_comparison_counts_unchanged_and_mixed_paired_outcomes(
     comparable_exports: tuple[Path, Path], tmp_path: Path,
 ):
