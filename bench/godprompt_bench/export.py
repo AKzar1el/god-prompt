@@ -3,7 +3,9 @@ from __future__ import annotations
 import csv
 import json
 import re
+import shutil
 import stat
+import tempfile
 from dataclasses import asdict
 from io import StringIO
 from math import isfinite
@@ -66,6 +68,10 @@ _JSON_SCALAR_FIELD = re.compile(
     r'(?=[ \t]*[,}\]\r\n]|$)'
 )
 _CSV_FORMULA = re.compile(r"^[\s\u200b\ufeff]*[=+\-@]")
+_JSON_FRAGMENT_START = re.compile(r'[\[{"]')
+_MAX_JSON_TEXT = 1024 * 1024
+_MAX_JSON_FRAGMENTS = 256
+_MAX_JSON_ENCODING_LAYERS = 12
 
 
 def _redact_encoded_query_key(match: re.Match[str]) -> str:
@@ -108,7 +114,7 @@ def _redact_json_scalar_field(match: re.Match[str]) -> str:
     return match.group(0)
 
 
-def _redact_text(text: str) -> str:
+def _redact_inline_text(text: str) -> str:
     """Redact credential-shaped substrings even inside otherwise public text."""
     text = _URL_USERINFO.sub(lambda match: f"{match.group(1)}[REDACTED]@", text)
     # Inspect diagnostics can embed raw JSON or an escaped JSON string; keep
@@ -132,9 +138,71 @@ def _redact_text(text: str) -> str:
     return _KNOWN_TOKEN.sub("[REDACTED]", text)
 
 
-def redact_secrets(value: Any) -> Any:
+def _unique_json_members(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("ambiguous embedded JSON object key")
+        result[key] = value
+    return result
+
+
+def _redact_text(text: str, encoding_depth: int = 0) -> str:
+    """Redact complete JSON fragments before applying free-text heuristics."""
+    if not _JSON_FRAGMENT_START.search(text):
+        return _redact_inline_text(text)
+    if len(text) > _MAX_JSON_TEXT or encoding_depth >= _MAX_JSON_ENCODING_LAYERS:
+        return "[REDACTED]"
+
+    decoder = json.JSONDecoder(object_pairs_hook=_unique_json_members)
+    parts: list[str] = []
+    cursor = search_from = attempts = 0
+    while match := _JSON_FRAGMENT_START.search(text, search_from):
+        start = match.start()
+        attempts += 1
+        if attempts > _MAX_JSON_FRAGMENTS:
+            return "[REDACTED]"
+        try:
+            decoded, end = decoder.raw_decode(text, start)
+        except json.JSONDecodeError:
+            search_from = start + 1
+            continue
+        except (ValueError, RecursionError):
+            # Duplicate keys or excessive nesting are ambiguous, not safe.
+            return "[REDACTED]"
+        search_from = end
+        # Ordinary quoted values belong to the free-text redactor so inline
+        # assignments such as api_key="value" retain their surrounding label.
+        if isinstance(decoded, str) and not (
+            (not text[:start].strip() and not text[end:].strip())
+            or _JSON_FRAGMENT_START.search(decoded)
+        ):
+            continue
+        if not isinstance(decoded, (dict, list, str)):
+            continue
+        try:
+            safe = _redact_value(decoded, encoding_depth + 1)
+            fragment = (text[start:end] if safe == decoded else
+                        json.dumps(safe, allow_nan=False))
+        except (ValueError, RecursionError):
+            return "[REDACTED]"
+        prefix = text[cursor:start]
+        # Preserve credential context across a JSON boundary. For example,
+        # password={"value":...} is a sensitive assignment as a whole.
+        boundary = "GODPROMPT_JSON_FRAGMENT_BOUNDARY"
+        checked_prefix = _redact_inline_text(prefix + boundary)
+        if checked_prefix.endswith(boundary):
+            parts.extend((_redact_inline_text(prefix), fragment))
+        else:
+            parts.append(checked_prefix)
+        cursor = end
+    parts.append(_redact_inline_text(text[cursor:]))
+    return "".join(parts)
+
+
+def _redact_value(value: Any, encoding_depth: int) -> Any:
     if isinstance(value, str):
-        return _redact_text(value)
+        return _redact_text(value, encoding_depth)
     if isinstance(value, float) and not isfinite(value):
         # Nonfinite provider diagnostics must not become invalid public JSON.
         return None
@@ -142,20 +210,24 @@ def redact_secrets(value: Any) -> Any:
         normalized: dict[str, Any] = {}
         for key, item in value.items():
             raw_key = str(key)
-            safe_key = _redact_text(raw_key)
+            safe_key = _redact_text(raw_key, encoding_depth)
             # JSON member names are strings; avoid silently collapsing keys
             # such as the integer 1 and the string "1" during conversion.
             if safe_key in normalized:
                 raise ValueError("ambiguous JSON object key after redaction")
             normalized[safe_key] = (
-                "[REDACTED]" if _json_key_is_secret(raw_key) else redact_secrets(item)
+                "[REDACTED]" if _json_key_is_secret(raw_key) else _redact_value(item, encoding_depth)
             )
         return normalized
     if isinstance(value, list):
-        return [redact_secrets(item) for item in value]
+        return [_redact_value(item, encoding_depth) for item in value]
     if isinstance(value, tuple):
-        return [redact_secrets(item) for item in value]
+        return [_redact_value(item, encoding_depth) for item in value]
     return value
+
+
+def redact_secrets(value: Any) -> Any:
+    return _redact_value(value, 0)
 
 
 def _serialize_json(payload: Any) -> str:
@@ -227,12 +299,53 @@ def export_run(
         if target.exists() and target.stat().st_nlink > 1:
             raise ValueError(f"refusing linked public artifact: {name}")
 
-    (output_dir / "manifest.json").write_text(serialized_manifest, encoding="utf-8")
-    (output_dir / "summary.json").write_text(serialized_summary, encoding="utf-8")
+    # Keep temporary report and rollback copies OUTSIDE the public run folder.
+    # Use a same-filesystem sibling so Path.replace remains an atomic file
+    # operation; tempfile.mkdtemp creates an unpredictable, owner-only
+    # directory on POSIX. The completed public files remain intentionally
+    # readable; this is not a crash-atomic multi-file transaction.
+    stage = Path(tempfile.mkdtemp(prefix=".godprompt-export-", dir=output_dir.parent))
+    # The manifest is the provenance marker; replace it only after data files.
+    names = ("scores.csv", "trajectories.jsonl", "summary.json", "manifest.json")
+    promoted: list[str] = []
+    existing: set[str] = set()
+    preserve_recovery = False
+    try:
+        (stage / "manifest.json").write_text(serialized_manifest, encoding="utf-8")
+        (stage / "summary.json").write_text(serialized_summary, encoding="utf-8")
+        with (stage / "scores.csv").open("w", newline="", encoding="utf-8") as handle:
+            handle.write(serialized_scores)
+        (stage / "trajectories.jsonl").write_text(
+            "".join(trajectory + "\n" for trajectory in serialized_trajectories), encoding="utf-8"
+        )
 
-    with (output_dir / "scores.csv").open("w", newline="", encoding="utf-8") as handle:
-        handle.write(serialized_scores)
+        backups = stage / "backups"
+        backups.mkdir()
+        for name in names:
+            target = output_dir / name
+            if target.exists():
+                shutil.copy2(target, backups / name)
+                existing.add(name)
 
-    with (output_dir / "trajectories.jsonl").open("w", encoding="utf-8") as handle:
-        for trajectory in serialized_trajectories:
-            handle.write(trajectory + "\n")
+        for name in names:
+            (stage / name).replace(output_dir / name)
+            promoted.append(name)
+    except Exception as error:
+        rollback_errors: list[OSError] = []
+        for name in reversed(promoted):
+            try:
+                if name in existing:
+                    (stage / "backups" / name).replace(output_dir / name)
+                else:
+                    (output_dir / name).unlink()
+            except OSError as rollback_error:
+                rollback_errors.append(rollback_error)
+        if rollback_errors:
+            preserve_recovery = True
+            raise RuntimeError(
+                f"public export rollback incomplete; recovery files preserved at {stage}"
+            ) from error
+        raise
+    finally:
+        if not preserve_recovery:
+            shutil.rmtree(stage)
