@@ -533,9 +533,19 @@ python -m godprompt_bench.review results/<run-id> --require-plan-sha256 <reviewe
 This opt-in gate verifies the saved `manifest.json` plan schema and digest,
 alongside the reviewer's existing public-score consistency checks, and fails
 closed on an absent, unsupported or different plan digest. JSON and Markdown
-reviews display the matched hash. It is for a single result directory, not
-`--compare`; older exports without a plan digest remain reviewable without
-this option. Matching a local manifest to a reviewed preview does **not**
+reviews display the matched hash. To compare two completed exports, supply
+one explicitly labeled digest per run (directories or public-only ZIPs):
+
+```sh
+python -m godprompt_bench.review results/earlier --compare results/later \
+  --require-plan-sha256 before:<earlier-64-hex-sha256> \
+  --require-plan-sha256 after:<later-64-hex-sha256>
+```
+
+Both pins are required when either is supplied; they may be different.
+Each is checked against its own saved manifest before any report is printed.
+Older exports without a plan digest remain reviewable without this option.
+Matching a local manifest to a reviewed preview does **not**
 independently authenticate the run or provider, attest spend, or prove results.
 
 To evaluate a smaller, explicitly selected subset of the bundled corpus, copy a JSON file from `configs/smoke.json`, give it a distinct lowercase `name` (for example `my-check`), and edit `task_ids` and the resource limits. Preview it before any potentially paid run:

@@ -592,10 +592,19 @@ def _review_snapshot(
     return report, manifest, records
 
 
-def compare_results(before_folder: Path, after_folder: Path) -> dict[str, Any]:
+def compare_results(
+    before_folder: Path, after_folder: Path, *,
+    before_plan_sha256: str | None = None, after_plan_sha256: str | None = None,
+) -> dict[str, Any]:
     """Compare two independently validated exports, never asserting causal improvement."""
-    before, before_manifest, before_records = _review_snapshot(before_folder)
-    after, after_manifest, after_records = _review_snapshot(after_folder)
+    if (before_plan_sha256 is None) != (after_plan_sha256 is None):
+        raise ValueError("comparison plan pins require both before and after digests")
+    before, before_manifest, before_records = _review_snapshot(
+        before_folder, required_plan_sha256=before_plan_sha256,
+    )
+    after, after_manifest, after_records = _review_snapshot(
+        after_folder, required_plan_sha256=after_plan_sha256,
+    )
 
     # Matching manifest fingerprints alone cannot establish which rows were scored.
     before_samples = {
@@ -795,6 +804,14 @@ def render_markdown(report: dict[str, Any]) -> str:
             *_markdown_cautions("Later run cautions", after["cautions"]),
             "", *_markdown_artifact_hashes(before, after), "",
         ]
+        for label, run in (("Earlier", before), ("Later", after)):
+            if "reviewed_plan" in run:
+                digest = run["reviewed_plan"]["plan_sha256"]
+                lines += [
+                    f"**{label} reviewed plan:** `{digest}` "
+                    "(matched local manifest field only; not independent attestation).",
+                    "",
+                ]
         if report["metadata_aligned"]:
             lines += [
                 "| Condition | Earlier pass rate | Later pass rate | Delta |",
@@ -1055,8 +1072,8 @@ def main() -> None:
                         help="With --compare, exit 1 on unaligned results after printing diagnostics")
     parser.add_argument("--require-evaluable", action="store_true",
                         help="Exit 1 unless all requested samples in each reviewed run were model-evaluable")
-    parser.add_argument("--require-plan-sha256", metavar="SHA256",
-                        help="Require one saved run to match a reviewed offline plan digest")
+    parser.add_argument("--require-plan-sha256", action="append", metavar="[SIDE:]SHA256",
+                        help="Pin a reviewed plan; with --compare require before: and after: digests")
     parser.add_argument("--require-public-artifact-sha256", action="append",
                         metavar="[SIDE:]NAME=SHA256",
                         help="Pin all public files; with --compare, require before:/after: pins for both runs")
@@ -1072,11 +1089,24 @@ def main() -> None:
     args = parser.parse_args()
     if args.require_aligned and args.compare is None:
         parser.error("--require-aligned requires --compare")
-    if args.require_plan_sha256 is not None:
-        if args.compare is not None:
-            parser.error("--require-plan-sha256 reviews one run; omit --compare")
-        if re.fullmatch(r"[0-9a-f]{64}", args.require_plan_sha256) is None:
-            parser.error("--require-plan-sha256 must be 64 lowercase hexadecimal characters")
+    plan_pins = {}
+    if args.require_plan_sha256:
+        comparing = args.compare is not None
+        sides = ("before", "after") if comparing else ("single",)
+        for pin in args.require_plan_sha256:
+            if comparing:
+                side, colon, digest = pin.partition(":")
+                if colon != ":" or side not in sides:
+                    parser.error("--require-plan-sha256 with --compare requires before:SHA256 and after:SHA256")
+            else:
+                side, digest = "single", pin
+            if re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+                parser.error("--require-plan-sha256 must be 64 lowercase hexadecimal characters")
+            if side in plan_pins:
+                parser.error("--require-plan-sha256 repeats a plan pin")
+            plan_pins[side] = digest
+        if set(plan_pins) != set(sides):
+            parser.error("--require-plan-sha256 requires both before and after plan pins with --compare")
     expected_artifact_sha256 = None
     if args.require_public_artifact_sha256:
         comparing = args.compare is not None
@@ -1138,8 +1168,12 @@ def main() -> None:
             } if expected_zip_sha256 is not None else None)
             first = _public_zip_directory(args.result_dir, stack)
             second = _public_zip_directory(args.compare, stack) if args.compare else None
-            report = (compare_results(first, second) if second is not None
-                      else review_result(first, required_plan_sha256=args.require_plan_sha256))
+            report = (compare_results(
+                first, second, before_plan_sha256=plan_pins.get("before"),
+                after_plan_sha256=plan_pins.get("after"),
+            ) if second is not None else review_result(
+                first, required_plan_sha256=plan_pins.get("single"),
+            ))
             if zip_digests_before is not None and any(
                 _public_zip_sha256(source) != zip_digests_before[side]
                 for side, source in zip_sources.items()
