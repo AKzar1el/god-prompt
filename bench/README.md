@@ -190,13 +190,18 @@ To avoid manually transcribing the task/epoch set from a bundled or bounded
 custom benchmark profile, generate a caller-side JSON plan offline from `bench/`:
 
 ```sh
-python -m godprompt_bench.run --profile smoke --expected-identities-plan > expected-task-epochs.json
+python -m godprompt_bench.run --profile smoke --expected-identities-plan --expected-identities-output expected-task-epochs.json
 python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets --expected-identities expected-task-epochs.json
 ```
 
 `--expected-identities-plan` prints the exact schema-1 `task_epochs` list to
-stdout after validating the selected profile and fixtures. It does not write
-result files, run models or Docker, or claim that a third-arm sample occurred.
+stdout by default after validating the selected profile and fixtures.
+`--expected-identities-output FILE` instead writes the same JSON directly as
+UTF-8 without a byte-order mark, only if the file does not already exist; its
+parent directory must exist. This avoids Windows PowerShell 5.1 redirection
+writing UTF-16LE, which the strict UTF-8 report parser cannot read. Neither
+mode writes benchmark result files, runs models or Docker, or claims that a
+third-arm sample occurred.
 The output is a **caller-generated expectation**, not a signed or host-attested
 execution manifest; only use it when that profile actually represents the
 independently planned comparison. `--profile-file` also works for a validated

@@ -875,7 +875,13 @@ def main() -> None:
         "--expected-identities-plan", action="store_true",
         help="Print caller-plan JSON for offline three-arm identity checks; not execution provenance",
     )
+    parser.add_argument(
+        "--expected-identities-output", type=Path, metavar="FILE",
+        help="Write caller-plan JSON as UTF-8 to a new file (requires --expected-identities-plan)",
+    )
     args = parser.parse_args()
+    if args.expected_identities_output is not None and not args.expected_identities_plan:
+        parser.error("--expected-identities-output requires --expected-identities-plan")
     if args.model is not None and not args.model.strip():
         parser.error("--model must be non-blank")
     if args.temperature is not None and not isfinite(args.temperature):
@@ -927,14 +933,24 @@ def main() -> None:
         # Validate the profile and fixtures before offering a caller-generated
         # plan. These identities do not attest to third-arm execution records.
         preview_benchmark(bench_root, profile)
-        print(json.dumps({
+        payload = json.dumps({
             "schema_version": 1,
             "task_epochs": [
                 {"task_id": task_id, "epoch": epoch}
                 for task_id in profile.task_ids
                 for epoch in range(1, profile.epochs + 1)
             ],
-        }, sort_keys=True, indent=2))
+        }, sort_keys=True, indent=2)
+        if args.expected_identities_output is None:
+            print(payload)
+        else:
+            # Exclusive creation prevents accidentally replacing a caller's plan.
+            # Explicit UTF-8 avoids PowerShell 5.1's UTF-16LE stdout redirection.
+            try:
+                with args.expected_identities_output.open("x", encoding="utf-8", newline="\n") as target:
+                    target.write(payload + "\n")
+            except OSError:
+                parser.error("could not create --expected-identities-output file; choose a new writable path")
         return
     if args.list_tasks:
         plan = preview_benchmark(bench_root, profile)
