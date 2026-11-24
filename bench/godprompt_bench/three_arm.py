@@ -95,8 +95,8 @@ def preflight_three_arm_plan(
     temperature, seed = model["temperature"], model["seed"]
     if (
         type(temperature) not in (int, float)
-        or not isfinite(temperature)
         or not 0 <= temperature <= 2
+        or not isfinite(temperature)
     ):
         raise ValueError("model temperature must be finite in [0, 2]")
     if type(seed) is not int or not 0 <= seed < 2**32:
