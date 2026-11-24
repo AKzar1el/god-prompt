@@ -152,10 +152,23 @@ freeze a separate held-out corpus and three-arm run manifest, retain
 identical sandboxes/controls, and validate paired uncertainty and raw
 anonymized trajectories. Live providers remain separately spend-gated.
 
+For explicit host-controlled integration, `experimental_contract_sample_solver`
+binds a separate opt-in Inspect solver session to each actual sample/epoch.
+Provide public `success_criteria_by_sample`, explicit `forbidden_actions`,
+and a synchronous `on_prepared(scope, session, contract)` callback that retains
+the session. Invalid inputs, duplicate epochs, asynchronous retention callbacks
+and ambiguous MCP planning fail closed before model execution. Constructing the
+solver does not start a provider, register a third default condition, authenticate
+native ToolCall IDs or establish any productivity gain.
+
 For **offline descriptive analysis only**, a host can supply in-memory
 `SampleRecord` rows for `baseline`, `godprompt` and
 `experimental_mcp_contract` to the separate
 `godprompt_bench.experimental_report.summarize_experimental_triplets` helper.
+The older alternate JSONL schema from [draft PR #349](https://github.com/AKzar1el/god-prompt/pull/349)
+is preserved at [its exact research snapshot](https://github.com/AKzar1el/god-prompt/tree/772b67a6b1b220160eef2e145e59fcb6be5e24ea).
+It is not a second supported reporting format; the current preflight and
+experimental report are the maintained offline interfaces.
 It reports scope-aware outcomes only for complete same-task/epoch triples,
 excludes missing or infrastructure-failed triples, and rejects duplicate or
 inconsistent sample identities. It emits aggregate counts without task IDs,

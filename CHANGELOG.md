@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-24
+
+### Added
+- Portable Agent Skill layout with synchronized standalone prompt and reference files.
+- GodPrompt Bench: reproducible software-engineering fixtures, offline validation, evidence review, redacted public exports, held-out three-arm planning and descriptive matched-triplet reports.
+- Opt-in Inspect sample/epoch solver binding with isolated evidence sessions and explicit public criteria. The default two-arm evaluation remains unchanged.
+
+### Fixed
+- Strengthened public export staging, rollback, and recursive redaction of nested or repeatedly encoded JSON diagnostics.
+- Expanded instruction-authority, verification, and evidence-integrity guards.
+
+### Research boundary
+- Experimental comparisons remain opt-in and spend-gated. The offline analysis and preflight tooling do not establish a coding-agent productivity advantage.
+
 ### Changed
 - Guard against merged task notifications swallowing genuine user turns without promoting untrusted notice text to user authority.
 - Restrict delegated control-plane actions against ancestor or peer sessions to exact, explicitly delegated targets and operations.
