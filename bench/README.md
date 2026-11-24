@@ -260,7 +260,13 @@ When an optional coverage gate fails, stderr reports only aggregate counts:
 `missing` and `unexpected`. No task IDs, row contents or manifest paths are printed.
 This caller-provided file is **not a signed or host-attested manifest**;
 it does not establish sample authenticity or provenance. Both optional gates
-may be combined, and the default descriptive output remains unchanged.
+may be combined. On success, JSON includes an optional `caller_coverage_gate`
+object stating whether the explicit count and/or exact identity checks ran and
+matched, the expected task-epoch count, and `provenance_verified: false`.
+Markdown includes the corresponding coverage statement. A false match flag
+means that gate was not requested, not that a failed gate was accepted.
+No identities or manifest paths are included; the default ungated descriptive
+output remains unchanged.
 It provides **no** model/host provenance, verified performance claim, enabled
 third-arm evaluation or permission to run a provider. Its optional descriptive
 bootstrap interval does not establish independently verified model uplift.
