@@ -21,6 +21,7 @@ from stat import S_IFMT, S_IFREG
 from tempfile import TemporaryDirectory
 from typing import Any
 from zipfile import BadZipFile, ZipFile
+import zlib
 
 from .aggregate import aggregate
 from .corpus import _reject_duplicate_json_keys
@@ -133,12 +134,27 @@ def _public_zip_directory(source: Path, stack: ExitStack) -> Path:
                     if len(data) > maximum or handle.read(1):
                         raise ValueError(f"public evidence ZIP entry too large: {item.filename}")
                 (output / item.filename).write_bytes(data)
-    except (BadZipFile, EOFError, RuntimeError, NotImplementedError) as exc:
+    except (BadZipFile, EOFError, RuntimeError, NotImplementedError, zlib.error) as exc:
         raise ValueError(f"invalid public evidence ZIP: {exc}") from exc
     final = source.stat()
     if (initial.st_size, initial.st_mtime_ns) != (final.st_size, final.st_mtime_ns):
         raise ValueError("public evidence ZIP changed during review")
     return output
+
+
+def _public_zip_sha256(source: Path) -> str:
+    """Hash only a bounded, regular public ZIP, for an independently supplied pin."""
+    if source.suffix.lower() != ".zip" or source.is_symlink() or not source.is_file():
+        raise ValueError("public ZIP SHA256 pin requires an existing regular ZIP file")
+    initial = source.stat()
+    if initial.st_size > _MAX_PUBLIC_ZIP_BYTES:
+        raise ValueError("public evidence ZIP is too large")
+    with source.open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    final = source.stat()
+    if (initial.st_size, initial.st_mtime_ns) != (final.st_size, final.st_mtime_ns):
+        raise ValueError("public evidence ZIP changed during digest verification")
+    return digest
 
 
 def _parse_integer(value: str, name: str, optional: bool = False) -> int | None:
@@ -1015,6 +1031,9 @@ def main() -> None:
     parser.add_argument("--require-public-artifact-sha256", action="append",
                         metavar="[SIDE:]NAME=SHA256",
                         help="Pin all public files; with --compare, require before:/after: pins for both runs")
+    parser.add_argument("--require-public-zip-sha256", action="append",
+                        metavar="[SIDE:]SHA256",
+                        help="Pin the entire ZIP from an independent channel; with --compare, require before:/after: ZIP pins")
     parser.add_argument("--require-nondegrading-pairs", action="store_true",
                         help="For one run, exit 1 on missing/unpaired evidence or more baseline-only wins")
     parser.add_argument("--require-no-godprompt-regression", action="store_true",
@@ -1052,6 +1071,29 @@ def main() -> None:
         if any(set(expected_artifact_sha256[side]) != names for side in sides):
             parser.error("--require-public-artifact-sha256 requires all three public files"
                          + (" for each of before and after with --compare" if comparing else ""))
+    expected_zip_sha256 = None
+    if args.require_public_zip_sha256:
+        comparing = args.compare is not None
+        sides = ("before", "after") if comparing else ("single",)
+        expected_zip_sha256 = {}
+        for pin in args.require_public_zip_sha256:
+            if comparing:
+                side, colon, digest = pin.partition(":")
+                if colon != ":" or side not in sides:
+                    parser.error("--require-public-zip-sha256 with --compare requires before:SHA256 and after:SHA256")
+            else:
+                side, digest = "single", pin
+            if re.fullmatch(r"[0-9a-fA-F]{64}", digest) is None:
+                parser.error("--require-public-zip-sha256 requires 64 hexadecimal characters")
+            if side in expected_zip_sha256:
+                parser.error("--require-public-zip-sha256 repeats a ZIP pin")
+            expected_zip_sha256[side] = digest.lower()
+        if set(expected_zip_sha256) != set(sides):
+            parser.error("--require-public-zip-sha256 requires one pin per ZIP"
+                         + (" (before: and after:) with --compare" if comparing else ""))
+        sources = (args.result_dir, args.compare) if comparing else (args.result_dir,)
+        if any(source.suffix.lower() != ".zip" or source.is_dir() for source in sources):
+            parser.error("--require-public-zip-sha256 requires ZIP inputs, not directories")
     if args.require_nondegrading_pairs and args.compare is not None:
         parser.error("--require-nondegrading-pairs reviews one run; omit --compare")
     if args.require_no_godprompt_regression and args.compare is None:
@@ -1060,10 +1102,20 @@ def main() -> None:
         parser.error("--require-no-godprompt-category-regression requires --compare")
     try:
         with ExitStack() as stack:
+            zip_sources = ({"before": args.result_dir, "after": args.compare}
+                           if args.compare else {"single": args.result_dir})
+            zip_digests_before = ({
+                side: _public_zip_sha256(source) for side, source in zip_sources.items()
+            } if expected_zip_sha256 is not None else None)
             first = _public_zip_directory(args.result_dir, stack)
             second = _public_zip_directory(args.compare, stack) if args.compare else None
             report = (compare_results(first, second) if second is not None
                       else review_result(first, required_plan_sha256=args.require_plan_sha256))
+            if zip_digests_before is not None and any(
+                _public_zip_sha256(source) != zip_digests_before[side]
+                for side, source in zip_sources.items()
+            ):
+                raise ValueError("public evidence ZIP changed during review")
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
     if args.format == "markdown":
@@ -1081,6 +1133,14 @@ def main() -> None:
         ]
         if mismatches:
             parser.exit(1, "public artifact SHA256 mismatch for: " + ", ".join(mismatches) + "\n")
+    if expected_zip_sha256 is not None:
+        mismatches = [
+            side for side, digest in zip_digests_before.items()
+            if digest != expected_zip_sha256[side]
+        ]
+        if mismatches:
+            names = ", ".join(mismatches) if args.compare else "single ZIP"
+            parser.exit(1, "public ZIP SHA256 mismatch for: " + names + "\n")
     if args.require_aligned and not report["metadata_aligned"]:
         raise SystemExit(1)
     if args.require_evaluable:

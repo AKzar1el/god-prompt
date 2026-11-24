@@ -11,6 +11,37 @@ from godprompt_bench import run as benchmark_runner
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_quick_start_routes_each_supported_host_to_a_stable_install_anchor():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    quick_start = readme.split("## Quick Start", 1)[1].split("## How It Works", 1)[0]
+    routes = {
+        "Quick paste": ("install-paste", "A"),
+        "Claude Code": ("install-claude-code", "B"),
+        "Claude.ai Projects": ("install-claude-project", "C"),
+        "ChatGPT": ("install-chatgpt", "D"),
+        "Gemini": ("install-gemini", "E"),
+        "OpenAI Codex": ("install-codex", "F"),
+        "GitHub Copilot": ("install-copilot", "G"),
+        "Other hosts": ("install-other", "H"),
+    }
+    assert "Choose your host" in quick_start
+    for label, (anchor, option) in routes.items():
+        assert f"[{label}](#{anchor})" in quick_start
+        assert re.search(rf'(?m)^<a id="{anchor}"></a>\n\*\*Option {option}\b', quick_start)
+
+
+def test_quick_start_has_a_nonmutating_runtime_activation_check():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    quick_start = readme.split("## Quick Start", 1)[1].split("## How It Works", 1)[0]
+    assert "**Verify what actually loaded**" in quick_start
+    assert "without changing files or running tools" in quick_start
+    assert "installed skill or plugin" in quick_start
+    assert "file-backed Project" in quick_start
+    assert "assistant's self-report is not proof" in quick_start
+    assert "unverified" in quick_start
+    assert "Do not paste secrets" in quick_start
+
+
 def test_benchmark_readme_model_example_is_not_misrepresented_as_current_flagship():
     readme = (ROOT / "bench" / "README.md").read_text(encoding="utf-8")
     run_section = readme.split("## Run", 1)[1].split("## Output", 1)[0]
@@ -66,6 +97,26 @@ def test_chatgpt_onboarding_does_not_require_oversized_custom_instructions():
     assert "Paste the contents of `GodPrompt.md`" not in section
     assert "Project files" in section
     assert "Custom Instructions" in section
+
+
+def test_chatgpt_remote_mcp_setup_uses_discovered_tools_not_stale_fixed_count():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    section = readme.split("**Option D", 1)[1].split("**Option E", 1)[0]
+
+    # The hosted Worker and version-pinned local MCP packages can differ.
+    assert not re.search(r"\b(?:seven|nine|\d+)\s+(?:[\w-]+\s+){0,3}tools\b", section, re.I)
+    assert "tool names and descriptions" in section
+    assert "version-pinned local MCP package" in section
+
+
+def test_paid_review_intake_warns_buyers_to_sanitize_artifacts_before_emailing():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    offer = readme.split("## Agent Harness Review", 1)[1].split("## What Is This?", 1)[0]
+
+    assert "[GP-RS1]" in offer
+    normalized = offer.lower()
+    for phrase in ("redact", "API keys", "personal data", "private repository content"):
+        assert phrase.lower() in normalized
 
 
 @pytest.mark.parametrize("profile", ("smoke", "full"))

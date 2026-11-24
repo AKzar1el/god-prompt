@@ -102,8 +102,13 @@ def format_text(report: dict) -> str:
     if inspect_status == "ok":
         lines.append("Inspect AI: OK (pinned 0.3.260)")
     elif inspect_status in ("missing", "version_mismatch"):
+        install_command = (
+            r".\.venv\Scripts\python.exe -m pip install -e '.[test,openai]'"
+            if sys.platform == "win32"
+            else "python -m pip install -e '.[test,openai]'"
+        )
         lines.append(
-            "Inspect AI: NOT READY - From bench/, run python -m pip install -e '.[test,openai]' "
+            f"Inspect AI: NOT READY - From bench/, run {install_command} "
             "to install pinned Inspect AI 0.3.260."
         )
     else:

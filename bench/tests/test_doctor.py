@@ -161,6 +161,36 @@ def test_doctor_text_gives_actionable_local_remediation(monkeypatch, capsys, com
     assert "not verify Docker daemon" in output
 
 
+@pytest.mark.parametrize("inspect_status", ["missing", "version_mismatch"])
+@pytest.mark.parametrize(
+    "platform,install_command",
+    [
+        ("win32", r".\.venv\Scripts\python.exe -m pip install -e '.[test,openai]'"),
+        ("linux", "python -m pip install -e '.[test,openai]'"),
+    ],
+)
+def test_doctor_inspect_remediation_uses_platform_venv_python(
+    monkeypatch, inspect_status, platform, install_command
+):
+    from godprompt_bench import doctor
+
+    report = {
+        "local_prerequisites_present": False,
+        "checks": {
+            "python": {"status": "ok"},
+            "inspect_ai": {"status": inspect_status},
+            "docker_cli": {"status": "ok"},
+        },
+    }
+    with monkeypatch.context() as patch:
+        patch.setattr(doctor.sys, "platform", platform)
+        output = doctor.format_text(report)
+
+    assert install_command in output
+    assert "pinned Inspect AI 0.3.260" in output
+    assert "No model/provider calls were made" in output
+
+
 def test_doctor_text_success_and_default_json_stay_distinct(monkeypatch, capsys):
     from godprompt_bench import doctor
 

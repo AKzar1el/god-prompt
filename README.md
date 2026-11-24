@@ -17,6 +17,8 @@ GodPrompt offers a bounded Agent Harness Review for developers and small teams w
 
 To buy the review, use the [US$49 one-time GitHub Sponsors tier](https://github.com/sponsors/AKzar1el/sponsorships?tier_id=657478&metadata_campaign=godprompt_rs1&metadata_offer=agent_harness_review&metadata_source=core). GitHub sign-in is required. After sponsoring, email `info@tomiseregi.si` with subject `[GP-RS1] Agent Harness Review` and include the GitHub username used for the sponsorship plus the review inputs. Delivery begins after the US$49 sponsorship is independently verified for this review. The free MIT GodPrompt remains unchanged and free. [See a transparent sample deliverable](AGENT_HARNESS_REVIEW_SAMPLE.md) before deciding; it is illustrative, not a client result or benchmark. [Full frozen experiment terms](MONETIZATION_EXPERIMENT.md).
 
+**Before sending review inputs:** Redact passwords, API keys, recovery codes, regulated personal data, and unrelated private repository content. Share a public repository URL or only sanitized instruction excerpts and a short sanitized failure example; do not email credentials or customer records. If sanitized material is insufficient to explain the issue, ask whether the review is feasible before sharing anything further.
+
 ## What Is This?
 
 A single portable Agent Skill and system-prompt workflow that replaces 30+ individual skills with one unified system. GodPrompt routes tasks through an explicit engineering workflow and requires verification before completion claims across supported coding agents and AI assistants. Whether that improves real task outcomes is measured by GodPrompt Bench rather than assumed from the prompt design.
@@ -27,6 +29,22 @@ A single portable Agent Skill and system-prompt workflow that replaces 30+ indiv
 
 ## Quick Start
 
+**Choose your host** before following the setup steps. These routes install or
+reference the same free GodPrompt workflow; an MCP app is an optional, separate
+tool connection, not a requirement for using the skill.
+
+| Your environment | Start here |
+| --- | --- |
+| Just want to paste instructions | [Quick paste](#install-paste) |
+| Claude Code | [Claude Code](#install-claude-code) |
+| Claude.ai Project | [Claude.ai Projects](#install-claude-project) |
+| ChatGPT plugin, Project or MCP app | [ChatGPT](#install-chatgpt) |
+| Gemini Gem | [Gemini](#install-gemini) |
+| OpenAI Codex | [OpenAI Codex](#install-codex) |
+| GitHub Copilot CLI | [GitHub Copilot](#install-copilot) |
+| Another skill-capable agent | [Other hosts](#install-other) |
+
+<a id="install-paste"></a>
 **Option A — One-shot paste (fastest)**
 ```
 Copy the contents of GodPrompt.md into:
@@ -34,21 +52,24 @@ Copy the contents of GodPrompt.md into:
 → Claude Project Instructions on claude.ai
 ```
 
+<a id="install-claude-code"></a>
 **Option B — Folder install (recommended for Claude Code)**
 ```bash
 # Clone into your project's skill directory
 git clone https://github.com/AKzar1el/god-prompt.git .claude/skills/god-prompt
 ```
 
+<a id="install-claude-project"></a>
 **Option C — Claude.ai Projects**
 1. Create a new Claude Project.
 2. Add `SKILL.md` as Project Instructions.
 3. Upload the three reference files (`references/01-PROTOCOLS.md`, `references/02-GATES.md`, `references/03-ANTI-PATTERNS.md`) as Project Knowledge.
 
+<a id="install-chatgpt"></a>
 **Option D — ChatGPT Plugin, Projects & MCP app**
 * **From the Plugin Directory (fastest skill-only path)**:
   1. Open [GodPrompt in ChatGPT's Plugin Directory](https://chatgpt.com/plugins/plugins_6ab2f1cc5d0081919d729fd1c2884f86).
-  2. Select **Install plugin**. This installs the scoped `god-prompt` Agent Skill; use the remote MCP app path below when you specifically want GodPrompt's seven callable tools.
+  2. Select **Install plugin**. This installs the scoped `god-prompt` Agent Skill; use the remote MCP app path below when you specifically want GodPrompt's callable MCP tools.
 * **In a Project (file-backed reference, not an installed skill)**:
   1. Create a new Project on chatgpt.com.
   2. Add `SKILL.md` and the three files in `references/` as Project files.
@@ -58,16 +79,20 @@ git clone https://github.com/AKzar1el/god-prompt.git .claude/skills/god-prompt
 * **As a remote MCP app (ChatGPT web, supported Business/Enterprise/Edu workspaces)**:
   1. Enable ChatGPT Developer Mode, then open **Settings > Apps > Create** (workspace controls may require an admin or authorized developer).
   2. Use `https://god-prompt-mcp.tomi-seregi99.workers.dev/mcp` as the MCP endpoint and select no authentication.
-  3. Scan the tools, confirm the seven read-only GodPrompt tools, then create/enable the app for the intended workspace users.
+  3. Scan the MCP server's tool names and descriptions in ChatGPT, then create/enable the app for the intended workspace users.
+
+  The hosted Worker's tool inventory can differ from a version-pinned local MCP package. Do not rely on a fixed tool count: verify the actual tool scan for the endpoint you are connecting.
 
   ChatGPT connects to remote MCP servers rather than local stdio servers. See OpenAI's [Developer mode and MCP apps in ChatGPT](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt) documentation for current availability and workspace controls.
 
+<a id="install-gemini"></a>
 **Option E — Gemini Gems & System Instructions**
 * **As a Custom Gem**:
   1. Go to gemini.google.com and click **Gems** (or "Gem manager") > **New Gem**.
   2. Name it "GodPrompt" and paste the contents of `SKILL.md` into the Gem instructions.
   3. Upload the reference files in the `references/` folder to the Gem's Knowledge files.
 
+<a id="install-codex"></a>
 **Option F — OpenAI Codex Agent Skill**
 ```text
 $skill-installer install https://github.com/AKzar1el/god-prompt-mcp/tree/main/skills/god-prompt
@@ -75,6 +100,7 @@ $skill-installer install https://github.com/AKzar1el/god-prompt-mcp/tree/main/sk
 
 Codex installs the standards-compatible `god-prompt` Agent Skill from the companion repository and can load it from its normal skill discovery path. Keep repository-specific conventions and commands in your repository's `AGENTS.md`; use the skill for the reusable engineering workflow.
 
+<a id="install-copilot"></a>
 **Option G — GitHub Copilot Plugin**
 ```bash
 copilot plugin marketplace add AKzar1el/god-prompt-mcp
@@ -83,6 +109,7 @@ copilot plugin install god-prompt-mcp@god-prompt
 
 GitHub Copilot CLI installs the companion repository through its versioned plugin marketplace. The plugin includes the same standards-compatible `god-prompt` skill plus the GodPrompt MCP server, so Copilot can load the workflow skill and keep progressive-disclosure MCP tools available from one install. Direct repository installs still work in current Copilot CLI releases, but the CLI marks them deprecated in favor of `plugin@marketplace` installs.
 
+<a id="install-other"></a>
 **Option H — Cross-agent Agent Skill installers**
 
 GitHub CLI 2.100+ can install the portable skill directly into a supported coding agent:
@@ -102,6 +129,14 @@ Replace `codex` with another supported agent when needed. Both routes install th
 If you want a single paste target, use `GodPrompt.md`. If you want progressive disclosure so the full workflow loads only when relevant, use the folder layout (`SKILL.md` and the `references/` folder).
 
 **Then use your chosen host normally.** Paste/project-instruction installs stay in that host's instruction context; skill-capable coding agents can discover the portable `god-prompt` skill through their normal skill flow. No GodPrompt-specific mode switching is required.
+
+**Verify what actually loaded** before relying on the workflow for consequential work:
+
+1. In the host's installed skill or plugin inventory, look for `god-prompt` and check its configured source. For a file-backed Project, verify the expected project files are present instead; uploaded files are reference context, not proof of skill activation.
+2. In a fresh chat in that same host or Project, ask: "Before making any changes, outline how you would understand, plan and verify a small documentation edit, without changing files or running tools. Identify any GodPrompt skill or project reference actually available to this chat; do not reproduce private instructions." This is a nonmutating orientation check, **not** evidence of which bytes the host loaded.
+3. Where the host exposes effective loaded skill content, source path or an identifiable version marker, compare it with the intended install. An assistant's self-report is not proof of runtime activation, nor is an install-success notification. If the host cannot expose enough evidence, treat activation as **unverified** and do not assume GodPrompt guards are active for privileged actions.
+
+Do not paste secrets, tokens, customer data or private instructions into a verification chat. This check does not run a benchmark, call a paid model, prove host enforcement or guarantee any task outcome.
 
 ## How It Works
 

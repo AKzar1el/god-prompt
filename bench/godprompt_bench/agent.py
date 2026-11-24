@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -81,13 +80,12 @@ def _inspect_sample_inputs(state):
     """Extract only the public, host-supplied contract inputs for one sample."""
     from inspect_ai.solver import TaskState
 
-    from .mcp_contract_adapter import ContractHold
+    from .mcp_contract_adapter import ContractHold, _valid_inspect_sample_id
 
     if not isinstance(state, TaskState):
         raise ContractHold("expected host Inspect TaskState")
     if (
-        not isinstance(state.sample_id, str)
-        or not re.fullmatch(r"[A-Za-z0-9_-]{3,80}", state.sample_id)
+        not _valid_inspect_sample_id(state.sample_id)
         or type(state.epoch) is not int
         or state.epoch < 1
     ):

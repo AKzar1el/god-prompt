@@ -44,6 +44,14 @@ The adapter independently rejects a purported MCP ready response when its own
 required verification receipts are missing, nonzero or outputless; MCP review
 cannot override those local observations.
 
+For a host with independently captured pre-agent and post-agent sandbox file
+hashes, `EvidenceSession.review_observed_snapshots` derives the exact changed
+paths rather than accepting an agent-written file list. It rejects malformed
+snapshots and out-of-scope changes before calling MCP review; it performs no
+filesystem or provider calls. The host must still attest snapshot provenance,
+tool-call correlation and completeness. A reported-ready result is not an
+independent verification or a live third-arm evaluation.
+
 For host-side Inspect integration, `EvidenceSession` now has an opt-in
 `observe_inspect_exec` method. A trusted caller must bind a
 `InspectExecutionScope(sample_id, attempt_id)` when it creates the session,
@@ -143,6 +151,109 @@ Inspect execution context (including exact tool-call provenance),
 freeze a separate held-out corpus and three-arm run manifest, retain
 identical sandboxes/controls, and validate paired uncertainty and raw
 anonymized trajectories. Live providers remain separately spend-gated.
+
+For **offline descriptive analysis only**, a host can supply in-memory
+`SampleRecord` rows for `baseline`, `godprompt` and
+`experimental_mcp_contract` to the separate
+`godprompt_bench.experimental_report.summarize_experimental_triplets` helper.
+It reports scope-aware outcomes only for complete same-task/epoch triples,
+excludes missing or infrastructure-failed triples, and rejects duplicate or
+inconsistent sample identities. It emits aggregate counts without task IDs,
+keeps unavailable token usage unknown, and never alters canonical two-arm
+`aggregate`/`export_run` outputs. Its additive `paired_outcomes` field
+counts both-pass, candidate-only, reference-only and neither-pass task/epoch
+pairs for each arm comparison.
+All four buckets sum to `matched_task_epochs`; a scoped violation is not a
+pass. These descriptive matched counts do not establish causal uplift or
+independence across repeated epochs.
+The separate `paired_pass_uncertainty` field adds an exploratory 95% percentile
+bootstrap interval for the scope-safe pass-rate difference in each comparison.
+It resamples entire task clusters, keeping repeated epochs together, with a
+fixed seed and 2048 resamples. Intervals are withheld for fewer than 10 or
+more than 500 distinct matched tasks, or any excluded/infrastructure-failed
+triples; `limitations` and a `null` interval make those cases explicit. Input
+rows remain unauthenticated: even a non-null interval does not verify actual
+model execution, causal uplift or generalization beyond the supplied tasks.
+For a bounded, offline CSV-to-JSON or human-readable Markdown view without
+writing an output file, run
+the following from `bench/` with a host-supplied `scores.csv` in the given
+directory (the exact public `SampleRecord` column order is required):
+
+Discover the required CSV header without an input directory, provider calls,
+or file writes. Copy the single output line as the header of a UTF-8 CSV:
+
+```sh
+python -m godprompt_bench.experimental_report --print-scores-header
+```
+
+This prints only the current schema's column names, not example scores or
+evidence of a run. It cannot be combined with report options. On Windows
+PowerShell 5.1, use `| Set-Content -Encoding Ascii` if saving the ASCII-only
+header to a new file; the default `>` redirection writes UTF-16LE.
+
+```bash
+python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets
+python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets --format markdown
+python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets --expected-task-epochs 12
+python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets --expected-identities path/to/expected-task-epochs.json
+```
+
+To avoid manually transcribing the task/epoch set from a bundled or bounded
+custom benchmark profile, generate a caller-side JSON plan offline from `bench/`:
+
+```sh
+python -m godprompt_bench.run --profile smoke --expected-identities-plan --expected-identities-output expected-task-epochs.json
+python -m godprompt_bench.experimental_report --scores-dir path/to/offline-triplets --expected-identities expected-task-epochs.json
+```
+
+`--expected-identities-plan` prints the exact schema-1 `task_epochs` list to
+stdout by default after validating the selected profile and fixtures.
+`--expected-identities-output FILE` instead writes the same JSON directly as
+UTF-8 without a byte-order mark, only if the file does not already exist; its
+parent directory must exist. This avoids Windows PowerShell 5.1 redirection
+writing UTF-16LE, which the strict UTF-8 report parser cannot read. Neither
+mode writes benchmark result files, runs models or Docker, or claims that a
+third-arm sample occurred.
+The output is a **caller-generated expectation**, not a signed or host-attested
+execution manifest; only use it when that profile actually represents the
+independently planned comparison. `--profile-file` also works for a validated
+custom profile. The plan action produces JSON only and cannot be combined with
+other offline actions.
+
+The read-only command rejects malformed or duplicate rows, excludes incomplete
+triples, and writes only aggregate JSON (the default) or copyable Markdown to
+stdout. The Markdown view shows per-arm scope-safe rates, matched outcome
+counts, observed paired differences and exploratory task-cluster intervals or
+their explicit withholding reasons, with no private task identifiers. It does
+not inspect a manifest, authenticate the input, run agents/providers, or export task IDs,
+private incident text or trajectories. Do not pass its output off as a
+verified experiment merely because the input CSV was parsed successfully.
+For a caller who already knows the planned number of task/epoch identities,
+`--expected-task-epochs N` is an opt-in exit-code gate: it emits no summary and
+returns 2 unless exactly N identities appear and every one has all three
+non-infrastructure-failed rows. N must be positive. This checks only the
+caller-supplied count against observed CSV rows; it cannot prove an omitted
+task was planned, authenticate the source, or replace a trusted run manifest.
+For a caller who has a separate expected task/epoch plan, add
+`--expected-identities path/to/expected-task-epochs.json`. Supply a UTF-8
+JSON object such as
+`{"schema_version":1,"task_epochs":[{"task_id":"task-a","epoch":1}]}`.
+The file must contain 1-10,000 unique positive-epoch identities (max 2 MB).
+The CLI rejects missing, duplicate, unexpected or incomplete task/epoch triples,
+even when an omitted task was replaced by another and the total count is
+unchanged. Errors and aggregate output do not reveal the expected task IDs.
+When an optional coverage gate fails, stderr reports only aggregate counts:
+`expected`, `observed`, and `excluded`; the identity-plan gate also reports
+`missing` and `unexpected`. No task IDs, row contents or manifest paths are printed.
+This caller-provided file is **not a signed or host-attested manifest**;
+it does not establish sample authenticity or provenance. Both optional gates
+may be combined, and the default descriptive output remains unchanged.
+It provides **no** model/host provenance, verified performance claim, enabled
+third-arm evaluation or permission to run a provider. Its optional descriptive
+bootstrap interval does not establish independently verified model uplift.
+An eventual real comparison still requires the
+held-out corpus, common controls, authentic event correlation and independent
+review described above.
 
 ## Corpus
 
@@ -336,6 +447,7 @@ Before spending provider tokens, preview the selected profile and verify its fix
 ```bash
 python -m godprompt_bench.run --list-profiles
 python -m godprompt_bench.run --profile smoke --list-tasks
+python -m godprompt_bench.run --profile smoke --expected-identities-plan
 python -m godprompt_bench.run --list-profiles --format markdown
 python -m godprompt_bench.run --profile smoke --list-tasks --format markdown
 python -m godprompt_bench.run --profile smoke --dry-run
@@ -498,6 +610,28 @@ It refuses to overwrite an existing ZIP. Its JSON receipt contains a copyable
 ZIP SHA256 and the three individual artifact hashes. Share expected hashes
 through a separately trusted channel if the recipient needs tamper detection;
 hashes generated alongside an untrusted ZIP do not authenticate its origin.
+
+For a simpler whole-archive integrity check, a recipient who obtained the
+packer's ZIP SHA256 through a **separately trusted channel** can use:
+
+```bash
+python -m godprompt_bench.review public-evidence.zip --require-public-zip-sha256 YOUR_TRUSTED_ZIP_SHA256
+python -m godprompt_bench.review earlier-public.zip --compare later-public.zip --require-public-zip-sha256 before:YOUR_EARLIER_ZIP_SHA256 --require-public-zip-sha256 after:YOUR_LATER_ZIP_SHA256
+```
+
+Replace each uppercase placeholder with the corresponding 64-character SHA256
+digest obtained independently; the placeholders are not literal hash values.
+Avoid angle-bracket placeholders here because shells interpret `<` as redirection.
+
+The optional gate hashes the complete ZIP (including metadata) and prints
+ordinary offline review diagnostics before exiting 1 on a mismatch. It refuses
+directory inputs, malformed/duplicate/partial pins and changed ZIP bytes.
+ZIP pins accept either lowercase or uppercase hexadecimal (including the
+uppercase digest displayed by Windows PowerShell `Get-FileHash -Algorithm SHA256`);
+the expected hash must still come from a separately trusted channel.
+Individual public-file SHA256 pins remain available and can be combined with
+the ZIP pin. A digest copied from the same untrusted package is **not** a
+signature, model attestation or independent proof of performance.
 
 The reviewer refuses duplicate, linked, encrypted, oversized and unexpected
 archive entries; only the three size-bounded public files are unpacked into

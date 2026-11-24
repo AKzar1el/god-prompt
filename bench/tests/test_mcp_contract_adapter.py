@@ -131,6 +131,44 @@ def test_actual_tool_event_is_hashed_not_exposed_and_review_is_never_proof():
     assert result["independently_verified"] is False
 
 
+def test_observed_snapshot_review_derives_changes_without_model_claims():
+    adapter, mcp = session()
+    adapter.observe_check("VC-01", receipt())
+    before = {"src/parser.py": "a" * 64, "notes.txt": "b" * 64}
+    after = {"src/parser.py": "c" * 64, "notes.txt": "b" * 64}
+    result = adapter.review_observed_snapshots(
+        before=before, after=after, operations_performed=["edited parser"],
+        acceptance=[{"id": "AC-01", "status": "met", "evidence_refs": ["VC-01"]}],
+    )
+    assert result["status"] == "REPORTED_READY_FOR_INDEPENDENT_REVIEW"
+    assert mcp.calls[-1][1]["changed_files"] == ["src/parser.py"]
+
+
+@pytest.mark.parametrize("after", [
+    {"src/parser.py": "a" * 64, "outside.txt": "c" * 64},
+    {"src/parser.py": "a" * 64, "notes.txt": "c" * 64},
+])
+def test_observed_snapshot_review_rejects_out_of_scope_changes_before_mcp(after):
+    adapter, mcp = session()
+    before = {"src/parser.py": "a" * 64, "notes.txt": "b" * 64}
+    with pytest.raises(ContractHold, match="scope"):
+        adapter.review_observed_snapshots(
+            before=before, after=after, operations_performed=[], acceptance=[],
+        )
+    assert all(name != "review_work_evidence" for name, _ in mcp.calls)
+
+
+@pytest.mark.parametrize("bad", [
+    {"../escape.py": "a" * 64},
+    {"src/parser.py": "untrusted"},
+    {"src\\parser.py": "a" * 64},
+])
+def test_observed_snapshot_review_rejects_malformed_snapshot(bad):
+    adapter, _ = session()
+    with pytest.raises(ContractHold, match="snapshot"):
+        adapter.review_observed_snapshots(before=bad, after=bad, operations_performed=[], acceptance=[])
+
+
 @pytest.mark.parametrize("exit_code, output, expected", [
     (1, "1 failed", "VERIFICATION_FAILED"),
     (0, "", "EVIDENCE_EXCERPT_MISSING"),
@@ -325,6 +363,26 @@ def test_inspect_exec_replay_and_context_reset_fail_closed():
     assert recovered.review(changed_files=[], operations_performed=[], acceptance=[])["status"] == "HOLD"
     with pytest.raises(ContractHold):
         EvidenceSession(mcp, adapter.contract, execution_scope=InspectExecutionScope("", "attempt-001"))
+
+
+@pytest.mark.parametrize('sample_id', [0, 12, 2**63 - 1])
+def test_inspect_evidence_session_accepts_numeric_sample_ids_without_coercion(sample_id):
+    adapter, _, mcp = _inspect_session()
+    scope = InspectExecutionScope(sample_id, 'attempt-001')
+    accepted = EvidenceSession(mcp, adapter.contract, execution_scope=scope)
+    _observe_inspect(accepted, scope, _inspect_result())
+    assert accepted.execution_scope == scope
+    assert scope != InspectExecutionScope(str(sample_id), 'attempt-001')
+
+
+@pytest.mark.parametrize('sample_id', [True, False, -1, 2**63])
+def test_inspect_evidence_session_rejects_invalid_integer_sample_ids(sample_id):
+    adapter, _, mcp = _inspect_session()
+    with pytest.raises(ContractHold, match='scope'):
+        EvidenceSession(
+            mcp, adapter.contract,
+            execution_scope=InspectExecutionScope(sample_id, 'attempt-001'),
+        )
 
 
 def test_native_inspect_tool_call_correlates_to_completed_result():

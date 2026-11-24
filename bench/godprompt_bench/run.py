@@ -871,7 +871,17 @@ def main() -> None:
     offline_actions.add_argument("--dry-run", action="store_true", help="Validate fixtures and print planned samples without model calls")
     offline_actions.add_argument("--list-profiles", action="store_true", help="Compare validated bundled profile sizes offline without model calls")
     offline_actions.add_argument("--list-tasks", action="store_true", help="List task IDs, categories and runtimes for a selected profile offline")
+    offline_actions.add_argument(
+        "--expected-identities-plan", action="store_true",
+        help="Print caller-plan JSON for offline three-arm identity checks; not execution provenance",
+    )
+    parser.add_argument(
+        "--expected-identities-output", type=Path, metavar="FILE",
+        help="Write caller-plan JSON as UTF-8 to a new file (requires --expected-identities-plan)",
+    )
     args = parser.parse_args()
+    if args.expected_identities_output is not None and not args.expected_identities_plan:
+        parser.error("--expected-identities-output requires --expected-identities-plan")
     if args.model is not None and not args.model.strip():
         parser.error("--model must be non-blank")
     if args.temperature is not None and not isfinite(args.temperature):
@@ -879,16 +889,18 @@ def main() -> None:
     if args.experimental_mcp_contract and not args.dry_run:
         parser.error("--experimental-mcp-contract currently requires --dry-run; live MCP evaluation is not enabled")
     if args.require_plan_sha256 is not None:
-        if args.dry_run or args.list_profiles or args.list_tasks:
+        if args.dry_run or args.list_profiles or args.list_tasks or args.expected_identities_plan:
             parser.error("--require-plan-sha256 is only valid for a live run")
         if re.fullmatch(r"[0-9a-f]{64}", args.require_plan_sha256) is None:
             parser.error("--require-plan-sha256 must be 64 lowercase hexadecimal characters")
     if args.profile_file is not None and args.list_profiles:
         parser.error("--list-profiles only lists bundled profiles, not --profile-file")
-    if args.format == "markdown" and not (args.dry_run or args.list_profiles or args.list_tasks):
+    if args.format == "markdown" and not (args.dry_run or args.list_profiles or args.list_tasks or args.expected_identities_plan):
         parser.error("--format markdown requires an offline action")
-    if not (args.dry_run or args.list_profiles or args.list_tasks) and args.model is None:
-        parser.error("--model is required unless --dry-run, --list-profiles, or --list-tasks is specified")
+    if args.expected_identities_plan and args.format != "json":
+        parser.error("--expected-identities-plan outputs JSON only")
+    if not (args.dry_run or args.list_profiles or args.list_tasks or args.expected_identities_plan) and args.model is None:
+        parser.error("--model is required unless --dry-run, --list-profiles, --list-tasks, or --expected-identities-plan is specified")
 
     repo_root = bench_root.parent
     if args.list_profiles:
@@ -917,6 +929,29 @@ def main() -> None:
             parser.error(f"invalid custom profile: {exc}")
     else:
         profile = load_profile(bench_root / "configs" / f"{args.profile or 'smoke'}.json")
+    if args.expected_identities_plan:
+        # Validate the profile and fixtures before offering a caller-generated
+        # plan. These identities do not attest to third-arm execution records.
+        preview_benchmark(bench_root, profile)
+        payload = json.dumps({
+            "schema_version": 1,
+            "task_epochs": [
+                {"task_id": task_id, "epoch": epoch}
+                for task_id in profile.task_ids
+                for epoch in range(1, profile.epochs + 1)
+            ],
+        }, sort_keys=True, indent=2)
+        if args.expected_identities_output is None:
+            print(payload)
+        else:
+            # Exclusive creation prevents accidentally replacing a caller's plan.
+            # Explicit UTF-8 avoids PowerShell 5.1's UTF-16LE stdout redirection.
+            try:
+                with args.expected_identities_output.open("x", encoding="utf-8", newline="\n") as target:
+                    target.write(payload + "\n")
+            except OSError:
+                parser.error("could not create --expected-identities-output file; choose a new writable path")
+        return
     if args.list_tasks:
         plan = preview_benchmark(bench_root, profile)
         canonical_tasks = {task.id: task for task in load_manifest(bench_root / "tasks" / "manifest.json")}
