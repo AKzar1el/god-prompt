@@ -1547,6 +1547,138 @@ def test_review_cli_rejects_ambiguous_or_malformed_plan_guard(
     assert "plan" in capsys.readouterr().err.lower()
 
 
+@pytest.fixture
+def pinned_comparison_exports(comparable_exports):
+    before, after = comparable_exports
+    for folder, digest in ((before, "a" * 64), (after, "b" * 64)):
+        path = folder / "manifest.json"
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        manifest.update(plan_sha256_schema="godprompt.bench.plan.v1", plan_sha256=digest)
+        path.write_text(json.dumps(manifest), encoding="utf-8")
+    return before, after
+
+
+@pytest.mark.parametrize("output_format", ("json", "markdown"))
+@pytest.mark.parametrize("use_zip", (False, True))
+def test_comparison_plan_pins_report_each_reviewed_digest(
+    pinned_comparison_exports, tmp_path, monkeypatch, capsys, output_format, use_zip,
+):
+    from godprompt_bench import review
+
+    before, after = pinned_comparison_exports
+    names = ("manifest.json", "summary.json", "scores.csv")
+    originals = [{name: (folder / name).read_bytes() for name in names}
+                 for folder in (before, after)]
+    paths = [before, after]
+    if use_zip:
+        paths = [tmp_path / f"{side}.zip" for side in ("before", "after")]
+        for path, files in zip(paths, originals):
+            with ZipFile(path, "w", compression=ZIP_DEFLATED) as archive:
+                for name, data in files.items():
+                    archive.writestr(name, data)
+    zip_bytes = [path.read_bytes() for path in paths] if use_zip else []
+    argv = ["godprompt_bench.review", str(paths[0]), "--compare", str(paths[1]),
+            "--format", output_format]
+    monkeypatch.setattr(sys, "argv", argv)
+    review.main()
+    unpinned = capsys.readouterr().out
+    monkeypatch.setattr(sys, "argv", argv + [
+        "--require-plan-sha256", "after:" + "b" * 64,
+        "--require-plan-sha256", "before:" + "a" * 64,
+    ])
+    review.main()
+    output = capsys.readouterr().out
+    if output_format == "json":
+        report = json.loads(output)
+        for side, digest in (("before", "a" * 64), ("after", "b" * 64)):
+            assert report[side].pop("reviewed_plan") == {
+                "plan_sha256": digest, "matched_saved_manifest": True,
+                "scope": "local_manifest_field_only",
+            }
+        assert report == json.loads(unpinned)
+    else:
+        assert "Earlier reviewed plan" in output and "Later reviewed plan" in output
+        assert "a" * 64 in output and "b" * 64 in output
+        assert "local manifest" in output.lower()
+        assert "reviewed plan" not in unpinned.lower()
+    assert [{name: (folder / name).read_bytes() for name in names}
+            for folder in (before, after)] == originals
+    if use_zip:
+        assert [path.read_bytes() for path in paths] == zip_bytes
+
+
+@pytest.mark.parametrize("case", (
+    "partial", "duplicate", "unlabeled", "unknown_side", "uppercase",
+    "swapped", "wrong_schema", "missing_schema", "missing_digest",
+))
+def test_comparison_plan_pins_fail_closed(
+    pinned_comparison_exports, monkeypatch, capsys, case,
+):
+    from godprompt_bench import review
+
+    before, after = pinned_comparison_exports
+    pins = ["before:" + "a" * 64, "after:" + "b" * 64]
+    if case == "partial":
+        pins.pop()
+    elif case == "duplicate":
+        pins.append(pins[0])
+    elif case == "unlabeled":
+        pins[0] = "a" * 64
+    elif case == "unknown_side":
+        pins[0] = "other:" + "a" * 64
+    elif case == "uppercase":
+        pins[0] = "before:" + "A" * 64
+    elif case == "swapped":
+        pins = ["before:" + "b" * 64, "after:" + "a" * 64]
+    else:
+        path = after / "manifest.json"
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        if case == "wrong_schema":
+            manifest["plan_sha256_schema"] = "unsupported"
+        elif case == "missing_schema":
+            del manifest["plan_sha256_schema"]
+        else:
+            del manifest["plan_sha256"]
+        path.write_text(json.dumps(manifest), encoding="utf-8")
+    argv = ["godprompt_bench.review", str(before), "--compare", str(after)]
+    for pin in pins:
+        argv.extend(["--require-plan-sha256", pin])
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    output = capsys.readouterr()
+    assert not output.out
+    assert "plan" in output.err.lower()
+
+
+@pytest.mark.parametrize("pins", (["a" * 64, "b" * 64], ["before:" + "a" * 64]))
+def test_review_cli_rejects_repeated_or_side_labeled_single_plan_pins(
+    exported, monkeypatch, capsys, pins,
+):
+    from godprompt_bench import review
+
+    argv = ["godprompt_bench.review", str(exported)]
+    for pin in pins:
+        argv.extend(["--require-plan-sha256", pin])
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    output = capsys.readouterr()
+    assert not output.out and "plan" in output.err.lower()
+
+
+def test_comparison_plan_pins_api_requires_both_digests(pinned_comparison_exports):
+    from godprompt_bench.review import compare_results
+
+    before, after = pinned_comparison_exports
+    with pytest.raises(ValueError, match="both"):
+        compare_results(before, after, before_plan_sha256="a" * 64)
+    with pytest.raises(ValueError, match="both"):
+        compare_results(before, after, after_plan_sha256="b" * 64)
+
+
 @pytest.mark.parametrize("output_format", ("json", "markdown"))
 def test_review_cli_accepts_all_external_public_artifact_sha256_pins(
     exported: Path, monkeypatch, capsys, output_format,
