@@ -6,9 +6,30 @@ from types import SimpleNamespace
 import pytest
 
 
-def _mock_prerequisites(monkeypatch, doctor, *, inspect_version="0.3.260", docker_path="docker"):
+def _mock_prerequisites(
+    monkeypatch, doctor, *, inspect_version="0.3.260", docker_path="docker",
+    acp_version="0.12.1", acp_helpers=True,
+):
     monkeypatch.setattr(doctor.sys, "version_info", (3, 13, 5))
-    monkeypatch.setattr(doctor.metadata, "version", lambda name: inspect_version)
+
+    def version(name):
+        if name == "inspect-ai":
+            return inspect_version
+        assert name == "agent-client-protocol"
+        if acp_version is None:
+            raise doctor.metadata.PackageNotFoundError(name)
+        return acp_version
+
+    def find_spec(name, path=None):
+        if name == "acp":
+            assert path is None
+            return SimpleNamespace(submodule_search_locations=["synthetic-acp"])
+        assert name == "acp.helpers"
+        assert path == ["synthetic-acp"]
+        return SimpleNamespace(loader=object()) if acp_helpers else None
+
+    monkeypatch.setattr(doctor.metadata, "version", version)
+    monkeypatch.setattr(doctor, "PathFinder", SimpleNamespace(find_spec=find_spec), raising=False)
     monkeypatch.setattr(doctor.shutil, "which", lambda name: docker_path)
 
 
@@ -27,6 +48,7 @@ def test_doctor_reports_local_prerequisites_without_model_or_daemon_calls(monkey
     assert report["local_prerequisites_present"] is True
     assert report["checks"]["python"]["status"] == "ok"
     assert report["checks"]["inspect_ai"]["version"] == "0.3.260"
+    assert report["checks"]["acp_helpers"] == {"status": "ok", "version": "0.12.1"}
     assert report["checks"]["docker_cli"]["version"] == "27.4.1"
     assert report["docker_daemon_checked"] is False
     assert report["provider_credentials_checked"] is False
@@ -35,6 +57,39 @@ def test_doctor_reports_local_prerequisites_without_model_or_daemon_calls(monkey
     assert calls[0][0] == ["docker", "--version"]
     assert calls[0][1]["timeout"] <= 5
     assert calls[0][1].get("shell") is not True
+
+
+@pytest.mark.parametrize("acp_version,expected", [
+    (None, "missing"),
+    ("1.0.0", "missing_helpers"),
+])
+def test_doctor_rejects_missing_acp_prerequisite(monkeypatch, acp_version, expected):
+    from godprompt_bench import doctor
+
+    _mock_prerequisites(monkeypatch, doctor, acp_version=acp_version, acp_helpers=False)
+    monkeypatch.setattr(doctor.subprocess, "run", lambda *_a, **_k: SimpleNamespace(
+        returncode=0, stdout="Docker version 27.4.1, build abcdef",
+    ))
+    report = doctor.check_local_runtime()
+    assert report["checks"]["acp_helpers"] == {"status": expected, "version": acp_version}
+    assert report["local_prerequisites_present"] is False
+    assert "pip install -e" in doctor.format_text(report)
+
+
+def test_doctor_does_not_echo_acp_discovery_error(monkeypatch):
+    from godprompt_bench import doctor
+
+    _mock_prerequisites(monkeypatch, doctor, docker_path=None)
+
+    def failing_find_spec(*_a):
+        raise OSError("private host path")
+
+    monkeypatch.setattr(doctor.PathFinder, "find_spec", failing_find_spec)
+    report = doctor.check_local_runtime()
+    assert report["checks"]["acp_helpers"]["status"] == "unverifiable"
+    assert report["local_prerequisites_present"] is False
+    assert "private host path" not in json.dumps(report)
+    assert "private host path" not in doctor.format_text(report)
 
 
 def test_doctor_fails_closed_when_inspect_is_missing_and_docker_unavailable(monkeypatch):
