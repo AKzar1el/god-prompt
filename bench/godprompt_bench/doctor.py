@@ -14,11 +14,30 @@ import shutil
 import subprocess
 import sys
 from importlib import metadata
+from importlib.machinery import PathFinder
 
 
 EXPECTED_INSPECT_VERSION = "0.3.260"
 MINIMUM_PYTHON = (3, 11)
 _DOCKER_VERSION = re.compile(r"\bDocker version\s+([0-9][0-9A-Za-z._+\-]*)")
+
+
+def _check_acp_helpers() -> dict:
+    try:
+        version = metadata.version("agent-client-protocol")
+    except metadata.PackageNotFoundError:
+        return {"status": "missing", "version": None}
+
+    # Inspect 0.3.260 imports acp.helpers; ACP 1.0.0 removed it. Discover
+    # the module without importing ACP or executing its package initializer.
+    try:
+        package = PathFinder.find_spec("acp")
+        locations = package.submodule_search_locations if package else None
+        helpers = PathFinder.find_spec("acp.helpers", locations) if locations is not None else None
+    except (ImportError, OSError, ValueError):
+        return {"status": "unverifiable", "version": version}
+    status = "ok" if helpers is not None and helpers.loader is not None else "missing_helpers"
+    return {"status": status, "version": version}
 
 
 def check_local_runtime() -> dict:
@@ -42,6 +61,7 @@ def check_local_runtime() -> dict:
         "version": inspect_version,
         "required": EXPECTED_INSPECT_VERSION,
     }
+    checks["acp_helpers"] = _check_acp_helpers()
 
     docker_executable = shutil.which("docker")
     docker_version = None
@@ -84,7 +104,8 @@ def check_local_runtime() -> dict:
         "provider_credentials_checked": False,
         "provider_calls_made": False,
         "notes": [
-            "Only local Python, pinned Inspect AI and Docker CLI prerequisites were checked.",
+            "Only local Python, pinned Inspect AI, ACP helper discovery and Docker CLI prerequisites were checked.",
+            "ACP helper discovery does not prove that all dependency versions or imports are compatible.",
             "This does not verify Docker daemon availability, image builds, provider credentials or billable-model access.",
         ],
     }
@@ -95,7 +116,13 @@ def format_text(report: dict) -> str:
     checks = report.get("checks", {})
     python_status = checks.get("python", {}).get("status")
     inspect_status = checks.get("inspect_ai", {}).get("status")
+    acp_status = checks.get("acp_helpers", {}).get("status")
     docker_status = checks.get("docker_cli", {}).get("status")
+    install_command = (
+        r".\.venv\Scripts\python.exe -m pip install -e '.[test,openai]'"
+        if sys.platform == "win32"
+        else "python -m pip install -e '.[test,openai]'"
+    )
 
     lines = ["GodPrompt benchmark local prerequisites"]
     if python_status == "ok":
@@ -106,17 +133,20 @@ def format_text(report: dict) -> str:
     if inspect_status == "ok":
         lines.append("Inspect AI: OK (pinned 0.3.260)")
     elif inspect_status in ("missing", "version_mismatch"):
-        install_command = (
-            r".\.venv\Scripts\python.exe -m pip install -e '.[test,openai]'"
-            if sys.platform == "win32"
-            else "python -m pip install -e '.[test,openai]'"
-        )
         lines.append(
             f"Inspect AI: NOT READY - From bench/, run {install_command} "
             "to install pinned Inspect AI 0.3.260."
         )
     else:
         lines.append("Inspect AI: NOT READY - Verify the pinned Inspect AI installation in bench/.")
+
+    if acp_status == "ok":
+        lines.append("ACP helpers: discoverable (imports not tested)")
+    elif acp_status is not None:
+        lines.append(
+            f"ACP helpers: NOT READY - From bench/, run {install_command} "
+            "to restore the benchmark's compatible ACP dependency."
+        )
 
     if docker_status == "ok":
         lines.append("Docker CLI: OK")
