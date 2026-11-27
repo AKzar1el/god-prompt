@@ -770,6 +770,11 @@ def execute_benchmark(
     # A mid-run fixture edit must not be attributed to the files used to build
     # the evaluation tasks in the published benchmark provenance.
     evaluated_fixtures = fixture_fingerprints(bench_root, profile.task_ids)
+    if preview_benchmark(
+        bench_root, profile, model=model, temperature=temperature,
+        seed=seed, reasoning_effort=reasoning_effort, reasoning_mode=reasoning_mode,
+    )["plan_sha256"] != plan_sha256:
+        raise ValueError("benchmark plan inputs changed during task construction; refusing evaluation")
     raw_log_dir = output_dir / "inspect-logs"
     _create_raw_log_directory(raw_log_dir)
     kwargs: dict[str, Any] = {
