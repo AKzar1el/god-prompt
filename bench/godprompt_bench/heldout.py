@@ -15,7 +15,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .corpus import (
-    _reject_duplicate_json_keys, load_fixture_bundle, load_manifest,
+    _parse_fixture_bundle, _parse_manifest, _reject_duplicate_json_keys,
     validate_manifest,
 )
 
@@ -40,9 +40,11 @@ _FROZEN_INPUT_HASHES = (
 
 
 def _read_small(path: Path) -> bytes:
-    if path.stat().st_size > _MAX_MANIFEST_BYTES:
+    with path.open("rb") as handle:
+        raw = handle.read(_MAX_MANIFEST_BYTES + 1)
+    if len(raw) > _MAX_MANIFEST_BYTES:
         raise ValueError("held-out preflight manifest is too large")
-    return path.read_bytes()
+    return raw
 
 
 def _fingerprint(raw: bytes) -> str:
@@ -84,7 +86,7 @@ def _fixture_bundle_fingerprint(fixture_root: Path, tasks: list[Any]) -> str:
         if total_bytes > _MAX_TOTAL_FIXTURE_BYTES:
             raise ValueError("total held-out fixture bundles are too large")
         try:
-            load_fixture_bundle(bundle)
+            _parse_fixture_bundle(raw.decode("utf-8"), bundle.parent.name)
         except (ValueError, OSError, UnicodeError) as exc:
             raise ValueError("invalid held-out fixture bundle") from exc
         if _bounded_fixture_bytes(bundle) != raw:
@@ -149,8 +151,9 @@ def preflight_heldout_corpus(
         raise ValueError("reference, held-out and failure-mode manifests must be distinct")
 
     reference_raw, heldout_raw, mode_raw = tuple(_read_small(path) for path in paths)
-    reference_tasks = load_manifest(paths[0])
-    heldout_tasks = load_manifest(paths[1])
+    # Validate the snapshots that are hashed, rather than reopening the files.
+    reference_tasks = _parse_manifest(reference_raw.decode("utf-8"))
+    heldout_tasks = _parse_manifest(heldout_raw.decode("utf-8"))
     validate_manifest(reference_tasks)
     validate_manifest(heldout_tasks)
     if not heldout_tasks:
