@@ -90,6 +90,33 @@ def test_review_verifies_exported_scores_and_preserves_denominators(exported: Pa
     }
 
 
+@pytest.mark.parametrize("name", ["manifest.json", "summary.json", "scores.csv"])
+def test_review_rejects_transient_artifact_change_during_parse(exported, monkeypatch, name):
+    from godprompt_bench import review
+
+    original_read = review._read_bounded
+    calls = 0
+
+    def transient_read(path, maximum):
+        nonlocal calls
+        data = original_read(path, maximum)
+        if path.name == name:
+            calls += 1
+            if calls == 2:
+                if name == "manifest.json":
+                    manifest = json.loads(data)
+                    manifest["run_id"] = "intermediate-run"
+                    return json.dumps(manifest).encode("utf-8")
+                if name == "summary.json":
+                    return data + b" "
+                return data.replace(b"\r\n", b"\n") if b"\r\n" in data else data.replace(b"\n", b"\r\n")
+        return data
+
+    monkeypatch.setattr(review, "_read_bounded", transient_read)
+    with pytest.raises(ValueError, match="changed during offline review"):
+        review.review_result(exported)
+
+
 @pytest.mark.parametrize(("keys", "value"), [
     (("baseline", "samples"), True),
     (("godprompt", "passed"), False),
