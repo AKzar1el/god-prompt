@@ -44,7 +44,8 @@ def _read_plan(path: Path) -> bytes:
         raise ValueError("plan must be a regular JSON file, not a symlink")
     if path.stat().st_size > _MAX_PLAN_BYTES:
         raise ValueError("plan exceeds the 64 KiB limit")
-    raw = path.read_bytes()
+    with path.open("rb") as stream:
+        raw = stream.read(_MAX_PLAN_BYTES + 1)
     if len(raw) > _MAX_PLAN_BYTES:
         raise ValueError("plan exceeds the 64 KiB limit")
     return raw
