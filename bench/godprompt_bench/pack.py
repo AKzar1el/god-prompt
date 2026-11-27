@@ -14,7 +14,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
-from .review import _PUBLIC_ARTIFACTS, _check_file, review_result
+from .review import _PUBLIC_ARTIFACTS, _read_bounded, review_result
 
 
 def _check_destination(destination: Path) -> None:
@@ -46,10 +46,8 @@ def pack_public_evidence(source: Path, destination: Path) -> dict[str, object]:
     snapshots: dict[str, bytes] = {}
     for name, maximum in _PUBLIC_ARTIFACTS:
         path = source / name
-        _check_file(path, maximum)
-        data = path.read_bytes()
-        if (len(data) > maximum
-                or hashlib.sha256(data).hexdigest() != reviewed["public_artifact_sha256"][name]):
+        data = _read_bounded(path, maximum)
+        if hashlib.sha256(data).hexdigest() != reviewed["public_artifact_sha256"][name]:
             raise ValueError(f"public artifact changed since review: {name}")
         snapshots[name] = data
 

@@ -11,6 +11,7 @@ from contextlib import ExitStack
 import csv
 import hashlib
 from html import escape
+from io import BytesIO, TextIOWrapper
 import json
 from dataclasses import fields
 from math import isfinite
@@ -74,10 +75,9 @@ def _no_nonfinite(value: str) -> Any:
 
 def _read_json(folder: Path, name: str) -> dict[str, Any]:
     path = folder / name
-    _check_file(path, _JSON_MAX_BYTES)
     try:
         value = json.loads(
-            path.read_text(encoding="utf-8"),
+            _read_bounded(path, _JSON_MAX_BYTES).decode("utf-8"),
             object_pairs_hook=_reject_duplicate_json_keys,
             parse_constant=_no_nonfinite,
         )
@@ -95,13 +95,22 @@ def _check_file(path: Path, maximum: int) -> None:
         raise ValueError(f"artifact too large: {path.name}")
 
 
+def _read_bounded(path: Path, maximum: int) -> bytes:
+    """Enforce the limit on bytes read, not just a potentially stale stat."""
+    _check_file(path, maximum)
+    with path.open("rb") as handle:
+        data = handle.read(maximum + 1)
+    if len(data) > maximum:
+        raise ValueError(f"artifact too large: {path.name}")
+    return data
+
+
 def _public_artifact_sha256(folder: Path) -> dict[str, str]:
     """Fingerprint the bounded public files, never private trajectories."""
     hashes = {}
     for name, maximum in _PUBLIC_ARTIFACTS:
         path = folder / name
-        _check_file(path, maximum)
-        hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+        hashes[name] = hashlib.sha256(_read_bounded(path, maximum)).hexdigest()
     return hashes
 
 
@@ -116,7 +125,7 @@ def _public_zip_directory(source: Path, stack: ExitStack) -> Path:
         raise ValueError("public evidence ZIP is too large")
     expected = {name: maximum for name, maximum in _PUBLIC_ARTIFACTS}
     try:
-        with ZipFile(source) as archive:
+        with ZipFile(BytesIO(_read_bounded(source, _MAX_PUBLIC_ZIP_BYTES))) as archive:
             entries = archive.infolist()
             if len(entries) != len(expected) or {item.filename for item in entries} != set(expected):
                 raise ValueError("public evidence ZIP requires exactly three root-level public files")
@@ -149,8 +158,7 @@ def _public_zip_sha256(source: Path) -> str:
     initial = source.stat()
     if initial.st_size > _MAX_PUBLIC_ZIP_BYTES:
         raise ValueError("public evidence ZIP is too large")
-    with source.open("rb") as stream:
-        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    digest = hashlib.sha256(_read_bounded(source, _MAX_PUBLIC_ZIP_BYTES)).hexdigest()
     final = source.stat()
     if (initial.st_size, initial.st_mtime_ns) != (final.st_size, final.st_mtime_ns):
         raise ValueError("public evidence ZIP changed during digest verification")
@@ -208,12 +216,12 @@ def _parse_record(row: dict[str, str]) -> SampleRecord:
 
 def _read_scores(folder: Path) -> list[SampleRecord]:
     path = folder / "scores.csv"
-    _check_file(path, _CSV_MAX_BYTES)
     expected = [field.name for field in fields(SampleRecord)]
     records: list[SampleRecord] = []
     seen: set[tuple[str, str, int]] = set()
     try:
-        with path.open("r", encoding="utf-8", newline="") as handle:
+        with TextIOWrapper(BytesIO(_read_bounded(path, _CSV_MAX_BYTES)),
+                           encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle)
             if reader.fieldnames != expected:
                 raise ValueError("scores.csv column schema differs from the public export")

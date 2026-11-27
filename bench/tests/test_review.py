@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import io
 import json
 import os
 import sys
+from types import SimpleNamespace
 from dataclasses import replace
 from pathlib import Path
 from stat import S_IFLNK
@@ -2222,3 +2224,86 @@ def test_review_cli_rejects_zip_changed_after_unpack_even_with_same_stat(
         review.main()
     assert exc.value.code == 2
     assert "changed during review" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("reader,name", [
+    ("fingerprint", "manifest.json"),
+    ("json", "manifest.json"),
+    ("csv", "scores.csv"),
+    ("zip_digest", "public.zip"),
+    ("zip_unpack", "public.zip"),
+    ("pack", "manifest.json"),
+])
+def test_public_read_enforces_actual_byte_limit(tmp_path, monkeypatch, reader, name):
+    from contextlib import ExitStack
+    from godprompt_bench import pack, review
+
+    source = tmp_path / "source"
+    source.mkdir()
+    path = source / name
+    path.write_bytes(b" " * 9)
+    original_stat = Path.stat
+
+    def stale_stat(self, *args, **kwargs):
+        actual = original_stat(self, *args, **kwargs)
+        if self == path:
+            return SimpleNamespace(st_size=1, st_mode=actual.st_mode,
+                                   st_mtime_ns=actual.st_mtime_ns)
+        return actual
+
+    monkeypatch.setattr(Path, "stat", stale_stat)
+    monkeypatch.setattr(review, "_JSON_MAX_BYTES", 8)
+    monkeypatch.setattr(review, "_CSV_MAX_BYTES", 8)
+    monkeypatch.setattr(review, "_MAX_PUBLIC_ZIP_BYTES", 8)
+    monkeypatch.setattr(review, "_PUBLIC_ARTIFACTS", ((name, 8),))
+    monkeypatch.setattr(pack, "_PUBLIC_ARTIFACTS", ((name, 8),))
+    monkeypatch.setattr(pack, "review_result", lambda _: {
+        "public_artifact_sha256": {name: hashlib.sha256(b" " * 9).hexdigest()},
+    })
+    with pytest.raises(ValueError, match="too large"):
+        if reader == "fingerprint":
+            review._public_artifact_sha256(source)
+        elif reader == "json":
+            review._read_json(source, name)
+        elif reader == "csv":
+            review._read_scores(source)
+        elif reader == "zip_digest":
+            review._public_zip_sha256(path)
+        elif reader == "zip_unpack":
+            with ExitStack() as stack:
+                review._public_zip_directory(path, stack)
+        else:
+            pack.pack_public_evidence(source, tmp_path / "out.zip")
+    assert not (tmp_path / "out.zip").exists()
+
+
+@pytest.mark.parametrize("size", [7, 8, 9])
+def test_public_fingerprint_reads_at_most_limit_plus_one(tmp_path, monkeypatch, size):
+    from godprompt_bench import review
+
+    path = tmp_path / "manifest.json"
+    path.write_bytes(b"x")
+    payload = b"x" * size
+    requests = []
+    original_open = Path.open
+
+    class RecordingStream(io.BytesIO):
+        def read(self, count=-1):
+            requests.append(count)
+            return super().read(count)
+
+    def fake_open(self, *args, **kwargs):
+        if self == path:
+            return RecordingStream(payload)
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fake_open)
+    monkeypatch.setattr(review, "_PUBLIC_ARTIFACTS", ((path.name, 8),))
+    if size > 8:
+        with pytest.raises(ValueError, match="too large"):
+            review._public_artifact_sha256(tmp_path)
+    else:
+        assert review._public_artifact_sha256(tmp_path) == {
+            path.name: hashlib.sha256(payload).hexdigest(),
+        }
+    assert requests == [9]
