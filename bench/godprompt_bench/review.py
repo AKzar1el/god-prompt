@@ -73,11 +73,11 @@ def _no_nonfinite(value: str) -> Any:
     raise ValueError(f"invalid non-finite JSON constant: {value}")
 
 
-def _read_json(folder: Path, name: str) -> dict[str, Any]:
+def _read_json(folder: Path, name: str, *, expected_sha256: str | None = None) -> dict[str, Any]:
     path = folder / name
     try:
         value = json.loads(
-            _read_bounded(path, _JSON_MAX_BYTES).decode("utf-8"),
+            _read_verified(path, _JSON_MAX_BYTES, expected_sha256).decode("utf-8"),
             object_pairs_hook=_reject_duplicate_json_keys,
             parse_constant=_no_nonfinite,
         )
@@ -112,6 +112,14 @@ def _public_artifact_sha256(folder: Path) -> dict[str, str]:
         path = folder / name
         hashes[name] = hashlib.sha256(_read_bounded(path, maximum)).hexdigest()
     return hashes
+
+
+def _read_verified(path: Path, maximum: int, expected_sha256: str | None) -> bytes:
+    """Bind the bytes passed to a parser to the initial artifact fingerprint."""
+    data = _read_bounded(path, maximum)
+    if expected_sha256 is not None and hashlib.sha256(data).hexdigest() != expected_sha256:
+        raise ValueError("public benchmark artifacts changed during offline review")
+    return data
 
 
 def _public_zip_directory(source: Path, stack: ExitStack) -> Path:
@@ -214,13 +222,13 @@ def _parse_record(row: dict[str, str]) -> SampleRecord:
     return SampleRecord(**converted)
 
 
-def _read_scores(folder: Path) -> list[SampleRecord]:
+def _read_scores(folder: Path, *, expected_sha256: str | None = None) -> list[SampleRecord]:
     path = folder / "scores.csv"
     expected = [field.name for field in fields(SampleRecord)]
     records: list[SampleRecord] = []
     seen: set[tuple[str, str, int]] = set()
     try:
-        with TextIOWrapper(BytesIO(_read_bounded(path, _CSV_MAX_BYTES)),
+        with TextIOWrapper(BytesIO(_read_verified(path, _CSV_MAX_BYTES, expected_sha256)),
                            encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle)
             if reader.fieldnames != expected:
@@ -505,7 +513,7 @@ def _review_snapshot(
 ) -> tuple[dict[str, Any], dict[str, Any], list[SampleRecord]]:
     """Retain the manifest and rows used to produce the validated report."""
     initial_artifact_sha256 = _public_artifact_sha256(folder)
-    manifest = _read_json(folder, "manifest.json")
+    manifest = _read_json(folder, "manifest.json", expected_sha256=initial_artifact_sha256["manifest.json"])
     if required_plan_sha256 is not None:
         if re.fullmatch(r"[0-9a-f]{64}", required_plan_sha256) is None:
             raise ValueError("reviewed plan SHA256 must be 64 lowercase hexadecimal characters")
@@ -513,8 +521,8 @@ def _review_snapshot(
             raise ValueError("saved run has no supported reviewed plan SHA256 schema")
         if manifest.get("plan_sha256") != required_plan_sha256:
             raise ValueError("saved run plan SHA256 does not match the reviewed dry-run plan")
-    saved_summary = _read_json(folder, "summary.json")
-    records = _read_scores(folder)
+    saved_summary = _read_json(folder, "summary.json", expected_sha256=initial_artifact_sha256["summary.json"])
+    records = _read_scores(folder, expected_sha256=initial_artifact_sha256["scores.csv"])
     recomputed = aggregate(records)
     if not _summary_matches(saved_summary, recomputed):
         raise ValueError("summary does not match the exported scores.csv")
