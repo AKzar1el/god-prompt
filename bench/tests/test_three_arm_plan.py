@@ -1,6 +1,7 @@
 """Offline, no-provider checks for the opt-in Bench 2.0 paired plan."""
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 import sys
@@ -73,6 +74,33 @@ def inputs(tmp_path: Path):
 
 def _preflight(inputs):
     return three_arm.preflight_three_arm_plan(*inputs[:4])
+
+
+@pytest.mark.parametrize("size", [65535, 65536, 65537, 131072])
+def test_plan_read_bounds_consumption_even_if_stat_is_stale(tmp_path, monkeypatch, size):
+    path = tmp_path / "plan.json"
+    path.write_bytes(b"{}")
+    data = b" " * size
+    reads = []
+    original_open = Path.open
+
+    class TrackedStream(io.BytesIO):
+        def read(self, size=-1):
+            reads.append(size)
+            return super().read(size)
+
+    def open_snapshot(self, *args, **kwargs):
+        if self == path:
+            return TrackedStream(data)
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", open_snapshot)
+    if size > 65536:
+        with pytest.raises(ValueError, match="64 KiB limit"):
+            three_arm._read_plan(path)
+    else:
+        assert three_arm._read_plan(path) == data
+    assert reads == [65537]
 
 
 def test_exact_three_arm_paired_preview_has_no_model_or_private_content(inputs):
