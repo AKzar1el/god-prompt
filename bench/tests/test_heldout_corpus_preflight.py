@@ -343,15 +343,49 @@ def test_manifest_changed_during_validation_refuses_stale_fingerprint(
     manifests, monkeypatch
 ):
     reference, heldout, sidecar, _, _ = manifests
-    original = heldout_module.load_manifest
+    original = heldout_module.validate_manifest
 
-    def changing_loader(path):
-        tasks = original(path)
-        if Path(path).resolve() == heldout.resolve():
+    def changing_validator(tasks):
+        original(tasks)
+        if any(task.id.startswith("heldout-fixture-") for task in tasks):
             with heldout.open("a", encoding="utf-8") as stream:
                 stream.write(" ")
-        return tasks
 
-    monkeypatch.setattr(heldout_module, "load_manifest", changing_loader)
+    monkeypatch.setattr(heldout_module, "validate_manifest", changing_validator)
     with pytest.raises(ValueError, match="changed during validation"):
         preflight_heldout_corpus(reference, heldout, sidecar)
+
+
+def test_preflight_validates_the_manifest_bytes_it_fingerprints(manifests, monkeypatch):
+    reference, heldout, sidecar, tasks, _ = manifests
+    valid_text = heldout.read_text(encoding="utf-8")
+    tasks[0]["unexpected_field"] = True
+    heldout.write_text(json.dumps(tasks), encoding="utf-8")
+    original = Path.read_text
+
+    def alternate_read(path, *args, **kwargs):
+        if path == heldout.resolve():
+            return valid_text
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", alternate_read)
+    with pytest.raises(ValueError, match="unknown fields"):
+        preflight_heldout_corpus(reference, heldout, sidecar)
+
+
+def test_preflight_validates_the_fixture_bytes_it_fingerprints(manifests, tmp_path, monkeypatch):
+    reference, heldout, sidecar, tasks, _ = manifests
+    _make_private_fixtures(tmp_path, tasks)
+    target = tmp_path / tasks[0]["fixture_dir"] / "fixture.json"
+    valid_text = target.read_text(encoding="utf-8")
+    target.write_text("{}", encoding="utf-8")
+    original = Path.read_text
+
+    def alternate_read(path, *args, **kwargs):
+        if path == target:
+            return valid_text
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", alternate_read)
+    with pytest.raises(ValueError, match="invalid held-out fixture bundle"):
+        preflight_heldout_corpus(reference, heldout, sidecar, fixture_root=tmp_path)

@@ -38,7 +38,11 @@ def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, ob
 
 
 def load_manifest(path: Path) -> list[TaskSpec]:
-    raw = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
+    return _parse_manifest(path.read_text(encoding="utf-8"))
+
+
+def _parse_manifest(text: str) -> list[TaskSpec]:
+    raw = json.loads(text, object_pairs_hook=_reject_duplicate_json_keys)
     if not isinstance(raw, list):
         raise ValueError("manifest root must be a list")
     tasks: list[TaskSpec] = []
@@ -152,7 +156,11 @@ class FixtureBundle:
 
 
 def load_fixture_bundle(path: Path) -> FixtureBundle:
-    raw = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
+    return _parse_fixture_bundle(path.read_text(encoding="utf-8"), path.parent.name)
+
+
+def _parse_fixture_bundle(text: str, fixture_name: str) -> FixtureBundle:
+    raw = json.loads(text, object_pairs_hook=_reject_duplicate_json_keys)
     if not isinstance(raw, dict):
         raise ValueError("fixture root must be an object")
     unknown = raw.keys() - {"files", "hidden_verifier", "starter_expected_pass"}
@@ -164,7 +172,7 @@ def load_fixture_bundle(path: Path) -> FixtureBundle:
     if not isinstance(files, dict) or not files or not all(isinstance(k, str) and isinstance(v, str) for k, v in files.items()):
         raise ValueError("fixture files must be a non-empty string map")
     for relative in files:
-        _validate_relative(relative, "fixture file", path.parent.name)
+        _validate_relative(relative, "fixture file", fixture_name)
     folded_paths = {relative.casefold() for relative in files}
     if len(folded_paths) != len(files) or any(
         parent.as_posix().casefold() in folded_paths
