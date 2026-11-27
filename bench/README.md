@@ -519,8 +519,8 @@ fingerprint is provided.
 For completed two-condition evaluations, the public run manifest also records
 `plan_sha256` and `plan_sha256_schema`. Compare the digest to the reviewed
 offline preview to audit which local inputs and controls were selected. The
-runner captures the digest before evaluation and refuses public export if those
-plan inputs change by the end; this does **not** attest remote provider behavior,
+runner captures the digest before task construction, rechecks it before evaluation,
+and refuses public export if those plan inputs change by the end; this does **not** attest remote provider behavior,
 prove actual charges, or authorize a model run.
 
 An offline reviewer can now enforce the same previously approved 64-character

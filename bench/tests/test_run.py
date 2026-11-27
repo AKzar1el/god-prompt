@@ -954,12 +954,36 @@ def test_execute_benchmark_rechecks_required_digest_at_provider_boundary(monkeyp
         )
 
 
+def test_execute_benchmark_refuses_plan_input_drift_during_construction(monkeypatch, tmp_path):
+    import inspect_ai
+    import godprompt_bench.run as run_module
+
+    profile = load_profile(ROOT / 'configs' / 'smoke.json')
+    current = {'digest': 'a' * 64}
+
+    def fake_build_task(*args, **kwargs):
+        current['digest'] = 'b' * 64
+        return object()
+
+    monkeypatch.setattr(run_module, '_plan_sha256', lambda *args: current['digest'])
+    monkeypatch.setattr(run_module, 'build_task', fake_build_task)
+    monkeypatch.setattr(inspect_ai, 'eval',
+                        lambda *args, **kwargs: pytest.fail('changed plan must not call provider'))
+
+    with pytest.raises(ValueError, match='plan inputs changed during task construction'):
+        execute_benchmark(
+            ROOT.parent, ROOT, profile, model='mockllm/model',
+            output_dir=tmp_path, required_plan_sha256='a' * 64,
+        )
+    assert not (tmp_path / 'inspect-logs').exists()
+
+
 def test_execute_benchmark_refuses_plan_input_drift_before_export(monkeypatch, tmp_path):
     import inspect_ai
     import godprompt_bench.run as run_module
 
     profile = load_profile(ROOT / 'configs' / 'smoke.json')
-    fingerprints = iter(('a' * 64, 'b' * 64))
+    fingerprints = iter(('a' * 64, 'a' * 64, 'b' * 64))
     monkeypatch.setattr(run_module, '_plan_sha256', lambda *args: next(fingerprints))
     monkeypatch.setattr(run_module, 'build_task', lambda *args, **kwargs: object())
     monkeypatch.setattr(run_module, 'validate_sample_coverage', lambda *args: None)
@@ -1133,7 +1157,7 @@ def test_execute_benchmark_refuses_fixture_drift_before_public_export(monkeypatc
     with pytest.raises(ValueError, match='fixture.*changed during evaluation'):
         execute_benchmark(ROOT.parent, ROOT, profile, model='mockllm/model', output_dir=tmp_path)
     assert events == [
-        ('snapshot', before), ('snapshot', before),
+        ('snapshot', before), ('snapshot', before), ('snapshot', before),
         ('evaluate', None), ('snapshot', after),
     ]
 
