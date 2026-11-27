@@ -122,9 +122,13 @@ def _read_verified(path: Path, maximum: int, expected_sha256: str | None) -> byt
     return data
 
 
-def _public_zip_directory(source: Path, stack: ExitStack) -> Path:
+def _public_zip_directory(
+    source: Path, stack: ExitStack, *, expected_sha256: str | None = None,
+) -> Path:
     """Read only three public ZIP entries into short-lived, isolated local files."""
     if source.is_dir() or source.suffix.lower() != ".zip":
+        if expected_sha256 is not None:
+            raise ValueError("public evidence ZIP changed during review")
         return source
     if source.is_symlink() or not source.is_file():
         raise ValueError("missing or linked public evidence ZIP")
@@ -133,7 +137,10 @@ def _public_zip_directory(source: Path, stack: ExitStack) -> Path:
         raise ValueError("public evidence ZIP is too large")
     expected = {name: maximum for name, maximum in _PUBLIC_ARTIFACTS}
     try:
-        with ZipFile(BytesIO(_read_bounded(source, _MAX_PUBLIC_ZIP_BYTES))) as archive:
+        data = _read_bounded(source, _MAX_PUBLIC_ZIP_BYTES)
+        if expected_sha256 is not None and hashlib.sha256(data).hexdigest() != expected_sha256:
+            raise ValueError("public evidence ZIP changed during review")
+        with ZipFile(BytesIO(data)) as archive:
             entries = archive.infolist()
             if len(entries) != len(expected) or {item.filename for item in entries} != set(expected):
                 raise ValueError("public evidence ZIP requires exactly three root-level public files")
@@ -1182,8 +1189,15 @@ def main() -> None:
             zip_digests_before = ({
                 side: _public_zip_sha256(source) for side, source in zip_sources.items()
             } if expected_zip_sha256 is not None else None)
-            first = _public_zip_directory(args.result_dir, stack)
-            second = _public_zip_directory(args.compare, stack) if args.compare else None
+            first = _public_zip_directory(
+                args.result_dir, stack,
+                expected_sha256=zip_digests_before["before" if args.compare else "single"]
+                if zip_digests_before is not None else None,
+            )
+            second = _public_zip_directory(
+                args.compare, stack,
+                expected_sha256=zip_digests_before["after"] if zip_digests_before is not None else None,
+            ) if args.compare else None
             report = (compare_results(
                 first, second, before_plan_sha256=plan_pins.get("before"),
                 after_plan_sha256=plan_pins.get("after"),

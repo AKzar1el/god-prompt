@@ -2221,6 +2221,61 @@ def test_review_cli_comparison_requires_two_independent_whole_zip_pins(
     assert '"after"' in output.out and "after" in output.err
 
 
+@pytest.mark.parametrize("side", ("single", "before", "after"))
+def test_review_cli_rejects_transient_zip_change_during_unpack(
+    comparable_exports, tmp_path, monkeypatch, capsys, side,
+):
+    from godprompt_bench import review
+
+    before, after = comparable_exports
+    first = _public_zip(before, tmp_path / "before.zip")
+    second = _public_zip(after, tmp_path / "after.zip")
+    target = second if side == "after" else first
+    replacement = first if side == "after" else second
+    original = target.read_bytes()
+    other = replacement.read_bytes()
+    assert original != other
+    original_read = review._read_bounded
+    calls = 0
+
+    def transient_read(path, maximum):
+        nonlocal calls
+        if path == target:
+            calls += 1
+            if calls == 2:
+                return other
+        return original_read(path, maximum)
+
+    monkeypatch.setattr(review, "_read_bounded", transient_read)
+    argv = ["godprompt_bench.review", str(first)]
+    if side == "single":
+        argv += ["--require-public-zip-sha256", hashlib.sha256(original).hexdigest()]
+    else:
+        argv += ["--compare", str(second)]
+        for name, path in (("before", first), ("after", second)):
+            argv += ["--require-public-zip-sha256",
+                     name + ":" + hashlib.sha256(path.read_bytes()).hexdigest()]
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit) as exc:
+        review.main()
+    assert exc.value.code == 2
+    captured = capsys.readouterr()
+    assert "public evidence ZIP changed during review" in captured.err
+    assert captured.out == ""
+    assert calls == 2
+    assert target.read_bytes() == original
+
+
+def test_pinned_zip_unpack_rejects_directory_instead_of_archive(tmp_path):
+    from contextlib import ExitStack
+    from godprompt_bench import review
+
+    source = tmp_path / "changed.zip"
+    source.mkdir()
+    with ExitStack() as stack, pytest.raises(ValueError, match="ZIP changed during review"):
+        review._public_zip_directory(source, stack, expected_sha256="a" * 64)
+
+
 def test_review_cli_rejects_zip_changed_after_unpack_even_with_same_stat(
     exported: Path, tmp_path: Path, monkeypatch, capsys,
 ):
@@ -2232,8 +2287,8 @@ def test_review_cli_rejects_zip_changed_after_unpack_even_with_same_stat(
     before = archive.stat()
     original_unpack = review._public_zip_directory
 
-    def change_after_unpack(source, stack):
-        extracted = original_unpack(source, stack)
+    def change_after_unpack(source, stack, **kwargs):
+        extracted = original_unpack(source, stack, **kwargs)
         content = bytearray(source.read_bytes())
         content[0] ^= 1
         source.write_bytes(content)
