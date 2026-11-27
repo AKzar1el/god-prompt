@@ -1,6 +1,7 @@
 import csv
 from dataclasses import asdict, fields, replace
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -8,7 +9,9 @@ import sys
 import pytest
 
 from godprompt_bench.aggregate import aggregate
-from godprompt_bench.experimental_report import main, summarize_experimental_triplets
+from godprompt_bench.experimental_report import (
+    _read_expected_identities, main, summarize_experimental_triplets,
+)
 from godprompt_bench.models import SampleRecord
 
 
@@ -647,6 +650,35 @@ def test_offline_triplet_manifest_rejects_missing_and_duplicate_json_keys(tmp_pa
     assert duplicate.returncode == 2
     assert not duplicate.stdout
     assert "private" not in duplicate.stderr
+
+
+@pytest.mark.parametrize("extra_bytes, stale_size", [(0, False), (1, False), (1, True)])
+def test_expected_identity_manifest_enforces_actual_byte_limit(
+    tmp_path, monkeypatch, extra_bytes, stale_size,
+):
+    payload = b'{"schema_version":1,"task_epochs":[{"task_id":"x","epoch":1}]}'
+    manifest = tmp_path / "identities.json"
+    manifest.write_bytes(payload + b" " * extra_bytes)
+    monkeypatch.setattr(
+        "godprompt_bench.experimental_report._EXPECTED_IDENTITIES_MAX_BYTES", len(payload),
+    )
+    if stale_size:
+        original_stat = Path.stat
+
+        def reported_stat(path, *args, **kwargs):
+            metadata = original_stat(path, *args, **kwargs)
+            if path == manifest:
+                values = list(metadata)
+                values[6] = len(payload)
+                return os.stat_result(values)
+            return metadata
+
+        monkeypatch.setattr(Path, "stat", reported_stat)
+    if extra_bytes:
+        with pytest.raises(ValueError, match="invalid or unreadable expected identity manifest"):
+            _read_expected_identities(manifest)
+    else:
+        assert _read_expected_identities(manifest) == {("x", 1)}
 
 
 def test_offline_triplet_cli_rejects_missing_input_without_writes(tmp_path):

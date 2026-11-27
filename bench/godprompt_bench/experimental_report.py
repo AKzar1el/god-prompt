@@ -16,7 +16,7 @@ from .aggregate import _historical_flag, _summarize
 from .models import SampleRecord
 from .review import (
     _percentage_points, _percent, _read_scores, _task_cluster_interval,
-    _UNCERTAINTY_MIN_TASKS, _UNCERTAINTY_RESAMPLES, _check_file,
+    _UNCERTAINTY_MIN_TASKS, _UNCERTAINTY_RESAMPLES, _read_bounded,
     _no_nonfinite, _reject_duplicate_json_keys,
 )
 
@@ -32,9 +32,8 @@ _EXPECTED_IDENTITIES_MAX_ENTRIES = 10_000
 def _read_expected_identities(path: Path) -> set[tuple[str, int]]:
     """Validate a bounded caller-provided plan, without authenticating it."""
     try:
-        _check_file(path, _EXPECTED_IDENTITIES_MAX_BYTES)
         data = json.loads(
-            path.read_text(encoding="utf-8"),
+            _read_bounded(path, _EXPECTED_IDENTITIES_MAX_BYTES).decode("utf-8"),
             object_pairs_hook=_reject_duplicate_json_keys,
             parse_constant=_no_nonfinite,
         )
