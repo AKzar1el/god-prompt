@@ -23,7 +23,11 @@ from .models import RunProfile, SampleRecord
 
 
 def load_profile(path: Path) -> RunProfile:
-    raw = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
+    return _parse_profile(path.read_text(encoding="utf-8"))
+
+
+def _parse_profile(text: str) -> RunProfile:
+    raw = json.loads(text, object_pairs_hook=_reject_duplicate_json_keys)
     if not isinstance(raw, dict):
         raise ValueError("profile root must be an object")
     required = {"name", "task_ids", "epochs", "max_messages", "max_time_seconds", "max_output_tokens"}
@@ -63,7 +67,11 @@ def load_custom_profile(path: Path, bench_root: Path) -> RunProfile:
         raise ValueError("custom profile must be an existing regular JSON file")
     if path.stat().st_size > 65536:
         raise ValueError("custom profile JSON exceeds 64 KiB")
-    profile = load_profile(path)
+    with path.open("rb") as stream:
+        raw = stream.read(65537)
+    if len(raw) > 65536:
+        raise ValueError("custom profile JSON exceeds 64 KiB")
+    profile = _parse_profile(raw.decode("utf-8"))
     if not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", profile.name):
         raise ValueError("custom profile name must be a short lowercase identifier")
     if profile.name in ("smoke", "half", "full") or profile.name.startswith("half-frozen"):
