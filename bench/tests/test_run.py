@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 import os
 import sys
@@ -342,6 +343,40 @@ def _custom_profile_file(tmp_path, *, name='one-off', task_count=2, epochs=1, ma
     path = tmp_path / 'local-profile.json'
     path.write_text(json.dumps(profile), encoding='utf-8')
     return path
+
+
+@pytest.mark.parametrize('actual_size', [65535, 65536, 65537, 131072])
+def test_custom_profile_bounds_actual_read(monkeypatch, tmp_path, actual_size):
+    from godprompt_bench.run import load_custom_profile
+
+    path = _custom_profile_file(tmp_path)
+    original = path.read_bytes()
+    payload = original + b' ' * (actual_size - len(original))
+    real_open = Path.open
+    reads = []
+
+    class BinaryInput(io.BytesIO):
+        def read(self, size=-1):
+            reads.append(size)
+            return super().read(size)
+
+    class TextInput(io.StringIO):
+        def read(self, size=-1):
+            reads.append(size)
+            return super().read(size)
+
+    def open_profile(self, mode='r', *args, **kwargs):
+        if self == path:
+            return BinaryInput(payload) if 'b' in mode else TextInput(payload.decode('utf-8'))
+        return real_open(self, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'open', open_profile)
+    if actual_size > 65536:
+        with pytest.raises(ValueError, match='custom profile JSON exceeds 64 KiB'):
+            load_custom_profile(path, ROOT)
+    else:
+        assert load_custom_profile(path, ROOT).name == 'custom-one-off'
+    assert reads == [65537]
 
 
 def test_cli_custom_profile_preview_and_task_list_are_offline(monkeypatch, capsys, tmp_path):
